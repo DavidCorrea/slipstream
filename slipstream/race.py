@@ -165,7 +165,7 @@ class Race:
             return bool(out.all())
         if out.all() or self.time >= self.time_limit:
             return True
-        return bool(self.finished.any()) and self.time - np.nanmin(self.finish_time) >= AFTER_WINNER
+        return bool(self.finished.any() and self.time - np.nanmin(self.finish_time) >= AFTER_WINNER)
 
     def lap_of(self):
         """Laps completed by each car (0 on the way to the first line crossing)."""

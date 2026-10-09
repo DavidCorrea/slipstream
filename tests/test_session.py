@@ -49,6 +49,13 @@ class TestSessions:
         assert sorted(later['order']) == [0, 1, 2, 3]
         json.dumps(later)
 
+    def test_send_frames_that_serialise_cleanly_after_the_winner_finishes(self):
+        session = RaceSession(SCRIPTED, seed=6, cars=2, laps=1)
+        frame = None
+        while frame is None or not frame['done']:
+            frame = session.advance(200)
+            json.dumps(frame)
+
     def test_report_the_finish_and_stop_advancing_once_the_race_is_over(self):
         session = RaceSession(SCRIPTED, seed=6, cars=2, laps=1)
         finished = []

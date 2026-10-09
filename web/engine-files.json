@@ -1,0 +1,33 @@
+{
+  "modules": [
+    "slipstream/__init__.py",
+    "slipstream/aero.py",
+    "slipstream/brains.py",
+    "slipstream/browser.py",
+    "slipstream/car.py",
+    "slipstream/cast.py",
+    "slipstream/drivers.py",
+    "slipstream/field.py",
+    "slipstream/human.py",
+    "slipstream/numpy_network.py",
+    "slipstream/observe.py",
+    "slipstream/personality.py",
+    "slipstream/pit.py",
+    "slipstream/pitwall.py",
+    "slipstream/race.py",
+    "slipstream/senses.py",
+    "slipstream/session.py",
+    "slipstream/strategy.py",
+    "slipstream/surface.py",
+    "slipstream/timing.py",
+    "slipstream/track.py",
+    "slipstream/viewer.py",
+    "slipstream/weather.py"
+  ],
+  "brains": [
+    "brains/driver-copy/checkpoints/step-000032022528.npz",
+    "brains/driver-rivals/checkpoints/step-000036016128.npz",
+    "brains/pitwall-feel/checkpoints/step-000000251904.npz",
+    "brains/pitwall-feel/driver.json"
+  ]
+}

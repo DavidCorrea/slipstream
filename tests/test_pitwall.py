@@ -140,3 +140,17 @@ class TestWithADriverByFeel:
         env.reset()
         observations, rewards, dones, infos = env.step(no_stops(2))
         assert observations.shape == (2, len(PITWALL_OBSERVATION_NAMES))
+
+
+class TestComparingRaceTimes:
+    def test_compares_two_finished_races_by_time(self):
+        from slipstream.pitwall_env import relative_pace
+        assert relative_pace(110.0, 100.0) == 1.1
+
+    def test_scores_nothing_for_a_pit_wall_that_didnt_finish(self):
+        from slipstream.pitwall_env import relative_pace
+        assert relative_pace(100.0, np.inf) == 0.0
+
+    def test_leaves_out_a_race_the_reference_didnt_finish_instead_of_scoring_it_infinite(self):
+        from slipstream.pitwall_env import relative_pace
+        assert relative_pace(np.inf, 100.0) is None

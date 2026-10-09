@@ -161,7 +161,8 @@ class Progress(BaseCallback):
         entry = {'checkpoint': name, 'step': self.num_timesteps, 'time': round(time.time() - self.started), **scores, **training}
         with open(self.run / 'history.jsonl', 'a') as history:
             history.write(json.dumps(entry) + '\n')
-        print(f"decision {self.num_timesteps:,}: {scores['pace']:.3f}x the scripted strategist, {scores['beats_no_stop']:.3f}x never stopping, "
+        print(f"decision {self.num_timesteps:,}: {scores['pace']:.3f}x the scripted strategist (which failed to finish {scores['scripted_failed']:.0%}), "
+              f"{scores['beats_no_stop']:.3f}x never stopping, "
               f"{scores['stops']:.1f} stops, finished {scores['finished']:.0%}, place in traffic {scores['traffic_place']:.2f} (0 best) "
               f"| training stops {training.get('race_stops', 0):.2f}", flush=True)
 

@@ -251,6 +251,17 @@ TRAFFIC_SEEDS = (1003, 1008)
 TRAFFIC_LAPS = 8
 
 
+def relative_pace(reference, candidate):
+    """The reference's race time over the candidate's, so above 1 means the candidate was faster. A candidate
+    that didn't finish scores 0. A race the reference didn't finish says nothing about the candidate's pace, so
+    it's left out (None): scored, it made the whole benchmark's average infinite."""
+    if not np.isfinite(reference):
+        return None
+    if not np.isfinite(candidate):
+        return 0.0
+    return reference / candidate
+
+
 def benchmark(pitwall, driver):
     """The driver alone over long races on fixed circuits, three ways: the pit wall making the calls, the scripted
     strategist making them, and never stopping. `pace` is the strategist's race time over the pit wall's (above 1,
@@ -262,7 +273,7 @@ def benchmark(pitwall, driver):
     from .car import CarSpecs
     from .field import field_controls
     from .strategy import scripted_strategy
-    paces, versus_none, no_stop_failed, stops, finished = [], [], [], [], []
+    paces, versus_none, scripted_failed, no_stop_failed, stops, finished = [], [], [], [], [], []
     for seed, laps, forecast in BENCHMARK_RACES:
         track = generate_track(seed)
         times = {}
@@ -281,10 +292,12 @@ def benchmark(pitwall, driver):
             if label == 'pitwall':
                 stops.append(race.stops[0])
                 finished.append(float(race.finished[0]))
-        paces.append(times['scripted'] / times['pitwall'] if np.isfinite(times['pitwall']) else 0.0)
+        scripted_failed.append(float(not np.isfinite(times['scripted'])))
         no_stop_failed.append(float(not np.isfinite(times['none'])))
-        if np.isfinite(times['none']):
-            versus_none.append(times['none'] / times['pitwall'] if np.isfinite(times['pitwall']) else 0.0)
+        for scores, reference in ((paces, times['scripted']), (versus_none, times['none'])):
+            pace = relative_pace(reference, times['pitwall'])
+            if pace is not None:
+                scores.append(pace)
     places = []
     for seed in TRAFFIC_SEEDS:
         # Six cars, all driven by the driver network: the pit wall calls the stops for every other one, the
@@ -306,6 +319,7 @@ def benchmark(pitwall, driver):
         place[race.standings()] = np.arange(6) / 5
         places.append(place[walled].mean())
     return {'pace': float(np.mean(paces)), 'beats_no_stop': float(np.mean(versus_none)), 'no_stop_failed': float(np.mean(no_stop_failed)),
+            'scripted_failed': float(np.mean(scripted_failed)),
             'stops': float(np.mean(stops)),
             'finished': float(np.mean(finished)), 'traffic_place': float(np.mean(places))}
 

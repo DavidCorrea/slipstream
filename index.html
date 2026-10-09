@@ -217,6 +217,20 @@
     <button id="ghost" class="toggle" title="A see-through car driving the fastest lap, in step with the selected car (G)">Ghost</button>
   </section>
 
+  <!-- Loading, on the published site: the race runs in the browser, which first downloads what it needs -->
+  <section id="loading" class="hidden">
+    <div class="loading-panel">
+      <span class="wordmark">Slipstream</span>
+      <h1 id="loading-step">Getting the race ready</h1>
+      <div class="loading-bar"><b id="loading-bar"></b></div>
+      <div class="loading-numbers"><span id="loading-percent">0%</span><span id="loading-bytes"></span></div>
+      <ol id="loading-steps" class="loading-steps"></ol>
+      <p id="loading-error" class="loading-error hidden"></p>
+      <button id="loading-retry" class="primary hidden">Try again</button>
+      <p class="hint">Everything runs in your browser: the physics, the weather and the neural networks at the wheel. The first visit downloads about 17 MB; after that your browser keeps it.</p>
+    </div>
+  </section>
+
   <div id="tv-tag" class="hidden"></div>
   <div id="banner" class="hidden"></div>
   <div id="caption" class="hidden"></div>

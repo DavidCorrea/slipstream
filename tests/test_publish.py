@@ -15,6 +15,10 @@ class TestPublishingTheSite:
         listed = json.loads((ROOT / ENGINE_FILES).read_text())
         assert listed['brains'] and all((ROOT / path).is_file() for path in listed['brains'])
 
+    def test_the_page_knows_how_much_it_downloads_so_it_can_show_progress(self):
+        listed = json.loads((ROOT / ENGINE_FILES).read_text())
+        assert listed['bytes'] == sum((ROOT / path).stat().st_size for path in listed['modules'] + listed['brains'])
+
     def test_exports_snapshots_with_what_a_pit_wall_run_says_about_its_driver(self, tmp_path):
         runs = tmp_path / 'runs'
         (runs / 'wall' / 'checkpoints').mkdir(parents=True)

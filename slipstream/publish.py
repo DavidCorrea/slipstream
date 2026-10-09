@@ -49,8 +49,11 @@ def publish(snapshots, runs=RUNS, destination=BRAINS):
 
 
 def write_engine_files():
+    """Lists the files with their total size, which the loading screen counts the download against."""
+    modules = browser_modules()
     brains = sorted(str(path.relative_to(ROOT)) for path in BRAINS.rglob('*') if path.is_file())
-    (ROOT / ENGINE_FILES).write_text(json.dumps({'modules': browser_modules(), 'brains': brains}, indent=2) + '\n')
+    total = sum((ROOT / path).stat().st_size for path in modules + brains)
+    (ROOT / ENGINE_FILES).write_text(json.dumps({'modules': modules, 'brains': brains, 'bytes': total}, indent=2) + '\n')
     return brains
 
 

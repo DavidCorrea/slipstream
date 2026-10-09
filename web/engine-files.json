@@ -29,5 +29,6 @@
     "brains/driver-rivals/checkpoints/step-000036016128.npz",
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
     "brains/pitwall-feel/driver.json"
-  ]
+  ],
+  "bytes": 1702767
 }

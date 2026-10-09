@@ -12,6 +12,7 @@ import { createHud } from './hud.js';
 import { createRaceEvents } from './race-events.js';
 import { createRacerPanel } from './racer.js';
 import { createStage, toWorld } from './scene.js';
+import { createLoadingScreen } from './loading.js';
 import { LOCATIONS, locationFor } from './scenery.js';
 import { createWeather } from './weather.js';
 
@@ -34,6 +35,8 @@ const racer = createRacerPanel({
   onRename: id => hud.rename(id),
 });
 const raycaster = new THREE.Raycaster();
+const loading = createLoadingScreen();
+$('loading-retry').addEventListener('click', () => location.reload());
 const weather = createWeather(stage);
 const raceEvents = createRaceEvents();
 const feed = createFeed({ onSelect: id => select(id) });
@@ -64,16 +67,21 @@ function connect() {
 
 // With no server behind the page (the published site), the race code runs in a worker (engine-worker.js).
 function startWorker() {
-  hud.status('Loading the simulation… (about 15 MB the first time)');
+  loading.show();
   const worker = new Worker(new URL('./engine-worker.js', import.meta.url), { type: 'module' });
   state.worker = worker;
   worker.addEventListener('message', ({ data }) => {
-    if (data.type === 'ready') {
-      hud.status('');
+    if (data.type === 'plan') {
+      loading.plan(data.expected);
+    } else if (data.type === 'progress') {
+      loading.progress(data);
+    } else if (data.type === 'ready') {
+      loading.ready();
       showBrains(data.brains);
       startRace();
     } else if (data.type === 'failed') {
-      hud.status(`The simulation stopped: ${data.message}`);
+      if (state.race) hud.status(`The simulation stopped: ${data.message}`);
+      else loading.fail(data.message);
     } else {
       receive(JSON.parse(data.text));
     }
@@ -102,6 +110,7 @@ function receive(message) {
 // ---- Race set-up and frames ----------------------------------------------------------------------------
 
 function setUpRace(intro) {
+  loading.hide();
   state.circuit?.dispose();
   state.effects?.dispose();
   state.crews?.dispose();

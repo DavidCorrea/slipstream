@@ -2,7 +2,7 @@
 
 A racing game where every driver is a neural network. On the grid you pick your car and set up any driver: their personality (aggression, risk, overtaking, how much they spare their tyres and fuel, consistency, stamina) and their car (top speed, grip, acceleration, braking, handling). One network drives every car and reads those stats as inputs, so each driver races their own way. During the race you're your car's pit wall.
 
-**Play it online: https://davidcorrea.github.io/slipstream/** (Chrome, Edge, Firefox or Safari; the first visit downloads about 15 MB).
+**Play it online: https://davidcorrea.github.io/slipstream/** (Chrome, Edge, Firefox or Safari; the first visit downloads about 17 MB).
 
 ## Status
 

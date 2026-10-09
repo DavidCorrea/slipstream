@@ -429,6 +429,8 @@ body.loading .chrome, body.loading #grid-menu { display: none !important; }
 .replay-label { font-weight: 900; font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
 .replay-label::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: replay-blink 1s steps(2) infinite; }
 @keyframes replay-blink { 50% { opacity: 0.2; } }
+.replay-shot { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+.replay-shot:empty { display: none; }
 .replay-bar { width: 140px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .replay-bar b { display: block; height: 100%; width: 0; background: var(--accent); }
 /* A replay letterboxes the picture, like a broadcast's. */

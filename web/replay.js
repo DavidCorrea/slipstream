@@ -8,6 +8,7 @@
 // one (measured over ten races with driver-rivals; a harder bar left four in ten without).
 const KEEP_SECONDS = 15;
 const MANUAL_SECONDS = 10;
+const MANUAL_IMPACT_BEFORE_END = 3;
 const BEFORE_SECONDS = 4;        // a crash's replay starts this long before the hit
 const AFTERMATH_SECONDS = 2.5;   // and comes once the race has run on this long after it
 const HARD_HIT = 8;
@@ -15,7 +16,6 @@ const DAMAGE_JUMP = 0.2;
 const DAMAGE_WINDOW_SECONDS = 1;
 const COOLDOWN_SECONDS = 45;
 const DAMAGE_KEYS = ['damage', 'wingDamage', 'suspensionDamage'];
-export const SLOW_MOTION = 0.4;
 // What blends smoothly between two frames; everything else is taken from the later one.
 export const NUMERIC = ['x', 'y', 'speed', 'steer', 'throttle', 'brake'];
 
@@ -67,7 +67,8 @@ export function createReplay() {
     // The last few seconds, for a replay asked for, watching `car`.
     lastMoments(car) {
       const end = frames[frames.length - 1]?.time ?? 0;
-      return { time: end, cars: [car], frames: frames.filter(old => old.time >= end - MANUAL_SECONDS) };
+      // No crash to centre on: the last few seconds play as the slow part.
+      return { time: end - MANUAL_IMPACT_BEFORE_END, cars: [car], frames: frames.filter(old => old.time >= end - MANUAL_SECONDS), asked: true };
     },
   };
 }

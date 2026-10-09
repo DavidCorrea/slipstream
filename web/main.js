@@ -10,7 +10,8 @@ import { createFeed } from './feed.js';
 import { createGhost } from './ghost.js';
 import { createHud } from './hud.js';
 import { createRaceEvents, radioLines } from './race-events.js';
-import { SLOW_MOTION, blend, createReplay, replayAt } from './replay.js';
+import { blend, createReplay, replayAt } from './replay.js';
+import { createReplayCamera } from './replay-camera.js';
 import { createRacerPanel } from './racer.js';
 import { createStage, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
@@ -42,8 +43,7 @@ const raycaster = new THREE.Raycaster();
 // What a broken prop scatters, by kind; anything else breaks into pale bits.
 const PROP_COLORS = { bale: '#d9b45a', cactus: '#4d7a3a', lamp: '#4a4e57', board: '#f4f4f0', marker: '#ffffff' };
 const replays = createReplay();
-const REPLAY_ZOOM = 18;          // metres of half-height: close on the crash
-const REPLAY_ORBIT = 0.22;       // radians a second the replay camera swings round
+const replayCamera = createReplayCamera({ aspect: window.innerWidth / window.innerHeight });
 const loading = createLoadingScreen();
 $('loading-retry').addEventListener('click', () => location.reload());
 const weather = createWeather(stage);
@@ -51,7 +51,10 @@ const raceEvents = createRaceEvents();
 const feed = createFeed({ onSelect: id => select(id) });
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
-window.addEventListener('resize', () => director.resize(window.innerWidth / window.innerHeight));
+window.addEventListener('resize', () => {
+  director.resize(window.innerWidth / window.innerHeight);
+  replayCamera.resize(window.innerWidth / window.innerHeight);
+});
 const speech = createSpeech({ onProgress: showVoicesProgress, knownLines: radioLines() });
 const broadcaster = createBroadcaster({ onStatus: text => hud.status(text), speech });
 
@@ -334,23 +337,34 @@ function renderLive(frame, seconds, now) {
   state.effects.update(seconds * Math.max(simRate, 0.25), pixelsPerMetre);
 }
 
-// The recorded race in slow motion, the camera close on the crash and swinging slowly round it. The timing tower
-// and the rest of the screen stay as the live race left them.
+// The recorded race in slow motion, cut together from a few close shots (replay-camera.js), each part at its own
+// speed. The timing tower and the rest of the screen stay as the live race left them.
 function renderReplay(seconds, now) {
   const replay = state.replay;
-  replay.time = Math.min(replay.end, replay.time + seconds * SLOW_MOTION);
+  let part = replay.parts[replay.part];
+  replay.time = Math.min(part.to, replay.time + seconds * part.speed);
   const { frame, passed } = replayAt(replay.frames, replay.time, replay.shown);
   replay.shown = replay.time;
-  for (const old of passed) for (const [x, y, impulse] of old.events.contacts) state.effects.contact(toWorld(x, y), impulse);
-  drawCars(frame, seconds, SLOW_MOTION, now, false);
-  const points = replay.cars.map(car => toWorld(frame.cars.x[car], frame.cars.y[car]));
-  const focus = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(points.length);
-  stage.view.targetAzimuth += seconds * REPLAY_ORBIT;
-  stage.view.update(seconds, focus, 0);
-  weather.update(frame.weather.wetness, frame.weather.rain, stage.view.focus, seconds, now / 1000, frame.weather.wind);
-  $('replay-progress').style.width = `${((replay.time - replay.start) / (replay.end - replay.start)) * 100}%`;
-  state.effects.update(seconds * SLOW_MOTION, stage.pixelsTall() / (2 * stage.view.zoom));
-  if (replay.time >= replay.end) endReplay();
+  for (const old of passed) {
+    for (const [x, y, impulse] of old.events.contacts) state.effects.contact(toWorld(x, y), impulse);
+    for (const hit of old.events.propHits ?? []) if (!hit.broke) state.effects.contact(toWorld(hit.x, hit.y), hit.impulse);
+  }
+  drawCars(frame, seconds, part.speed, now, false);
+  const label = replayCamera.aim(part, frame, replay.cars, seconds);
+  $('replay-shot').textContent = label ?? '';
+  // The isometric rig still follows the action: the sun's shadows are drawn around it.
+  stage.view.update(seconds, replayCamera.focus, 0);
+  weather.update(frame.weather.wetness, frame.weather.rain, replayCamera.focus, seconds, now / 1000, frame.weather.wind);
+  const done = replay.parts.slice(0, replay.part).length + (replay.time - part.from) / Math.max(part.to - part.from, 1e-6);
+  $('replay-progress').style.width = `${(done / replay.parts.length) * 100}%`;
+  const distance = replayCamera.camera.position.distanceTo(replayCamera.focus);
+  state.effects.update(seconds * part.speed, stage.pixelsTall() / (2 * Math.tan(THREE.MathUtils.degToRad(replayCamera.camera.fov) / 2) * Math.max(distance, 1)));
+  if (replay.time < part.to) return;
+  // On to the next part (a cut), which may go back to show the impact again.
+  replay.part += 1;
+  if (replay.part >= replay.parts.length) return endReplay();
+  part = replay.parts[replay.part];
+  replay.time = replay.shown = part.from;
 }
 
 // Poses every car. Live, cars also leave tyre marks and spray; a replay leaves none (they're already down).
@@ -361,7 +375,8 @@ function drawCars(frame, seconds, simRate, now, live) {
     const ringed = live && id === state.selected && state.cameraMode !== 'tv';
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
-    poseCar(car, pose, seconds, seconds * simRate, ringed, id === state.yours, now / 1000);
+    // Your car's marker is for the live race; a replay is the broadcast's.
+    poseCar(car, pose, seconds, seconds * simRate, ringed, live && id === state.yours, now / 1000);
     const velocity = carVelocity(pose);
     for (const point of car.userData.justLost.splice(0)) state.effects.shed(point, velocity, state.race.cars[id].color, 3, 0.45);
     if (live && simRate > 0) state.effects.car(id, contactPatches(car), pose, velocity, seconds * Math.min(simRate, 2), frame.weather.wetness);
@@ -381,16 +396,12 @@ function automaticReplays() {
 // Holds the live race while the replay plays, so nothing is missed, and puts the camera back afterwards.
 function startReplay(moment) {
   if (state.replay || moment.frames.length < 2) return;
-  const start = moment.frames[0].time, end = moment.frames[moment.frames.length - 1].time;
-  state.replay = {
-    frames: moment.frames, cars: moment.cars, start, end, time: start, shown: start,
-    camera: { mode: state.cameraMode, zoom: stage.view.targetZoom, azimuth: stage.view.targetAzimuth },
-  };
+  const parts = replayCamera.plan(moment.frames, moment.time, moment.cars, replayAt(moment.frames, moment.time, moment.time).frame, { isCrash: !moment.asked });
+  if (!parts.length) return;
+  state.replay = { frames: moment.frames, cars: moment.cars, parts, part: 0, time: parts[0].from, shown: parts[0].from };
   send({ type: 'pause', value: true });
   state.shot = null;
   $('tv-tag').classList.add('hidden');
-  stage.view.setMode('follow', state.circuit);
-  stage.view.targetZoom = REPLAY_ZOOM;
   $('replay-tag').classList.remove('hidden');
   document.body.classList.add('replaying');
   broadcaster.replay(moment.cars.map(car => state.race.cars[car].name));
@@ -403,18 +414,15 @@ function replayLastMoments() {
 }
 
 function endReplay() {
-  const { camera } = state.replay;
   state.replay = null;
   $('replay-tag').classList.add('hidden');
   document.body.classList.remove('replaying');
-  stage.view.setMode(camera.mode, state.circuit);
-  stage.view.targetZoom = camera.zoom;
-  stage.view.targetAzimuth = camera.azimuth;
   // The live race picks up where it was held, unless you had paused it yourself.
   if (!state.paused) send({ type: 'pause', value: false });
 }
 
 function activeCamera() {
+  if (state.replay) return replayCamera.camera;
   return state.shot ? director.camera : stage.camera;
 }
 

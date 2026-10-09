@@ -56,7 +56,7 @@ The viewer plays races live in the browser, in isometric 3D. Every race opens **
 | Follow, TV, Circuit (F, T, O) | Follow the selected car, watch it like a broadcast (see below), or see the whole circuit |
 | Ghost (G) | Off by default: a see-through car driving the fastest lap so far, in step with the selected car's lap |
 | Commentary | Off, captions, or captions and the browser's voice |
-| Voices | In Settings: the commentator's, your driver's and your race engineer's voice, from your browser's English voices, each with ▶ to hear it first (remembered in this browser). Your car's team radio is spoken with captions and voice on |
+| Voices | In Settings: the commentator's, your driver's and your race engineer's voice, each with ▶ to hear it first (remembered in this browser). **Load natural voices** downloads Kokoro (an open 82M-parameter speech model, about 90 MB once) and runs it in the browser, for voices that sound like people; otherwise they're the browser's own. Your car's team radio is spoken over a radio (telephone band, a little overdrive, a click), with captions and voice on |
 | Load AI commentator | Downloads a small language model once (about 0.9 GB) and runs it on your GPU, for commentary it writes itself |
 | Click a car or a name, 1–8 | Select a car to follow and see its telemetry |
 | Q / E, scroll | Turn the view a quarter turn, zoom |

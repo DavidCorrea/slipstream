@@ -1,30 +1,21 @@
 // The commentator. Picks the moment most worth talking about, says one line about it as a caption and, if you
 // want, out loud with the browser's own voice. Fills quiet spells with a word about the order or the strategy.
-// Your car's team radio is spoken too, the driver and the race engineer each in their own voice; every voice can
-// be chosen from the ones the browser has.
+// Your car's team radio is spoken too; how every line sounds (which voice, the radio) is speech.js's job.
 //
 // Lines come from templates until you load the AI commentator: a small language model (Llama 3.2 1B, about
 // 0.9 GB, downloaded once and cached by the browser) that runs on your GPU in a web worker. It only gets the facts
 // of the moment, so it can't make up who's leading. If it's slow or fails, the template line goes out instead.
 import { formatLap } from './feed.js';
 import { pick } from './race-events.js';
+import { loadSetting, saveSetting } from './settings.js';
 
 const WEBLLM = 'https://esm.run/@mlc-ai/web-llm@0.2.85';
 const MODEL = 'Llama-3.2-1B-Instruct-q4f16_1-MLC';
 const MODEL_WITHOUT_F16 = 'Llama-3.2-1B-Instruct-q4f32_1-MLC';
 const MODEL_WAIT_MS = 3500;              // a line later than this is old news
 const STALE_MS = 5000;                   // a moment nobody got round to within this long goes unsaid
-// How each voice speaks: a commentator a touch quick, a driver quicker and lower (mid-corner, under strain), the
-// engineer calm.
-const DELIVERY = { commentator: { rate: 1.08, pitch: 1 }, driver: { rate: 1.15, pitch: 0.85 }, engineer: { rate: 1.02, pitch: 1 } };
-const SAMPLES = {
-  commentator: "And it's lights out, and away they go!",
-  driver: 'The rear is gone, I have no grip at all.',
-  engineer: 'Box this lap, box this lap. Softs are ready.',
-};
 const QUIET_MS = 14000;                  // silence this long gets filled
 const PAUSE_BETWEEN_MS = 600;
-const SETTINGS_KEY = 'slipstream.commentary';
 
 const SYSTEM_PROMPT = `You are the lead commentator on a TV broadcast of a motor race.
 Turn the fact you are given into one line of live commentary: at most 18 words, excited British broadcast style, present tense.
@@ -65,19 +56,17 @@ const TEMPLATES = {
   quiet: ['{leader} leads by {leadGap} seconds on lap {lap} of {laps}.', 'Lap {lap} of {laps}, and {leader} is still out in front.', '{leader} controls it from the front, {second} is the nearest challenger.'],
 };
 
-export function createBroadcaster({ onStatus }) {
+export function createBroadcaster({ onStatus, speech }) {
   const caption = document.getElementById('caption');
   let mode = loadSetting('mode', 'captions');
   let race = null, yours = null, pending = null, speakingUntil = 0, lastSpoke = 0, busy = false, captionTimer = null;
   let engine = null, modelState = 'off';
-  // role -> the chosen voice's voiceURI; a role missing from it gets the automatic choice.
-  let chosenVoices = loadSetting('voices', {});
   const recent = [];
 
   function setMode(value) {
     mode = value;
     saveSetting('mode', value);
-    if (value !== 'voice') speechSynthesis?.cancel();
+    if (value !== 'voice') speech.cancel();
     if (value === 'off') caption.classList.add('hidden');
   }
 
@@ -85,7 +74,7 @@ export function createBroadcaster({ onStatus }) {
     race = intro;
     yours = yourCar;
     pending = null;
-    speechSynthesis?.cancel();
+    speech.cancel();
     lastSpoke = performance.now();
     caption.classList.add('hidden');
   }
@@ -95,7 +84,7 @@ export function createBroadcaster({ onStatus }) {
     if (mode === 'off' || !race) return;
     const now = performance.now();
     for (const moment of moments) {
-      if (moment.radio && moment.radio.car === yours && mode === 'voice') speakRadio(moment.radio);
+      if (moment.radio && moment.radio.car === yours && mode === 'voice') speech.say(moment.radio.text, moment.radio.speaker);
       if (!TEMPLATES[moment.kind] || moment.priority < 2) continue;
       if (!pending || moment.priority >= pending.moment.priority) pending = { moment, at: now };
     }
@@ -167,43 +156,13 @@ export function createBroadcaster({ onStatus }) {
     caption.style.animation = '';
     const readingTime = 1500 + line.split(' ').length * 330;
     speakingUntil = performance.now() + readingTime;
-    if (mode === 'voice' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(line);
-      voiceAs(utterance, 'commentator');
-      utterance.onend = () => { speakingUntil = Math.min(speakingUntil, performance.now()); };
-      speakingUntil = performance.now() + readingTime * 2;
-      speechSynthesis.speak(utterance);
+    if (mode === 'voice') {
+      // Until it's been said (a natural voice takes a moment to generate it), but never longer than this.
+      speakingUntil = performance.now() + readingTime * 3;
+      speech.say(line, 'commentator').then(() => { speakingUntil = Math.min(speakingUntil, performance.now()); });
     }
     clearTimeout(captionTimer);
     captionTimer = setTimeout(() => caption.classList.add('hidden'), readingTime + 1200);
-  }
-
-  function speakRadio({ speaker, text }) {
-    if (!('speechSynthesis' in window)) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    voiceAs(utterance, speaker);
-    speechSynthesis.speak(utterance);
-  }
-
-  function voiceAs(utterance, role) {
-    utterance.voice = voiceFor(role, chosenVoices[role]);
-    utterance.rate = DELIVERY[role].rate;
-    utterance.pitch = DELIVERY[role].pitch;
-  }
-
-  function setVoice(role, id) {
-    chosenVoices = { ...chosenVoices, [role]: id };
-    if (!id) delete chosenVoices[role];
-    saveSetting('voices', chosenVoices);
-  }
-
-  // Says a sample line in a role's voice, whatever the commentary mode, so you can hear it before choosing it.
-  function previewVoice(role) {
-    if (!('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(SAMPLES[role]);
-    voiceAs(utterance, role);
-    speechSynthesis.speak(utterance);
   }
 
   function pickFresh(lines) {
@@ -242,8 +201,7 @@ export function createBroadcaster({ onStatus }) {
     get mode() { return mode; },
     get modelState() { return modelState; },
     wantsModel: () => loadSetting('ai', false),
-    setMode, reset, notice, update, loadModel, setVoice, previewVoice,
-    chosenVoice: role => chosenVoices[role] ?? '',
+    setMode, reset, notice, update, loadModel,
     setYours(car) { yours = car; },
   };
 
@@ -313,44 +271,4 @@ function tidy(text) {
   const line = text.split('\n').map(part => part.trim()).find(Boolean) ?? '';
   const cleaned = line.replace(/^(commentary( line)?|commentator)\s*:\s*/i, '').replace(/^["'“”]+|["'“”]+$/g, '').trim();
   return cleaned.length >= 8 ? cleaned : null;
-}
-
-// The browser's English voices (every line is in English, and other voices mangle it), as { id, label }.
-export function voiceOptions() {
-  if (!('speechSynthesis' in window)) return [];
-  return speechSynthesis.getVoices().filter(option => option.lang.startsWith('en'))
-    .sort((first, second) => first.lang.localeCompare(second.lang) || first.name.localeCompare(second.name))
-    .map(option => ({ id: option.voiceURI, label: `${option.name} · ${option.lang}` }));
-}
-
-// The chosen voice if the browser still has it. Otherwise: a British voice for the commentator if there is one,
-// and two different other English voices for the driver and the engineer, so the radio is a conversation.
-function voiceFor(role, chosen) {
-  const all = speechSynthesis.getVoices();
-  const picked = chosen && all.find(option => option.voiceURI === chosen);
-  if (picked) return picked;
-  const voices = all.filter(option => option.lang.startsWith('en'));
-  const british = voices.filter(option => option.lang === 'en-GB');
-  const others = voices.filter(option => option.lang !== 'en-GB');
-  if (role === 'commentator') return british[0] ?? voices[0] ?? null;
-  const pool = others.length ? others : voices;
-  return (role === 'engineer' ? pool[1] : pool[0]) ?? pool[0] ?? null;
-}
-
-function loadSetting(name, fallback) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-    return name in saved ? saved[name] : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveSetting(name, value) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...saved, [name]: value }));
-  } catch {
-    // Private windows and blocked storage just don't remember the setting.
-  }
 }

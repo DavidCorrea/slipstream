@@ -4,7 +4,7 @@ import { buildCircuit } from './circuit.js';
 import { contactPatches, createCar, poseCar } from './cars.js';
 import { createCrews } from './crew.js';
 import { createEffects } from './effects.js';
-import { createBroadcaster, voiceOptions } from './broadcaster.js';
+import { createBroadcaster } from './broadcaster.js';
 import { createDirector } from './director.js';
 import { createFeed } from './feed.js';
 import { createGhost } from './ghost.js';
@@ -13,6 +13,7 @@ import { createRaceEvents } from './race-events.js';
 import { createRacerPanel } from './racer.js';
 import { createStage, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
+import { createSpeech } from './speech.js';
 import { LOCATIONS, locationFor } from './scenery.js';
 import { createWeather } from './weather.js';
 
@@ -43,7 +44,8 @@ const feed = createFeed({ onSelect: id => select(id) });
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
 window.addEventListener('resize', () => director.resize(window.innerWidth / window.innerHeight));
-const broadcaster = createBroadcaster({ onStatus: text => hud.status(text) });
+const speech = createSpeech({ onProgress: showVoicesProgress });
+const broadcaster = createBroadcaster({ onStatus: text => hud.status(text), speech });
 
 const state = {
   socket: null, worker: null, race: null, circuit: null, effects: null, crews: null, cars: [],
@@ -477,20 +479,43 @@ function setCommentary(mode) {
   $('commentary').value = mode;
 }
 
-// The browser loads its voices late (and Chrome only after asking), so the pickers fill again when they arrive.
-const VOICE_ROLES = ['commentator', 'driver', 'engineer'];
+// The pickers fill again when voices arrive: the browser loads its own late (Chrome only after asking), and the
+// natural ones once they've downloaded.
 function fillVoices() {
-  const options = voiceOptions();
-  for (const role of VOICE_ROLES) {
+  const { natural, browser } = speech.options();
+  const group = (label, options) => {
+    const element = document.createElement('optgroup');
+    element.label = label;
+    element.append(...options.map(({ id, label: name }) => new Option(name, id)));
+    return element;
+  };
+  for (const role of speech.roles) {
     const picker = $(`voice-${role}`);
-    picker.replaceChildren(new Option('Automatic', ''), ...options.map(({ id, label }) => new Option(label, id)));
-    picker.value = options.some(({ id }) => id === broadcaster.chosenVoice(role)) ? broadcaster.chosenVoice(role) : '';
+    picker.replaceChildren(new Option('Automatic', ''), ...(natural.length ? [group('Natural voices', natural)] : []),
+      ...(browser.length ? [group("Your browser's voices", browser)] : []));
+    const wanted = speech.chosenVoice(role);
+    picker.value = [...natural, ...browser].some(({ id }) => id === wanted) ? wanted : '';
   }
 }
-for (const role of VOICE_ROLES) $(`voice-${role}`).addEventListener('change', event => broadcaster.setVoice(role, event.target.value));
-document.querySelectorAll('[data-preview]').forEach(button => button.addEventListener('click', () => broadcaster.previewVoice(button.dataset.preview)));
+
+function showVoicesProgress({ state, text }) {
+  $('voices-status').textContent = text;
+  $('voices-status').classList.remove('hidden');
+  $('load-voices').disabled = state === 'loading' || state === 'ready';
+  $('load-voices').textContent = state === 'ready' ? 'Natural voices on' : 'Load natural voices';
+  if (state === 'ready') {
+    fillVoices();
+    setTimeout(() => $('voices-status').classList.add('hidden'), 3000);
+  }
+}
+
+for (const role of speech.roles) $(`voice-${role}`).addEventListener('change', event => speech.setVoice(role, event.target.value));
+document.querySelectorAll('[data-preview]').forEach(button => button.addEventListener('click', () => speech.preview(button.dataset.preview)));
+$('load-voices').addEventListener('click', () => speech.loadNatural());
 if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', fillVoices);
 fillVoices();
+// Loaded on an earlier visit, so it comes from the browser's cache this time.
+if (speech.wantsNatural()) speech.loadNatural();
 
 $('ghost').addEventListener('click', () => setGhost(!ghost.enabled));
 

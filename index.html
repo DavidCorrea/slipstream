@@ -55,10 +55,12 @@
     <p class="hint">The AI commentator runs in your browser: a 0.9 GB download the first time, then cached.</p>
 
     <h3>Voices</h3>
+    <button id="load-voices" class="secondary" title="Downloads Kokoro, a small open speech model (about 90 MB, once), and runs it in your browser">Load natural voices</button>
+    <p id="voices-status" class="hint hidden"></p>
     <div class="voice-row"><label class="field">Commentator <select id="voice-commentator"></select></label><button class="secondary preview" data-preview="commentator" title="Hear this voice" aria-label="Hear the commentator's voice">▶</button></div>
     <div class="voice-row"><label class="field">Your driver <select id="voice-driver"></select></label><button class="secondary preview" data-preview="driver" title="Hear this voice" aria-label="Hear your driver's voice">▶</button></div>
     <div class="voice-row"><label class="field">Your race engineer <select id="voice-engineer"></select></label><button class="secondary preview" data-preview="engineer" title="Hear this voice" aria-label="Hear your engineer's voice">▶</button></div>
-    <p class="hint">Voices are your browser's own English ones. Team radio is spoken for your car when commentary is set to captions and voice.</p>
+    <p class="hint">Natural voices sound like real people and run in your browser: about 90 MB the first time, then cached. Otherwise the voices are your browser's own. Team radio is spoken for your car, over the radio, when commentary is set to captions and voice.</p>
 
     <h3>Keys</h3>
     <dl class="keys">

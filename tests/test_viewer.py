@@ -1,6 +1,6 @@
 import asyncio
 
-from slipstream.server import Viewer
+from slipstream.viewer import Viewer
 
 
 class FakeSocket:
@@ -78,3 +78,12 @@ class TestTheChampionship:
         car = [driver.key for driver in viewer.session.lineup].index(viewer.renamed)
         assert viewer.session.intro()['cars'][car]['name'] == 'Rossi'
         assert viewer.session.stats[car]['grip'] == 0.05
+
+
+class TestMessagesFromTheTab:
+    def test_answers_a_message_it_cannot_use_with_an_error_naming_it(self):
+        async def garbled(viewer):
+            await viewer.receive('{"type": "start", "cars": "lots"')
+        viewer = run(garbled)
+        errors = [message for message in viewer.socket.sent if message['type'] == 'error']
+        assert len(errors) == 1 and 'Could not use message' in errors[0]['message']

@@ -1,0 +1,12 @@
+[project]
+name = "slipstream"
+version = "0.1.0"
+description = "An isometric racing game where every driver is a neural network, and you tune one racer's stats live."
+requires-python = ">=3.12"
+dependencies = ["numpy>=2", "torch>=2.4", "stable-baselines3>=2.4", "sb3-contrib>=2.4", "tensorboard>=2.17", "aiohttp>=3.10"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "matplotlib>=3.9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

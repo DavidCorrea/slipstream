@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slipstream</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/web/style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Timing tower -->
+  <section id="standings" class="chrome">
+    <header>
+      <span id="lap-counter">Lap –</span>
+      <span id="race-clock">0:00.0</span>
+    </header>
+    <div id="weather-line"><span id="weather-text">Dry</span><i class="wet-bar"><b id="wet-bar"></b></i></div>
+    <ol id="tower"></ol>
+  </section>
+
+  <!-- Top bar -->
+  <nav id="topbar" class="chrome">
+    <span class="wordmark">Slipstream</span>
+    <span id="seed" class="seed"></span>
+    <button class="ghost-button" data-drawer="setup-drawer">Settings</button>
+    <button class="ghost-button" data-drawer="racer-drawer"><span class="star">★</span> Pit wall</button>
+    <button id="new-race" class="primary">New race</button>
+  </nav>
+
+  <aside id="setup-drawer" class="drawer chrome hidden">
+    <header><h2>Settings</h2><button class="close" aria-label="Close">×</button></header>
+
+    <h3>Look</h3>
+    <div class="segmented">
+      <button data-style="classic">Classic</button>
+      <button data-style="pixel" title="Low-resolution pixel art, like a 16-bit racer (P)">Pixel</button>
+    </div>
+
+    <h3>Commentary</h3>
+    <label class="field">Broadcast
+      <select id="commentary">
+        <option value="off">Off</option>
+        <option value="captions">Captions</option>
+        <option value="voice">Captions and voice</option>
+      </select>
+    </label>
+    <button id="load-commentator" class="secondary" title="Downloads a small language model (about 0.9 GB, once) and runs it on your GPU">Load AI commentator</button>
+    <p class="hint">The AI commentator runs in your browser: a 0.9 GB download the first time, then cached.</p>
+
+    <h3>Voices</h3>
+    <div class="voice-row"><label class="field">Commentator <select id="voice-commentator"></select></label><button class="secondary preview" data-preview="commentator" title="Hear this voice" aria-label="Hear the commentator's voice">▶</button></div>
+    <div class="voice-row"><label class="field">Your driver <select id="voice-driver"></select></label><button class="secondary preview" data-preview="driver" title="Hear this voice" aria-label="Hear your driver's voice">▶</button></div>
+    <div class="voice-row"><label class="field">Your race engineer <select id="voice-engineer"></select></label><button class="secondary preview" data-preview="engineer" title="Hear this voice" aria-label="Hear your engineer's voice">▶</button></div>
+    <p class="hint">Voices are your browser's own English ones. Team radio is spoken for your car when commentary is set to captions and voice.</p>
+
+    <h3>Keys</h3>
+    <dl class="keys">
+      <dt>Space</dt><dd>Pause</dd><dt>F · T · O</dt><dd>Follow · TV · Circuit</dd>
+      <dt>G</dt><dd>Fastest-lap ghost</dd><dt>P</dt><dd>Classic · Pixel look</dd><dt>1–8</dt><dd>Select a car</dd>
+      <dt>Q · E</dt><dd>Rotate the view</dd><dt>Scroll</dt><dd>Zoom</dd>
+    </dl>
+  </aside>
+
+  <aside id="racer-drawer" class="drawer chrome hidden">
+    <header>
+      <h2><span class="star">★</span> Your pit wall</h2>
+      <button class="close" aria-label="Close">×</button>
+    </header>
+    <p class="hint">Your driver and car were set on the grid. During the race you're the pit wall: call the stops and say what the crew does.</p>
+    <button id="follow-yours" class="secondary">Follow your car</button>
+    <div class="segmented">
+      <button data-strategy="ai">AI decides</button>
+      <button data-strategy="mine">My plan</button>
+    </div>
+    <div id="pit-plan" class="plan">
+      <div class="compounds">
+        <button data-compound="soft" class="tyre soft" title="Soft">S</button>
+        <button data-compound="medium" class="tyre medium" title="Medium">M</button>
+        <button data-compound="hard" class="tyre hard" title="Hard">H</button>
+        <button data-compound="intermediate" class="tyre intermediate" title="Intermediates">I</button>
+        <button data-compound="wet" class="tyre wet" title="Full wets">W</button>
+      </div>
+      <div class="sliders" id="plan-sliders"></div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="plan-repair" checked> Repair damage</label>
+        <label class="check"><input type="checkbox" id="plan-brakes"> New brakes</label>
+      </div>
+      <button id="box" class="box">Box this lap</button>
+    </div>
+    <p id="pit-status" class="status-line"></p>
+  </aside>
+
+  <!-- The grid: everything decided before the lights go out -->
+  <section id="grid-menu" class="hidden">
+    <div class="grid-panel">
+      <header>
+        <div>
+          <h1>On the grid</h1>
+          <p id="grid-info" class="grid-info"></p>
+        </div>
+        <button id="go" class="primary go">Start race</button>
+      </header>
+      <div class="grid-columns">
+        <section>
+          <h2>The field</h2>
+          <p class="hint">Click a driver to set them up. Drive picks the car you race.</p>
+          <ol id="car-picker" class="car-picker"></ol>
+        </section>
+        <section>
+          <h2 id="driver-heading">The driver</h2>
+          <label class="field">Name <input id="driver-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
+          <p id="name-problem" class="note hidden"></p>
+          <p id="racer-note" class="note hidden"></p>
+          <div class="sliders" id="personality-sliders"></div>
+        </section>
+        <section>
+          <h2 id="car-heading">The car</h2>
+          <div class="sliders" id="car-sliders"></div>
+          <button id="reset-stats" class="secondary">Back to their usual self</button>
+        </section>
+        <section>
+          <h2>The race</h2>
+          <label class="field">Driver network <select id="brain"></select></label>
+          <label class="field">Pit wall <select id="pitwall"></select></label>
+          <label class="field">Weather
+            <select id="weather">
+              <option value="random">Up to the circuit</option>
+              <option value="dry">Dry</option>
+              <option value="rain_coming">Rain on the way</option>
+              <option value="shower">A passing shower</option>
+              <option value="drying">Drying out</option>
+              <option value="wet">Wet throughout</option>
+            </select>
+          </label>
+          <label class="field">Location
+            <select id="location">
+              <option value="random">Up to the circuit</option>
+              <option value="countryside">Countryside</option>
+              <option value="desert">Desert</option>
+              <option value="alpine">Alpine</option>
+              <option value="coast">Coast</option>
+              <option value="city">City</option>
+              <option value="night">City at night</option>
+            </select>
+          </label>
+          <div class="pair">
+            <label class="field">Cars <input id="cars" type="number" min="2" max="8" value="6"></label>
+            <label class="field">Laps <input id="laps" type="number" min="1" max="10" value="8"></label>
+          </div>
+          <div class="pair">
+            <button id="replay" class="secondary">Apply</button>
+            <button id="new-circuit" class="secondary">Another circuit</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- Race feed -->
+  <section id="feed" class="chrome">
+    <ol id="feed-list"></ol>
+  </section>
+
+  <!-- Selected car -->
+  <section id="telemetry" class="chrome hidden">
+    <header>
+      <span class="swatch" id="tele-swatch"></span>
+      <span id="tele-name"></span>
+      <span id="tele-position"></span>
+    </header>
+    <div class="speed-row">
+      <div class="speedo"><span id="tele-speed">0</span><small>km/h</small></div>
+      <div class="pedals">
+        <i><b id="tele-throttle" class="throttle"></b></i>
+        <i><b id="tele-brake" class="brake"></b></i>
+      </div>
+    </div>
+    <div class="steering"><i id="tele-steer"></i></div>
+    <div class="bars">
+      <div class="bar"><span>Tyres</span><i><b id="tele-tyres" class="tyres"></b></i></div>
+      <div class="bar"><span>Fuel</span><i><b id="tele-fuel" class="fuel"></b></i></div>
+      <div class="bar"><span>Damage</span><i><b id="tele-damage" class="damage"></b></i></div>
+      <div class="bar"><span>Brakes</span><i><b id="tele-brakes" class="brakes"></b></i></div>
+    </div>
+    <div class="temps">
+      <div><small>Tyres</small><span id="temp-tyres">–</span></div>
+      <div><small>Brakes</small><span id="temp-brakes">–</span></div>
+      <div><small>Engine</small><span id="temp-engine">–</span></div>
+    </div>
+    <div id="tele-setup" class="setup"></div>
+    <div id="tele-flags" class="flags"></div>
+    <div class="lap-times">
+      <div><small>Lap</small><span id="lap-running">–:–</span></div>
+      <div><small>Last</small><span id="lap-last">–</span></div>
+      <div><small>Best</small><span id="lap-best">–</span></div>
+    </div>
+    <div id="sectors" class="sectors"><span>S1</span><span>S2</span><span>S3</span></div>
+  </section>
+
+  <!-- Playback and cameras -->
+  <section id="dock" class="chrome">
+    <button id="pause" class="icon" title="Pause (Space)" aria-label="Pause"></button>
+    <div class="segmented" id="speeds"></div>
+    <span class="divider"></span>
+    <div class="segmented" id="camera">
+      <button data-camera="follow" title="Follow the selected car (F)">Follow</button>
+      <button data-camera="tv" title="Broadcast cameras (T)">TV</button>
+      <button data-camera="overview" title="The whole circuit (O)">Circuit</button>
+    </div>
+    <span class="divider"></span>
+    <button id="ghost" class="toggle" title="A see-through car driving the fastest lap, in step with the selected car (G)">Ghost</button>
+  </section>
+
+  <div id="tv-tag" class="hidden"></div>
+  <div id="banner" class="hidden"></div>
+  <div id="caption" class="hidden"></div>
+  <div id="status" class="hidden"></div>
+
+  <script type="module" src="/web/main.js"></script>
+</body>
+</html>

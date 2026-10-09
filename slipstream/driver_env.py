@@ -10,8 +10,8 @@ RecurrentPPO).
 """
 import numpy as np
 
-from .car import CarSpecs
-from .env import LAPS, SPEC_DEFAULTS, RaceVecEnv
+from .car import BALANCE_RANGE, SPEC_DEFAULTS, CarSpecs
+from .env import LAPS, RaceVecEnv
 from .human import Driving
 from .personality import TRAITS, trait
 from .race import Race
@@ -21,7 +21,6 @@ from .track import generate_track
 from .weather import Weather
 
 SPEC_SPREAD = 0.35          # each spec anywhere this far either side of the default
-BALANCE_RANGE = 0.8         # handling from this much understeer to this much oversteer
 WING_RANGE = (0.2, 0.8)     # setups the team might send a car out with
 # A car that gains no ground for this long is beached and out of the race, and pays RETIRE_COST: otherwise a car
 # stuck on the grass sits there for the rest of the race, and getting stuck would be a way out of paying for time.

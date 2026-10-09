@@ -2,7 +2,8 @@ import numpy as np
 
 from slipstream.car import COMPOUNDS, FUEL_CAPACITY
 from slipstream.imitation import collect, strategist_actions
-from slipstream.pitwall import PitWallEnv, pitwall_decisions, pitwall_observe
+from slipstream.pitwall import pitwall_decisions, pitwall_observe
+from slipstream.pitwall_env import PitWallEnv
 from slipstream.race import Race
 from slipstream.car import CarSpecs
 from slipstream.drivers import scripted_controls

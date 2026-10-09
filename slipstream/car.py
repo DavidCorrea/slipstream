@@ -100,6 +100,12 @@ PUNCTURE = {'grip': 0.75, 'top_speed': 0.85, 'drag': 1.5}   # slow, but a car ca
 AIR_TEMPERATURE = {'tyre': 0.12, 'engine': 0.1}
 WIND_TOP_SPEED = 0.006
 
+# A mid-field car. Cars are drawn either side of it: SPEC_SPREAD for the older drivers' training and the viewer's
+# sliders, and a balance anywhere in ±BALANCE_RANGE (see driver_env.py).
+SPEC_DEFAULTS = {'top_speed': 72.0, 'acceleration': 9.0, 'braking': 22.0, 'grip': 1.7}
+SPEC_SPREAD = 0.25
+BALANCE_RANGE = 0.8         # handling from this much understeer to this much oversteer
+
 
 @dataclass
 class CarSpecs:

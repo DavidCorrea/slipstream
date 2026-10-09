@@ -1,6 +1,7 @@
 import numpy as np
 
-from slipstream.driver_env import BALANCE_RANGE, DriverEnv
+from slipstream.car import BALANCE_RANGE
+from slipstream.driver_env import DriverEnv
 from slipstream.senses import SENSE_NAMES
 
 

@@ -16,14 +16,13 @@ import numpy as np
 
 from . import cast
 from . import personality as traits
-from .car import COMPOUNDS, DT, FUEL_CAPACITY, CarSpecs
-from .env import DECISION_TICKS, SPEC_DEFAULTS, SPEC_SPREAD
+from .car import BALANCE_RANGE, COMPOUNDS, DT, FUEL_CAPACITY, SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
+from .drivers import DECISION_TICKS
 from .field import field_controls, makes_pit_calls
 from .strategy import scripted_strategy
 from .observe import OBSERVATION_NAMES
 from .race import Race
 from .brains import NetworkDriver, load_network
-from .driver_env import BALANCE_RANGE
 from .human import Driving
 from .surface import CELL_LENGTH
 from .timing import Timing

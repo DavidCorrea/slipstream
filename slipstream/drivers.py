@@ -9,6 +9,8 @@ import numpy as np
 from .car import BRAKE_WEAR, GRAVITY, MAX_STEER, STEER_FADE_SPEED, WHEELBASE, effective_grip, effective_top_speed
 from .track import SPACING
 
+# Every driver, scripted or trained, decides every DECISION_TICKS physics ticks and holds its controls in between.
+DECISION_TICKS = 2
 LOOKAHEAD = (8.0, 0.55)   # metres, plus this many per m/s of speed
 SPEED_HORIZON = 160.0     # metres of upcoming track considered for braking
 CAUTION = 0.85            # share of the grip limit it's willing to use

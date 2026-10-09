@@ -16,8 +16,8 @@ import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.vec_env import VecEnv
 
-from .car import CarSpecs
-from .drivers import scripted_controls
+from .car import SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
+from .drivers import DECISION_TICKS, scripted_controls
 from . import personality as traits
 from .observe import OBSERVATION_SIZE, observe
 from .pit import PitPlan
@@ -25,8 +25,6 @@ from .strategy import ACTION_NAMES, condition_value, decode, scripted_strategy
 from .race import Race
 from .track import generate_track
 from .weather import Weather
-
-DECISION_TICKS = 2
 
 # Per metre of progress (a lap is about 12), per decision while still racing (so standing still always loses),
 # per decision spent off the tarmac, per m/s of contact taken, and on taking the flag: `finish` for finishing at
@@ -36,9 +34,6 @@ DECISION_TICKS = 2
 # tarmac earns nothing (see _drive): the second run learned to cut corners across the grass. `places` multiplies
 # what the personality pays per place gained or lost along the way (see personality.WEIGHTS).
 REWARDS = {'progress': 0.01, 'time': 0.005, 'off_track': 0.005, 'contact': 0.03, 'finish': 1.0, 'podium': 1.0, 'places': 1.0}
-SPEC_DEFAULTS = {'top_speed': 72.0, 'acceleration': 9.0, 'braking': 22.0, 'grip': 1.7}
-# Training cars vary this much either side of the defaults, which is also the range the viewer's sliders cover.
-SPEC_SPREAD = 0.25
 # Training races are anywhere from this short (where a stop never pays) to this long (where one usually does).
 LAPS = (3, 10)
 

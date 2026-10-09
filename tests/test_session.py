@@ -90,7 +90,7 @@ class TestTheCast:
 
 class TestTheGridMenu:
     def test_changes_any_cars_specs_and_personality_from_the_sliders(self):
-        from slipstream.env import SPEC_DEFAULTS
+        from slipstream.car import SPEC_DEFAULTS
         session = RaceSession(SCRIPTED, seed=5, cars=3, laps=1)
         before = session.race.specs.top_speed[0]
         session.set_stats({'top_speed': 1.0, 'aggression': 0.9}, car=1)
@@ -204,7 +204,7 @@ class TestPitWalls:
     def test_let_a_pit_wall_network_call_the_stops_even_for_scripted_drivers(self, tmp_path):
         from stable_baselines3 import PPO
         from slipstream.drivers import scripted_controls
-        from slipstream.pitwall import PitWallEnv
+        from slipstream.pitwall_env import PitWallEnv
         env = PitWallEnv(lambda race, personality: scripted_controls(race), groups=1, cars=2, laps=3)
         wall = PPO('MlpPolicy', env, n_steps=4, batch_size=8, device='cpu')
         with torch.no_grad():

@@ -3,7 +3,8 @@ import numpy as np
 from slipstream import pit
 from slipstream.car import CarSpecs
 from slipstream.drivers import scripted_controls
-from slipstream.pitwall import PITWALL_ACTION_NAMES, PITWALL_OBSERVATION_NAMES, PitWallEnv, _restore, _save, awaiting_decision, pitwall_decisions
+from slipstream.pitwall import PITWALL_ACTION_NAMES, PITWALL_OBSERVATION_NAMES, pitwall_decisions
+from slipstream.pitwall_env import PitWallEnv, _restore, _save, awaiting_decision
 from slipstream.race import Race
 from slipstream.track import generate_track
 
@@ -88,7 +89,7 @@ class TestPitWallEnvironment:
 
 class TestTrafficRaces:
     def test_ask_each_car_once_per_lap_and_settle_every_decision_by_the_flag(self):
-        from slipstream.pitwall import TrafficRaces
+        from slipstream.pitwall_env import TrafficRaces
         traffic = TrafficRaces(scripted, races=1, cars=3, laps=2, seed=4)
         decisions, records = [], []
 
@@ -120,9 +121,9 @@ class TestStuckCars:
         assert (group['penalty'] > 1.0).all()
 
     def test_fail_loudly_rather_than_drive_forever(self, monkeypatch):
-        from slipstream import pitwall
-        monkeypatch.setattr(pitwall, 'MAX_TICKS_PER_DECISION', 50)
-        monkeypatch.setattr(pitwall, 'STUCK_SECONDS', 1e9)
+        from slipstream import pitwall_env
+        monkeypatch.setattr(pitwall_env, 'MAX_TICKS_PER_DECISION', 50)
+        monkeypatch.setattr(pitwall_env, 'STUCK_SECONDS', 1e9)
         env = PitWallEnv(lambda race, personality: (np.zeros(race.count), np.zeros(race.count), np.ones(race.count)), groups=1, cars=2, laps=3, seed=5)
         import pytest
         with pytest.raises(RuntimeError, match='never reached'):
@@ -133,7 +134,7 @@ class TestWithADriverByFeel:
     def test_the_pit_wall_trains_and_benchmarks_on_a_driver_with_a_memory(self):
         from sb3_contrib import RecurrentPPO
         from slipstream.driver_env import DriverEnv
-        from slipstream.pitwall import network_driver
+        from slipstream.pitwall_env import network_driver
         driver = RecurrentPPO('MlpLstmPolicy', DriverEnv(races=1, cars=2, laps=1, seed=0), n_steps=8, batch_size=16, device='cpu', seed=0)
         env = PitWallEnv(network_driver(driver), groups=1, cars=2, laps=2, seed=1)
         env.reset()

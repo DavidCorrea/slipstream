@@ -24,7 +24,8 @@ from gymnasium import spaces
 from stable_baselines3.common.utils import obs_as_tensor
 from stable_baselines3.common.vec_env import VecEnv
 
-from .pitwall import PITWALL_ACTION_NAMES, PITWALL_OBSERVATION_NAMES, PitWallEnv, TrafficRaces, benchmark, network_driver
+from .pitwall import PITWALL_ACTION_NAMES, PITWALL_OBSERVATION_NAMES
+from .pitwall_env import PitWallEnv, TrafficRaces, benchmark, network_driver
 from .imitation import collect, imitate
 from .warmstart import carry_over
 

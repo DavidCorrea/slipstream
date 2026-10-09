@@ -1,4 +1,4 @@
-"""The drivers of the viewer's championship: the same eight people every race, each with a character of their own.
+"""The drivers of the viewer's championship: the same twenty people every race, each with a character of their own.
 
 A driver's traits are who they are and don't change from race to race. Their car is roughly the same car each
 time, but no two race days are alike: set-up, engine and tyre batch move its specs a little either side of what
@@ -53,6 +53,31 @@ CAST = (
     _driver('Kowalski', '#00bbf9', 0.55, 0.85, 0.7, 0.25, 0.25, 0.65, 0.62, 0.52, 0.45, 0.45, 0.55),
     # The veteran: cautious, wily, and never tired.
     _driver('Haddad', '#f15bb5', 0.35, 0.3, 0.4, 0.7, 0.8, 0.9, 0.47, 0.47, 0.53, 0.55, 0.45),
+    # The rest of a full grid. The colours are spread round the wheel, so twenty cars stay twenty colours.
+    # Late-braking specialist: gains everything into the corners.
+    _driver('Novak', '#06d6a0', 0.6, 0.7, 0.75, 0.4, 0.6, 0.6, 0.5, 0.5, 0.65, 0.5, 0.55),
+    # Qualifying hero, never quite as quick on old tyres.
+    _driver('Reyes', '#ff7f11', 0.5, 0.8, 0.6, 0.15, 0.55, 0.5, 0.56, 0.58, 0.5, 0.56, 0.6),
+    # The thinker: plans the race three stops ahead.
+    _driver('Adeyemi', '#8338ec', 0.3, 0.45, 0.5, 0.75, 0.8, 0.75, 0.5, 0.5, 0.52, 0.52, 0.5),
+    # Fearless in the wet, wild in the dry.
+    _driver('Larsen', '#3a86ff', 0.7, 0.75, 0.7, 0.35, 0.4, 0.6, 0.53, 0.55, 0.5, 0.48, 0.65),
+    # The wall: impossible to pass, and slow to pass anyone.
+    _driver('Castillo', '#d62828', 0.8, 0.45, 0.3, 0.5, 0.65, 0.7, 0.5, 0.48, 0.55, 0.53, 0.45),
+    # Calm and precise, a future champion.
+    _driver('Ivanova', '#90be6d', 0.4, 0.6, 0.6, 0.55, 0.85, 0.8, 0.52, 0.53, 0.53, 0.55, 0.5),
+    # Smooth on tyres, ruthless on the last lap.
+    _driver('Tanaka', '#ffbe0b', 0.5, 0.55, 0.85, 0.65, 0.7, 0.65, 0.49, 0.5, 0.51, 0.54, 0.5),
+    # A slipstream artist, fastest down the straights.
+    _driver('Mbeki', '#fb5607', 0.55, 0.6, 0.7, 0.4, 0.6, 0.55, 0.64, 0.55, 0.47, 0.46, 0.55),
+    # Erratic and exciting: a podium or the gravel.
+    _driver('Brennan', '#ff006e', 0.75, 0.9, 0.85, 0.2, 0.2, 0.5, 0.55, 0.57, 0.5, 0.5, 0.7),
+    # Old school: brave, kind to the car, never gives up.
+    _driver('Rossi', '#2ec4b6', 0.5, 0.5, 0.6, 0.6, 0.65, 0.85, 0.48, 0.5, 0.55, 0.53, 0.45),
+    # Grip merchant: the best car through the fast corners.
+    _driver('Kaur', '#7209b7', 0.35, 0.65, 0.55, 0.5, 0.7, 0.6, 0.46, 0.5, 0.5, 0.64, 0.4),
+    # Hard as nails, and harder still on brakes.
+    _driver('Petrov', '#a7c957', 0.7, 0.6, 0.65, 0.3, 0.5, 0.7, 0.52, 0.53, 0.62, 0.5, 0.55),
 )
 CAR_SLIDERS = ('top_speed', 'acceleration', 'braking', 'grip', 'balance')
 BY_KEY = {driver.key: driver for driver in CAST}

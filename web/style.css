@@ -1,6 +1,7 @@
 /* Slipstream's broadcast look: dark glass panels, one red accent, tabular numbers, and nothing on screen that
    isn't about the race unless you ask for it. */
 :root {
+  --grid-top: 72px;
   --glass: rgba(11, 13, 19, 0.82);
   --glass-strong: rgba(11, 13, 19, 0.94);
   --line: rgba(255, 255, 255, 0.07);
@@ -301,8 +302,9 @@ body.watching #dock { transform: translate(-50%, 8px); }
 
 /* ---- The grid: the pre-race menu ------------------------------------------------------------------ */
 
+/* Below the top bar, which stays usable over the grid. */
 #grid-menu {
-  position: fixed; inset: 0; display: grid; place-items: center; padding: var(--gutter);
+  position: fixed; inset: 0; display: grid; place-items: center; padding: var(--grid-top) var(--gutter) var(--gutter);
   background: radial-gradient(ellipse at center, rgba(5, 7, 12, 0.35), rgba(5, 7, 12, 0.75));
   z-index: 10; animation: grid-in 0.3s ease;
 }
@@ -312,7 +314,7 @@ body.on-grid #dock, body.on-grid #feed, body.on-grid #telemetry, body.on-grid #c
 /* The top bar and its drawers stay usable over the grid, so the look and the voices can be set before the start. */
 body.on-grid #topbar, body.on-grid .drawer { z-index: 11; }
 .grid-panel {
-  width: min(1180px, 100%); max-height: calc(100vh - 2 * var(--gutter)); overflow-y: auto;
+  width: min(1180px, 100%); max-height: calc(100vh - var(--grid-top) - var(--gutter)); overflow-y: auto;
   background: var(--glass-strong); border: 1px solid var(--line); border-top: 3px solid var(--accent);
   border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
 }
@@ -325,7 +327,9 @@ button.go { font-size: 17px; font-weight: 900; letter-spacing: 0.1em; text-trans
 .grid-columns > section { padding: 16px 22px 20px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--line); }
 .grid-columns > section:last-child { border-right: none; }
 .grid-columns h2 { margin: 0 0 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
-.car-picker { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.car-picker { list-style: none; margin: 0; padding: 0 4px 0 0; display: flex; flex-direction: column; gap: 6px; }
+/* A full grid's twenty cards scroll on their own, so the other columns stay put. */
+.car-picker { max-height: calc(100vh - var(--grid-top) - 230px); min-height: 200px; overflow-y: auto; }
 .car-picker li {
   display: grid; grid-template-columns: 6px 28px 1fr auto; align-items: center; gap: 10px; padding: 7px 10px;
   border: 1px solid var(--line); border-radius: 5px; cursor: pointer; transition: background 0.15s, border-color 0.15s;

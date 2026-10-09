@@ -12,7 +12,8 @@ from .session import DRIVER_DECIDES, RUNS, SCRIPTED, RaceSession
 FRAMES_PER_SECOND = 20
 SPEEDS = (0.5, 1, 2, 4, 8)
 NEXT_RACE_AFTER = 6.0      # seconds the finished race stays on screen before the next one starts
-LIMITS = {'cars': (2, 8), 'laps': (1, 10)}
+# Up to a Formula 1 grid, and races about as long as one (its laps are longer than ours).
+LIMITS = {'cars': (2, 20), 'laps': (1, 70)}
 
 
 class Viewer:

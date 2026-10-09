@@ -96,7 +96,7 @@ class TestTheCast:
 
     def test_drivers_you_edited_keep_exactly_what_you_set(self):
         edited = {'sato': {'grip': 0.1, 'risk': 0.95}}
-        session = RaceSession(SCRIPTED, seed=3, cars=8, laps=1, edited=edited)
+        session = RaceSession(SCRIPTED, seed=3, cars=20, laps=1, edited=edited)
         sato = [driver.key for driver in session.lineup].index('sato')
         assert session.stats[sato]['grip'] == 0.1 and session.stats[sato]['risk'] == 0.95
 
@@ -144,9 +144,9 @@ class TestTheGridMenu:
 
 class TestRenamingDrivers:
     def test_races_drivers_under_the_names_you_gave_them(self):
-        session = RaceSession(SCRIPTED, seed=5, cars=8, laps=1, names={'vega': 'Rossi'})
+        session = RaceSession(SCRIPTED, seed=5, cars=20, laps=1, names={'vega': 'Da Silva'})
         names = [car['name'] for car in session.intro()['cars']]
-        assert 'Rossi' in names and 'Vega' not in names
+        assert 'Da Silva' in names and 'Vega' not in names
 
     def test_renames_a_driver_on_the_grid_tidying_the_spaces(self):
         session = RaceSession(SCRIPTED, seed=5, cars=3, laps=1)
@@ -164,7 +164,7 @@ class TestRenamingDrivers:
         session = RaceSession(SCRIPTED, seed=5, cars=3, laps=1)
         session.advance(10)
         with pytest.raises(ValueError, match='before the start'):
-            session.rename(0, 'Rossi')
+            session.rename(0, 'Da Silva')
 
 
 class TestYourPitStrategy:
@@ -268,3 +268,10 @@ class TestYourRacerIsSetBeforeTheStart:
         session.advance(100)
         with pytest.raises(ValueError, match='before the start'):
             session.set_stats({'risk': 0.9})
+
+
+class TestAFullGrid:
+    def test_twenty_different_drivers_in_twenty_different_colours_can_race(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=20, laps=1)
+        cars = session.intro()['cars']
+        assert len({car['name'] for car in cars}) == len({car['color'] for car in cars}) == len({car['number'] for car in cars}) == 20

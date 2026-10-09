@@ -69,14 +69,14 @@ class TestTheChampionship:
 
     def test_a_renamed_driver_keeps_their_new_name_and_their_edits(self):
         async def rename(viewer):
-            await viewer.handle({'type': 'start', 'cars': 8, 'laps': 1})
+            await viewer.handle({'type': 'start', 'cars': 20, 'laps': 1})
             viewer.renamed = viewer.session.lineup[2].key
             await viewer.handle({'type': 'stats', 'car': 2, 'stats': {'grip': 0.05}})
-            await viewer.handle({'type': 'rename', 'car': 2, 'name': 'Rossi'})
+            await viewer.handle({'type': 'rename', 'car': 2, 'name': 'Da Silva'})
             await viewer.handle({'type': 'start'})
         viewer = run(rename)
         car = [driver.key for driver in viewer.session.lineup].index(viewer.renamed)
-        assert viewer.session.intro()['cars'][car]['name'] == 'Rossi'
+        assert viewer.session.intro()['cars'][car]['name'] == 'Da Silva'
         assert viewer.session.stats[car]['grip'] == 0.05
 
 
@@ -87,3 +87,17 @@ class TestMessagesFromTheTab:
         viewer = run(garbled)
         errors = [message for message in viewer.socket.sent if message['type'] == 'error']
         assert len(errors) == 1 and 'Could not use message' in errors[0]['message']
+
+
+class TestRaceSizes:
+    def test_allows_a_formula_one_sized_field_and_race(self):
+        async def big(viewer):
+            await viewer.handle({'type': 'start', 'cars': 20, 'laps': 60})
+        viewer = run(big)
+        assert viewer.session.race.count == 20 and viewer.session.race.laps == 60
+
+    def test_keeps_sizes_within_limits(self):
+        async def huge(viewer):
+            await viewer.handle({'type': 'start', 'cars': 50, 'laps': 500})
+        viewer = run(huge)
+        assert viewer.session.race.count == 20 and viewer.session.race.laps == 70

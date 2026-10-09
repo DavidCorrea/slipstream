@@ -10,7 +10,11 @@ import { loadSetting, saveSetting } from './settings.js';
 const ROLES = ['commentator', 'driver', 'engineer'];
 // How each voice speaks: a commentator a touch quick, a driver quicker and lower (mid-corner, under strain), the
 // engineer calm. Natural voices take the speed only.
-const DELIVERY = { commentator: { rate: 1.08, pitch: 1 }, driver: { rate: 1.15, pitch: 0.85 }, engineer: { rate: 1.02, pitch: 1 } };
+const DELIVERY = {
+  commentator: { rate: 1.08, pitch: 1, volume: 1 },
+  driver: { rate: 1.15, pitch: 0.85, volume: 0.7 },
+  engineer: { rate: 1.02, pitch: 1, volume: 0.7 },
+};
 const SAMPLES = {
   commentator: "And it's lights out, and away they go!",
   driver: 'The rear is gone, I have no grip at all.',
@@ -25,7 +29,9 @@ const NATURAL_VOICES = {
 const NATURAL_DEFAULTS = { commentator: 'bm_george', driver: 'am_michael', engineer: 'bf_emma' };
 // Whether natural voices were offered and what was said: 'accepted', 'declined', or not asked yet.
 const CONSENT = 'naturalVoicesOffer';
-const RADIO = { low: 320, high: 3200, drive: 18, click: 0.04 };
+// The overdrive that makes the radio sound like a radio also makes it louder, so it's turned down after it, to sit
+// under the commentator (`volume`); browser voices on the radio are turned down too (DELIVERY).
+const RADIO = { low: 320, high: 3200, drive: 18, click: 0.04, volume: 0.55 };
 const SAFETY_SECONDS = { base: 3, perWord: 0.6 };   // a browser voice that never says it finished is given up on
 const GENERATE_LIMIT_MS = 12000;   // a line taking longer than this is given up on, so the ones behind it go on
 
@@ -108,6 +114,7 @@ export function createSpeech({ onProgress, knownLines = [] }) {
       utterance.voice = voice;
       utterance.rate = DELIVERY[role].rate;
       utterance.pitch = DELIVERY[role].pitch;
+      utterance.volume = DELIVERY[role].volume;
       utterance.onstart = () => onStart?.();
       utterance.onend = utterance.onerror = () => resolve();
       // Some browsers drop the end event now and then; a line can't hold up the ones behind it forever.
@@ -142,8 +149,9 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     const low = new BiquadFilterNode(context, { type: 'highpass', frequency: RADIO.low });
     const high = new BiquadFilterNode(context, { type: 'lowpass', frequency: RADIO.high });
     const overdrive = new WaveShaperNode(context, { curve: overdriveCurve(RADIO.drive) });
-    source.connect(low).connect(high).connect(overdrive);
-    return overdrive;
+    const volume = new GainNode(context, { gain: RADIO.volume });
+    source.connect(low).connect(high).connect(overdrive).connect(volume);
+    return volume;
   }
 
   // The click of the radio opening: a few milliseconds of fading noise.
@@ -151,7 +159,7 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     const length = Math.round(context.sampleRate * RADIO.click);
     const noise = context.createBuffer(1, length, context.sampleRate);
     const data = noise.getChannelData(0);
-    for (let index = 0; index < length; index++) data[index] = (Math.random() * 2 - 1) * 0.25 * (1 - index / length);
+    for (let index = 0; index < length; index++) data[index] = (Math.random() * 2 - 1) * 0.25 * RADIO.volume * (1 - index / length);
     const source = new AudioBufferSourceNode(context, { buffer: noise });
     source.connect(new BiquadFilterNode(context, { type: 'bandpass', frequency: 1800 })).connect(context.destination);
     source.start();

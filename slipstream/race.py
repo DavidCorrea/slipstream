@@ -213,7 +213,6 @@ class Race:
         self._fail_engines(events)
         self._drive_pit_lane(plan or PitPlan.standard(self.count), events)
 
-        previous = self.track_index * 1.0
         self.track_index, distance, self.lateral = self.track.locate(self.cars.position, self.track_index)
         # Progress follows the change in distance along the loop, wrapped so crossing the line counts as a small
         # step forward, not a whole lap back.

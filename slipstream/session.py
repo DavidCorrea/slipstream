@@ -30,6 +30,8 @@ from .track import generate_track
 from .weather import FORECASTS, Weather
 
 RUNS = Path('runs')
+# Saved networks: Stable-Baselines3's own files, or ones exported to run with numpy alone (numpy_network.py).
+NETWORK_FILES = ('.zip', '.npz')
 SCRIPTED = 'scripted'
 STATS = (*traits.TRAITS, *SPEC_DEFAULTS, 'balance')
 
@@ -45,7 +47,8 @@ def is_pitwall_run(run):
 
 def _snapshots(runs, pitwalls, unit, scale):
     """Each matching run's snapshots, newest first, the run that saved one most recently first."""
-    snapshots = {run.parent: sorted(run.glob('step-*.zip'), reverse=True) for run in runs.glob('*/checkpoints') if is_pitwall_run(run.parent) == pitwalls}
+    snapshots = {run.parent: sorted((path for path in run.glob('step-*') if path.suffix in NETWORK_FILES), reverse=True)
+                 for run in runs.glob('*/checkpoints') if is_pitwall_run(run.parent) == pitwalls}
     listed = []
     for run in sorted(snapshots, key=lambda run: max((path.stat().st_mtime for path in snapshots[run]), default=0), reverse=True):
         for checkpoint in snapshots[run]:
@@ -71,10 +74,11 @@ def list_pitwalls(runs=RUNS):
 def brain_path(brain_id, runs=RUNS):
     """The checkpoint file for a brain id like 'main/step-000002015232', refusing anything outside runs/."""
     run, name = brain_id.split('/', 1)
-    path = (runs / run / 'checkpoints' / f'{name}.zip').resolve()
-    if runs.resolve() not in path.parents or not path.is_file():
-        raise ValueError(f'No checkpoint named {brain_id!r}')
-    return path
+    for suffix in NETWORK_FILES:
+        path = (runs / run / 'checkpoints' / f'{name}{suffix}').resolve()
+        if runs.resolve() in path.parents and path.is_file():
+            return path
+    raise ValueError(f'No checkpoint named {brain_id!r}')
 
 
 @lru_cache(maxsize=8)

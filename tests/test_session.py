@@ -18,6 +18,12 @@ class TestBrains:
         steps = [brain['step'] for brain in list_brains(tmp_path)[1:]]
         assert steps == [3000, 2000, 1000]
 
+    def test_list_and_find_networks_exported_to_run_with_numpy(self, tmp_path):
+        (tmp_path / 'main' / 'checkpoints').mkdir(parents=True)
+        (tmp_path / 'main' / 'checkpoints' / 'step-000000005000.npz').write_bytes(b'')
+        assert [brain['id'] for brain in list_brains(tmp_path)[1:]] == ['main/step-000000005000']
+        assert brain_path('main/step-000000005000', tmp_path).suffix == '.npz'
+
     def test_refuse_paths_outside_the_runs_folder(self, tmp_path):
         (tmp_path / 'main' / 'checkpoints').mkdir(parents=True)
         with pytest.raises(ValueError):

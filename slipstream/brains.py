@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .numpy_network import NumpyNetwork
 from .observe import for_network, observe
 from .senses import SENSE_NAMES, senses
 
@@ -24,7 +25,10 @@ def is_recurrent(path: Path):
 
 
 def load_network(path: Path):
-    """Loads a saved driver or pit-wall network, recurrent or not."""
+    """Loads a saved driver or pit-wall network, recurrent or not: a Stable-Baselines3 .zip, or an .npz exported
+    to run with numpy alone (see numpy_network.py)."""
+    if Path(path).suffix == '.npz':
+        return NumpyNetwork.load(path)
     if is_recurrent(path):
         from sb3_contrib import RecurrentPPO
         return RecurrentPPO.load(path, device='cpu')
@@ -35,7 +39,7 @@ def load_network(path: Path):
 class NetworkDriver:
     def __init__(self, model, count):
         self.model = model
-        self.recurrent = hasattr(model.policy, 'lstm_actor')
+        self.recurrent = model.has_memory if isinstance(model, NumpyNetwork) else hasattr(model.policy, 'lstm_actor')
         # Drivers by feel sense (senses.py) and only steer and press a pedal.
         self.feels = model.observation_space.shape[0] == len(SENSE_NAMES) and model.action_space.shape[0] == 2
         self.memory = None

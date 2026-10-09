@@ -67,10 +67,13 @@
     <div class="voice-row"><label class="field">Your race engineer <select id="voice-engineer"></select></label><button class="secondary preview" data-preview="engineer" title="Hear this voice" aria-label="Hear your engineer's voice">▶</button></div>
     <p class="hint">Spoken when commentary is set to captions and voice; your car's team radio comes over the radio.</p>
 
+    <h3>Replays</h3>
+    <label class="check"><input type="checkbox" id="automatic-replays"> Replay serious crashes automatically</label>
+
     <h3>Keys</h3>
     <dl class="keys">
       <dt>Space</dt><dd>Pause</dd><dt>F · T · O</dt><dd>Follow · TV · Circuit</dd>
-      <dt>G</dt><dd>Fastest-lap ghost</dd><dt>P</dt><dd>Classic · Pixel look</dd><dt>1–8</dt><dd>Select a car</dd>
+      <dt>G</dt><dd>Fastest-lap ghost</dd><dt>R · Esc</dt><dd>Replay the last 10 s · Skip it</dd><dt>P</dt><dd>Classic · Pixel look</dd><dt>1–8</dt><dd>Select a car</dd>
       <dt>Q · E</dt><dd>Rotate the view</dd><dt>Scroll</dt><dd>Zoom</dd>
     </dl>
   </aside>
@@ -223,6 +226,7 @@
     </div>
     <span class="divider"></span>
     <button id="ghost" class="toggle" title="A see-through car driving the fastest lap, in step with the selected car (G)">Ghost</button>
+    <button id="replay-last" class="toggle" title="The last ten seconds again, in slow motion, watching the selected car (R)">Replay</button>
   </section>
 
   <!-- Loading, on the published site: the race runs in the browser, which first downloads what it needs -->
@@ -253,6 +257,12 @@
   </section>
 
   <div id="tv-tag" class="hidden"></div>
+  <!-- On screen while a replay plays -->
+  <div id="replay-tag" class="hidden">
+    <span class="replay-label">Replay</span>
+    <i class="replay-bar"><b id="replay-progress"></b></i>
+    <button id="skip-replay" class="ghost-button" title="Back to the race (Esc)">Skip</button>
+  </div>
   <div id="banner" class="hidden"></div>
   <div id="caption" class="hidden"></div>
   <div id="status" class="hidden"></div>

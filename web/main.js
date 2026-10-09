@@ -10,6 +10,7 @@ import { createFeed } from './feed.js';
 import { createGhost } from './ghost.js';
 import { createHud } from './hud.js';
 import { createRaceEvents, radioLines } from './race-events.js';
+import { SLOW_MOTION, blend, createReplay, replayAt } from './replay.js';
 import { createRacerPanel } from './racer.js';
 import { createStage, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
@@ -24,7 +25,6 @@ const PLAY_ICON = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
 const IDLE_MS = 2500;
 const STYLE_KEY = 'slipstream.style';
 const FRAME_SECONDS = 1 / 20;
-const NUMERIC = ['x', 'y', 'speed', 'steer', 'throttle', 'brake'];
 const $ = id => document.getElementById(id);
 
 const stage = createStage($('scene'));
@@ -36,6 +36,9 @@ const racer = createRacerPanel({
   onRename: id => hud.rename(id),
 });
 const raycaster = new THREE.Raycaster();
+const replays = createReplay();
+const REPLAY_ZOOM = 18;          // metres of half-height: close on the crash
+const REPLAY_ORBIT = 0.22;       // radians a second the replay camera swings round
 const loading = createLoadingScreen();
 $('loading-retry').addEventListener('click', () => location.reload());
 const weather = createWeather(stage);
@@ -113,6 +116,8 @@ function receive(message) {
 
 function setUpRace(intro) {
   loading.hide();
+  if (state.replay) endReplay();
+  replays.reset();
   state.circuit?.dispose();
   state.effects?.dispose();
   state.crews?.dispose();
@@ -195,6 +200,8 @@ function lightsOut() {
 
 function receiveFrame(frame) {
   if (!state.race) return;
+  const crash = replays.record(frame, automaticReplays() && !state.replay);
+  if (crash) startReplay(crash);
   state.previous = interpolated(performance.now());
   state.current = frame;
   state.arrived = performance.now();
@@ -247,15 +254,7 @@ function receiveFrame(frame) {
 function interpolated(now) {
   const { previous, current } = state;
   if (!current) return null;
-  const blend = Math.min(1, (now - state.arrived) / (FRAME_SECONDS * 1000));
-  const cars = { ...current.cars };
-  for (const key of NUMERIC) cars[key] = current.cars[key].map((value, id) => previous.cars[key][id] + (value - previous.cars[key][id]) * blend);
-  cars.heading = current.cars.heading.map((value, id) => {
-    const from = previous.cars.heading[id];
-    const turn = Math.atan2(Math.sin(value - from), Math.cos(value - from));
-    return from + turn * blend;
-  });
-  return { ...current, time: previous.time + (current.time - previous.time) * blend, cars };
+  return blend(previous, current, Math.min(1, (now - state.arrived) / (FRAME_SECONDS * 1000)));
 }
 
 // ---- Rendering -----------------------------------------------------------------------------------------
@@ -270,47 +269,123 @@ const FRAME_SLACK_MS = 2;
 let lastRender = performance.now();
 function render(now) {
   requestAnimationFrame(render);
-  const frameMs = state.paused || !state.race ? PAUSED_FRAME_MS : RACING_FRAME_MS;
+  const frameMs = (state.paused && !state.replay) || !state.race ? PAUSED_FRAME_MS : RACING_FRAME_MS;
   if (now - lastRender < frameMs - FRAME_SLACK_MS) return;
   const seconds = Math.min(0.1, (now - lastRender) / 1000);
   lastRender = now;
-  const frame = state.race && interpolated(now);
-  if (frame) {
-    const simRate = state.paused ? 0 : Math.max(0, state.current.time - state.previous.time) / FRAME_SECONDS;
-    state.cars.forEach((car, id) => {
-      const pose = carState(frame.cars, id);
-      // A broadcast doesn't circle anyone, so TV mode drops the selection ring.
-      const ringed = id === state.selected && state.cameraMode !== 'tv';
-      car.userData.lightsOn = !!state.location?.night;
-      car.userData.raining = frame.weather.wetness > 0.3;
-      poseCar(car, pose, seconds, seconds * simRate, ringed, id === state.yours, now / 1000);
-      const velocity = carVelocity(pose);
-      for (const point of car.userData.justLost.splice(0)) state.effects.shed(point, velocity, state.race.cars[id].color, 3, 0.45);
-      if (simRate > 0) state.effects.car(id, contactPatches(car), pose, velocity, seconds * Math.min(simRate, 2), frame.weather.wetness);
-    });
-    state.circuit.update(frame.time, Math.hypot(...(frame.weather.wind ?? [0, 0])));
-    state.crews.update(frame.time, frame, state.cars);
-    racer.update(frame);
-    const height = stage.pixelsTall();
-    let pixelsPerMetre = height / (2 * stage.view.zoom);
-    state.shot = state.cameraMode === 'tv' ? director.update(frame, seconds, now) : null;
-    if (state.shot) {
-      // The isometric rig still follows the shot's subject, because the sun's shadow box follows the rig.
-      stage.view.update(seconds, state.shot.focus, 0);
-      pixelsPerMetre = height / (2 * Math.tan(THREE.MathUtils.degToRad(director.camera.fov) / 2) * state.shot.distance);
-    } else {
-      aimCamera(frame, seconds);
-    }
-    showShot(state.shot, frame);
-    weather.update(frame.weather.wetness, frame.weather.rain, state.shot ? state.shot.focus : stage.view.focus, seconds, now / 1000, frame.weather.wind);
-    const lapStart = frame.cars.lapStart[state.selected];
-    ghost.update(lapStart === null || frame.cars.finishTime[state.selected] !== null ? null : frame.time - lapStart);
-    hud.update(frame, state.selected, state.yours, now);
-    broadcaster.update(commentaryContext(frame));
-    state.effects.update(seconds * Math.max(simRate, 0.25), pixelsPerMetre);
+  if (state.replay) {
+    renderReplay(seconds, now);
+  } else {
+    const frame = state.race && interpolated(now);
+    if (frame) renderLive(frame, seconds, now);
   }
   state.circuit?.cutAway(activeCamera().position, stage.view.focus);
   stage.render(activeCamera());
+}
+
+function renderLive(frame, seconds, now) {
+  const simRate = state.paused ? 0 : Math.max(0, state.current.time - state.previous.time) / FRAME_SECONDS;
+  drawCars(frame, seconds, simRate, now, true);
+  state.circuit.update(frame.time, Math.hypot(...(frame.weather.wind ?? [0, 0])));
+  state.crews.update(frame.time, frame, state.cars);
+  racer.update(frame);
+  const height = stage.pixelsTall();
+  let pixelsPerMetre = height / (2 * stage.view.zoom);
+  state.shot = state.cameraMode === 'tv' ? director.update(frame, seconds, now) : null;
+  if (state.shot) {
+    // The isometric rig still follows the shot's subject, because the sun's shadow box follows the rig.
+    stage.view.update(seconds, state.shot.focus, 0);
+    pixelsPerMetre = height / (2 * Math.tan(THREE.MathUtils.degToRad(director.camera.fov) / 2) * state.shot.distance);
+  } else {
+    aimCamera(frame, seconds);
+  }
+  showShot(state.shot, frame);
+  weather.update(frame.weather.wetness, frame.weather.rain, state.shot ? state.shot.focus : stage.view.focus, seconds, now / 1000, frame.weather.wind);
+  const lapStart = frame.cars.lapStart[state.selected];
+  ghost.update(lapStart === null || frame.cars.finishTime[state.selected] !== null ? null : frame.time - lapStart);
+  hud.update(frame, state.selected, state.yours, now);
+  broadcaster.update(commentaryContext(frame));
+  state.effects.update(seconds * Math.max(simRate, 0.25), pixelsPerMetre);
+}
+
+// The recorded race in slow motion, the camera close on the crash and swinging slowly round it. The timing tower
+// and the rest of the screen stay as the live race left them.
+function renderReplay(seconds, now) {
+  const replay = state.replay;
+  replay.time = Math.min(replay.end, replay.time + seconds * SLOW_MOTION);
+  const { frame, passed } = replayAt(replay.frames, replay.time, replay.shown);
+  replay.shown = replay.time;
+  for (const old of passed) for (const [x, y, impulse] of old.events.contacts) state.effects.contact(toWorld(x, y), impulse);
+  drawCars(frame, seconds, SLOW_MOTION, now, false);
+  const points = replay.cars.map(car => toWorld(frame.cars.x[car], frame.cars.y[car]));
+  const focus = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(points.length);
+  stage.view.targetAzimuth += seconds * REPLAY_ORBIT;
+  stage.view.update(seconds, focus, 0);
+  weather.update(frame.weather.wetness, frame.weather.rain, stage.view.focus, seconds, now / 1000, frame.weather.wind);
+  $('replay-progress').style.width = `${((replay.time - replay.start) / (replay.end - replay.start)) * 100}%`;
+  state.effects.update(seconds * SLOW_MOTION, stage.pixelsTall() / (2 * stage.view.zoom));
+  if (replay.time >= replay.end) endReplay();
+}
+
+// Poses every car. Live, cars also leave tyre marks and spray; a replay leaves none (they're already down).
+function drawCars(frame, seconds, simRate, now, live) {
+  state.cars.forEach((car, id) => {
+    const pose = carState(frame.cars, id);
+    // A broadcast doesn't circle anyone, so TV mode (and a replay) drops the selection ring.
+    const ringed = live && id === state.selected && state.cameraMode !== 'tv';
+    car.userData.lightsOn = !!state.location?.night;
+    car.userData.raining = frame.weather.wetness > 0.3;
+    poseCar(car, pose, seconds, seconds * simRate, ringed, id === state.yours, now / 1000);
+    const velocity = carVelocity(pose);
+    for (const point of car.userData.justLost.splice(0)) state.effects.shed(point, velocity, state.race.cars[id].color, 3, 0.45);
+    if (live && simRate > 0) state.effects.car(id, contactPatches(car), pose, velocity, seconds * Math.min(simRate, 2), frame.weather.wetness);
+  });
+}
+
+// ---- Replays ---------------------------------------------------------------------------------------------
+
+function automaticReplays() {
+  try {
+    return localStorage.getItem('slipstream.replays') !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+// Holds the live race while the replay plays, so nothing is missed, and puts the camera back afterwards.
+function startReplay(moment) {
+  if (state.replay || moment.frames.length < 2) return;
+  const start = moment.frames[0].time, end = moment.frames[moment.frames.length - 1].time;
+  state.replay = {
+    frames: moment.frames, cars: moment.cars, start, end, time: start, shown: start,
+    camera: { mode: state.cameraMode, zoom: stage.view.targetZoom, azimuth: stage.view.targetAzimuth },
+  };
+  send({ type: 'pause', value: true });
+  state.shot = null;
+  $('tv-tag').classList.add('hidden');
+  stage.view.setMode('follow', state.circuit);
+  stage.view.targetZoom = REPLAY_ZOOM;
+  $('replay-tag').classList.remove('hidden');
+  document.body.classList.add('replaying');
+  broadcaster.replay(moment.cars.map(car => state.race.cars[car].name));
+}
+
+// The last ten seconds, watching the selected car: R, or the dock's Replay button.
+function replayLastMoments() {
+  if (!state.race || state.replay || document.body.classList.contains('on-grid')) return;
+  startReplay(replays.lastMoments(state.selected));
+}
+
+function endReplay() {
+  const { camera } = state.replay;
+  state.replay = null;
+  $('replay-tag').classList.add('hidden');
+  document.body.classList.remove('replaying');
+  stage.view.setMode(camera.mode, state.circuit);
+  stage.view.targetZoom = camera.zoom;
+  stage.view.targetAzimuth = camera.azimuth;
+  // The live race picks up where it was held, unless you had paused it yourself.
+  if (!state.paused) send({ type: 'pause', value: false });
 }
 
 function activeCamera() {
@@ -389,7 +464,8 @@ function setSpeed(speed) {
 
 function setPaused(paused) {
   state.paused = paused;
-  send({ type: 'pause', value: paused });
+  // During a replay the race is held anyway; the choice applies when it ends.
+  if (!state.replay) send({ type: 'pause', value: paused });
   $('pause').innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
   $('pause').title = paused ? 'Resume (Space)' : 'Pause (Space)';
   $('pause').setAttribute('aria-label', paused ? 'Resume' : 'Pause');
@@ -430,12 +506,23 @@ $('new-circuit').addEventListener('click', () => startRace());
 $('replay').addEventListener('click', () => startRace(true));
 $('go').addEventListener('click', lightsOut);
 $('pause').addEventListener('click', () => setPaused(!state.paused));
+$('replay-last').addEventListener('click', replayLastMoments);
+$('skip-replay').addEventListener('click', () => state.replay && endReplay());
+$('automatic-replays').checked = automaticReplays();
+$('automatic-replays').addEventListener('change', event => {
+  try {
+    localStorage.setItem('slipstream.replays', event.target.checked ? 'on' : 'off');
+  } catch {
+    // Private windows and blocked storage just don't remember it.
+  }
+});
 $('brain').addEventListener('change', () => startRace(true));
 $('location').addEventListener('change', () => startRace(true));
 $('pitwall').addEventListener('change', () => startRace(true));
 document.querySelectorAll('#camera [data-camera]').forEach(button => button.addEventListener('click', () => setCamera(button.dataset.camera)));
 
 window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && state.replay) return endReplay();
   if (event.key === 'Escape') return openDrawer(null);
   if (event.target.matches('input, select')) return;
   if (document.body.classList.contains('on-grid')) return;
@@ -446,6 +533,7 @@ window.addEventListener('keydown', event => {
   else if (event.key === 't') setCamera('tv');
   else if (event.key === 'o') setCamera('overview');
   else if (event.key === 'g') setGhost(!ghost.enabled);
+  else if (event.key === 'r' || event.key === 'R') replayLastMoments();
   else if (event.key === 'p') setStyle(stage.style === 'pixel' ? 'classic' : 'pixel');
   else if (/^[1-8]$/.test(event.key) && state.race && Number(event.key) <= state.race.cars.length) select(Number(event.key) - 1);
 });

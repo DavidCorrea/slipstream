@@ -32,6 +32,12 @@ Line: Vega looking very comfortable out front, 3.1 seconds clear of Lindqvist.`;
 // for in every line, racing or not.
 const EXAMPLE_NAMES = ['Okafor', 'Sato', 'Vega', 'Lindqvist'];
 
+// To open a replay: of one car (a replay asked for), or of a crash between two.
+const REPLAY_LINES = {
+  one: ["Let's see that again, here's {car}.", 'Have a look at this again, {car}.', 'Here it is once more, watch {car}.'],
+  two: ["Let's see that again. {car} and {other}, look at this!", "Here's the replay, {car} and {other} come together.", 'Watch this again, {car} and {other}, a big moment.'],
+};
+
 const TEMPLATES = {
   start: ['Lights out and away we go!', 'And it is lights out! {car} gets away cleanly from the front.', 'Green light, here we go, {laps} laps of racing ahead!'],
   overtake: ['{car} goes past {other}, that is P{place}!', 'Brilliant move from {car}, through on {other} for P{place}!', '{car} makes it stick on {other}. Up to P{place}.', 'And {other} has nothing to answer {car} with. P{place} changes hands.'],
@@ -221,6 +227,12 @@ export function createBroadcaster({ onStatus, speech }) {
     wantsModel: () => loadSetting('ai', false),
     setMode, reset, notice, update, loadModel,
     setYours(car) { yours = car; },
+    // Opens a replay with a line about the cars in it, ahead of anything waiting to be said about the race.
+    replay(names) {
+      if (mode === 'off' || !race) return;
+      pending = null;
+      show(fill(pickFresh(REPLAY_LINES[names.length > 1 ? 'two' : 'one']), { car: names[0], other: names[1] }));
+    },
   };
 
   // The names and numbers a line about this moment may use.

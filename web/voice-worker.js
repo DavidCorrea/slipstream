@@ -4,13 +4,13 @@
 // a race. On the GPU only the full-precision model (325 MB, cached by the browser after the first time) works:
 // the half-precision one is half the size but gave broken audio for some voices.
 //
-// Messages in: { type: 'load' }, then { type: 'speak', id, text, voice, speed, urgent } for each piece of a line.
-// Pieces are generated one at a time, the urgent ones (being spoken now) before those prepared for later.
-// Messages out: 'progress' while loading, 'ready', 'spoken' with each piece's audio, or 'failed'.
+// Messages in: { type: 'load' }, then { type: 'speak', id, text, voice, speed, urgent } for each line.
+// Lines are generated one at a time, the urgent ones (being spoken now) before those prepared for later.
+// Messages out: 'progress' while loading, 'ready', 'spoken' with each line's audio, or 'failed'.
 import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
 
 const MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-// Background pieces wait this long after the last urgent one: a piece can't be interrupted once started, and
+// Background lines wait this long after the last urgent one: a line can't be interrupted once started, and
 // lines come in bursts (a pass, then the radio), so this keeps the background out of a burst's way.
 const BACKGROUND_PAUSE_MS = 3000;
 let speaker = null, working = false, lastUrgent = 0;
@@ -34,7 +34,7 @@ async function work() {
   if (working) return;
   working = true;
   while (urgent.length || later.length) {
-    // Let messages in between pieces: generating doesn't give way by itself, and without this an urgent line sent
+    // Let messages in between lines: generating doesn't give way by itself, and without this an urgent line sent
     // during the background work waited for all of it.
     await new Promise(resolve => setTimeout(resolve, 0));
     const quietFor = performance.now() - lastUrgent;

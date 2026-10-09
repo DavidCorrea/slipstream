@@ -4,7 +4,6 @@
 // and team radio sounds like a radio: squeezed into the telephone band, a little overdriven, with a click as the
 // button's pressed.
 //
-// A natural voice generates a line in pieces, split at its pauses, so the first piece plays as soon as it's ready.
 // Lines known ahead of time (team radio, given to createSpeech) are generated in quiet moments, ready at once.
 import { loadSetting, saveSetting } from './settings.js';
 
@@ -28,9 +27,7 @@ const NATURAL_DEFAULTS = { commentator: 'bm_george', driver: 'am_michael', engin
 const CONSENT = 'naturalVoicesOffer';
 const RADIO = { low: 320, high: 3200, drive: 18, click: 0.04 };
 const SAFETY_SECONDS = { base: 3, perWord: 0.6 };   // a browser voice that never says it finished is given up on
-const PIECE_WORDS = 3;   // pieces shorter than this join the next one: a lone word sounds clipped
-const GAP_SECONDS = 0.02;
-const GENERATE_LIMIT_MS = 12000;   // a piece taking longer than this is given up on, so the lines behind it go on
+const GENERATE_LIMIT_MS = 12000;   // a line taking longer than this is given up on, so the ones behind it go on
 
 export function createSpeech({ onProgress, knownLines = [] }) {
   // 'natural' or 'browser', and per kind, role -> chosen voice (a Kokoro voice or a browser voiceURI); a role with
@@ -38,7 +35,7 @@ export function createSpeech({ onProgress, knownLines = [] }) {
   let kind = loadSetting('voiceKind', 'natural');
   let chosen = loadSetting('voiceChoices', { natural: {}, browser: {} });
   const natural = { state: 'off', worker: null, requests: new Map(), next: 0, downloads: new Map() };
-  // voice + text -> the pieces of a line generated ahead of time, as promises of their audio.
+  // voice + text -> a line generated ahead of time, as a promise of its audio.
   const prepared = new Map();
   const playing = new Set();
   let audio = null, queue = Promise.resolve(), turn = 0;
@@ -73,8 +70,8 @@ export function createSpeech({ onProgress, knownLines = [] }) {
   function say(text, role, { onStart } = {}) {
     const myTurn = turn;
     const voice = voiceFor(role);
-    const parts = voice.natural ? partsOf(text, voice.natural, role, true) : null;
-    queue = queue.then(() => (myTurn === turn ? speak(text, role, voice, parts, onStart, myTurn) : null))
+    const generated = voice.natural ? audioFor(text, voice.natural, role, true) : null;
+    queue = queue.then(() => (myTurn === turn ? speak(text, role, voice, generated, onStart, myTurn) : null))
       .catch(error => console.warn('Could not speak a line:', error));
     return queue;
   }
@@ -86,18 +83,19 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     playing.clear();
   }
 
-  function speak(text, role, voice, parts, onStart, myTurn) {
-    if (!parts) return speakInBrowser(text, voice.browser, role, onStart);
-    return playParts(parts, role !== 'commentator', onStart, myTurn);
+  function speak(text, role, voice, generated, onStart, myTurn) {
+    if (!generated) return speakInBrowser(text, voice.browser, role, onStart);
+    return playLine(generated, role !== 'commentator', onStart, myTurn);
   }
 
-  // The line's pieces, from those prepared ahead of time when it's a known line, or generated now.
-  function partsOf(text, voice, role, urgent) {
+  // The line's audio, prepared ahead of time when it's a known line, or generated now. A whole line at once: on
+  // the GPU that takes about half a second, and spoken in one go it keeps one rise and fall.
+  function audioFor(text, voice, role, urgent) {
     const key = `${voice}|${text}`;
     if (prepared.has(key)) return prepared.get(key);
-    const parts = pieces(text).map(piece => generate(piece, voice, DELIVERY[role].rate, urgent));
-    parts.forEach(part => part.catch(() => {}));
-    return parts;
+    const generated = generate(text, voice, DELIVERY[role].rate, urgent);
+    generated.catch(() => {});
+    return generated;
   }
 
   function speakInBrowser(text, voice, role, onStart) {
@@ -118,21 +116,14 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     });
   }
 
-  // Plays the pieces back to back, each as soon as it's ready and the one before has finished.
-  async function playParts(parts, overRadio, onStart, myTurn) {
+  async function playLine(generated, overRadio, onStart, myTurn) {
+    const { samples, rate } = await generated;
+    if (myTurn !== turn) return;
     const context = audioContext();
-    let endsAt = 0, last = null;
-    for (const [index, part] of parts.entries()) {
-      const { samples, rate } = await part;
-      if (myTurn !== turn) return;
-      const opening = index === 0 && overRadio;
-      const startsAt = Math.max(context.currentTime + (opening ? RADIO.click : GAP_SECONDS), endsAt);
-      if (opening) click(context);
-      if (index === 0) setTimeout(() => onStart?.(), (startsAt - context.currentTime) * 1000);
-      last = schedule(context, samples, rate, overRadio, startsAt);
-      endsAt = startsAt + samples.length / rate;
-    }
-    await last;
+    const startsAt = context.currentTime + (overRadio ? RADIO.click : 0);
+    if (overRadio) click(context);
+    setTimeout(() => onStart?.(), (startsAt - context.currentTime) * 1000);
+    await schedule(context, samples, rate, overRadio, startsAt);
   }
 
   function schedule(context, samples, rate, overRadio, startsAt) {
@@ -218,7 +209,7 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     return new Promise((resolve, reject) => {
       natural.requests.set(id, { resolve, reject });
       natural.worker.postMessage({ type: 'speak', id, text, voice, speed, urgent });
-      // Live pieces only: background ones may rightly wait behind the race's commentary.
+      // Live lines only: background ones may rightly wait behind the race's commentary.
       if (urgent) setTimeout(() => {
         if (!natural.requests.delete(id)) return;
         reject(new Error(`gave up on "${text}" after ${GENERATE_LIMIT_MS / 1000} s`));
@@ -233,7 +224,7 @@ export function createSpeech({ onProgress, knownLines = [] }) {
       const voice = voiceFor(speaker);
       const key = `${voice.natural}|${text}`;
       if (!voice.natural || prepared.has(key)) continue;
-      prepared.set(key, partsOf(text, voice.natural, speaker, false));
+      prepared.set(key, audioFor(text, voice.natural, speaker, false));
     }
   }
 
@@ -282,28 +273,6 @@ export function createSpeech({ onProgress, knownLines = [] }) {
       say(SAMPLES[role], role);
     },
   };
-}
-
-// A line split where a speaker would pause (after , ; : . ! ?), with short pieces joined to the next. Only at
-// punctuation: each piece is spoken on its own, and splitting elsewhere (say, "Sato | and Kowalski") sounds
-// like two remarks.
-export function pieces(text) {
-  // A full stop between digits is a decimal point ("2.0 seconds"), not a pause.
-  const parts = text.match(/(?:\d\.\d|[^,;:.!?])+[,;:.!?]*\s*/g) ?? [text];
-  const joined = [];
-  let pending = '';
-  for (const part of parts) {
-    pending += part;
-    if (pending.trim().split(/\s+/).length >= PIECE_WORDS) {
-      joined.push(pending.trim());
-      pending = '';
-    }
-  }
-  if (pending.trim()) {
-    if (joined.length) joined[joined.length - 1] += ` ${pending.trim()}`;
-    else joined.push(pending.trim());
-  }
-  return joined;
 }
 
 // The browser's English voices (every line is in English, and other voices mangle it), in a steady order.

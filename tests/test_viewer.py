@@ -117,3 +117,15 @@ class TestLocations:
             await viewer.handle({'type': 'start', 'cars': 2, 'laps': 1, 'location': 'random', 'seed': 9})
         viewer = run(any_place)
         assert viewer.session.location == location_for(9)
+
+
+class TestPlaybackSpeeds:
+    def test_plays_from_one_to_sixteen_times_real_time(self):
+        async def fastest(viewer):
+            await viewer.handle({'type': 'speed', 'value': 16})
+        assert run(fastest).speed == 16
+
+    def test_ignores_a_speed_it_doesnt_offer(self):
+        async def silly(viewer):
+            await viewer.handle({'type': 'speed', 'value': 1000})
+        assert run(silly).speed == 1.0

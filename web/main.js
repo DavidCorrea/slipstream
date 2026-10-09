@@ -19,6 +19,9 @@ import { LOCATIONS } from './scenery.js';
 import { createWeather } from './weather.js';
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
+// What "1×" plays at, in times real time: our cars corner on less grip than a Formula 1 car round shorter circuits,
+// so a race at real time looked slow; at twice real time it looks like one on television.
+const PLAYBACK = 2;
 const PAUSE_ICON = '<svg viewBox="0 0 12 12"><rect x="1.5" y="1" width="3" height="10"/><rect x="7.5" y="1" width="3" height="10"/></svg>';
 const PLAY_ICON = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
 // In TV mode the controls step aside after this long without the mouse moving, like a broadcast.
@@ -473,7 +476,7 @@ function setCamera(mode) {
 
 function setSpeed(speed) {
   state.speed = speed;
-  send({ type: 'speed', value: speed });
+  send({ type: 'speed', value: speed * PLAYBACK });
   document.querySelectorAll('#speeds button').forEach(button => button.classList.toggle('active', Number(button.dataset.speed) === speed));
 }
 

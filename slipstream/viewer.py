@@ -10,7 +10,9 @@ from .car import DT
 from .session import DRIVER_DECIDES, RUNS, SCRIPTED, RaceSession
 
 FRAMES_PER_SECOND = 20
-SPEEDS = (0.5, 1, 2, 4, 8)
+# Times real time. The page's buttons say half these (its "1×" is twice real time), since our races are slower than
+# a Formula 1 race (less grip, shorter circuits) and at real time they looked it.
+SPEEDS = (1, 2, 4, 8, 16)
 NEXT_RACE_AFTER = 6.0      # seconds the finished race stays on screen before the next one starts
 # Up to a Formula 1 grid, and races about as long as one (its laps are longer than ours).
 LIMITS = {'cars': (2, 20), 'laps': (1, 70)}

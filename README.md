@@ -52,7 +52,7 @@ The viewer plays races live in the browser, in isometric 3D. Every race opens **
 | Location | Up to the circuit, or countryside, desert, alpine, coast, city, or the city at night (scenery only: the race is the same) |
 | Cars, Laps | Field size (2 to 20, a Formula 1 grid) and race length (1 to 70 laps); **Apply** puts them on the grid on the same circuit. A big field in the published site's browser simulation runs at about 2× at most at the start of a race (the local server keeps up at 8×) |
 | Another circuit, New race | A new generated circuit, back on the grid (changing brain, pit wall or location keeps the circuit) |
-| 0.5× to 8×, Pause (Space) | Playback speed |
+| 0.5× to 8×, Pause (Space) | Playback speed. 1× is twice real time (0.5× is real time, 8× is 16×): with less grip than a Formula 1 car and shorter circuits, a race at real time looked slow, and at twice it looks like one on television. Race times and lap times are still real |
 | Follow, TV, Circuit (F, T, O) | Follow the selected car, watch it like a broadcast (see below), or see the whole circuit |
 | Ghost (G) | Off by default: a see-through car driving the fastest lap so far, in step with the selected car's lap |
 | Replays (R, Esc) | After a serious crash (a hit far harder than a fight's rubbing, or a car losing a big piece at once) the race holds while it's replayed in slow motion, letterboxed, the camera close on the cars and the commentator introducing it, about once or twice a race; R replays the last 10 s of the selected car, Esc skips back to the race, and Settings turns the automatic ones off (`web/replay.js`) |

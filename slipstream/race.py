@@ -11,7 +11,7 @@ import numpy as np
 
 from . import pit
 from .aero import air_between
-from .car import DAMAGE, DT, ENGINE_TEMPERATURE, CarSpecs, CarState, Conditions, step_cars, suited_compound
+from .car import DAMAGE, DT, CarSpecs, CarState, Conditions, step_cars, suited_compound
 from .human import Driving
 from .obstacles import Obstacles
 from .surface import Surface

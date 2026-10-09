@@ -64,3 +64,22 @@ class TestLocating:
             full, _, _ = track.locate(position[None])
             assert hinted[0] == full[0]
             hint = hinted
+
+
+class TestCornersWithCharacter:
+    def test_every_circuit_has_a_chicane_or_a_sharp_turn(self, tracks):
+        from slipstream.track import features
+        for track in tracks:
+            assert features(track), f'seed {track.seed} has neither'
+
+    def test_circuits_get_both_kinds(self, tracks):
+        from slipstream.track import features
+        kinds = {kind for track in tracks for kind, _ in features(track)}
+        assert kinds == {'chicane', 'sharp turn'}
+
+    def test_a_chicane_turns_one_way_then_the_other_close_together(self):
+        from slipstream.track import features
+        track = next(track for track in (generate_track(seed) for seed in range(40)) if any(kind == 'chicane' for kind, _ in features(track)))
+        index = next(index for kind, index in features(track) if kind == 'chicane')
+        nearby = track.curvature[(index + np.arange(-40, 41)) % track.size]
+        assert nearby.max() > 1 / 50 and nearby.min() < -1 / 50

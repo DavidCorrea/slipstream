@@ -3,6 +3,10 @@
 A track is a smooth loop through randomly placed control points, sampled every `SPACING` metres along its
 centre line. Index 0 is the start/finish line, placed at the end of the longest straight so the grid lines up
 on it. Everything is in metres; the track's left is the direction of `normals`.
+
+Every circuit has at least one corner with some character: a sharp turn (a straight into a corner that turns hard
+in a few metres, made by pinning the line close either side of a control point) or a chicane (a quick left-right
+jink laid into a straight other than the main one). `features` finds them on a finished track.
 """
 from dataclasses import dataclass
 
@@ -15,6 +19,12 @@ CLEARANCE = 30.0       # minimum gap between the centre lines of two separate pa
 LENGTH_RANGE = (900.0, 1700.0)
 GRID_STRAIGHT = 160.0  # how much straight to look for before the start line
 GRID_MIN_RADIUS = 60.0 # the grid behind the line must be at least this straight
+SHARP = {'turn': np.radians(55), 'pins': (45.0, 12.0), 'exit': 25.0, 'room': 70.0, 'second': 0.3}   # see _with_sharp_turns
+CHICANE = {'length': (70.0, 100.0), 'swerve': (8.0, 12.0), 'margin': 25.0, 'chance': 0.6, 'straight': 1 / 250}
+# What counts (features): a sharp turn turns 90 degrees or more within 45 m, straight after 80 m of near-straight;
+# a chicane is two bends the opposite way round, each turning 25 degrees within 25 m, their middles 45 m apart at
+# most. Plain circuits meet these only now and then (27 of 60 did); every circuit here has at least one.
+FEATURE = {'sharp_turn': np.radians(90), 'sharp_within': 45.0, 'approach': 80.0, 'bend': np.radians(25), 'bend_within': 25.0, 'bends_apart': 45.0}
 
 
 @dataclass(frozen=True)
@@ -90,8 +100,12 @@ def _centre_line(rng):
     stretch = rng.uniform(0.7, 1.3)
     controls = np.stack([np.cos(angles) * radii * stretch, np.sin(angles) * radii / stretch], axis=1)
     controls = _with_straights(controls, rng)
+    controls = _with_sharp_turns(controls, rng)
     dense = _catmull_rom_loop(controls, samples_per_segment=40)
     centre = _resample(dense, SPACING)
+    if centre is None:
+        return None
+    centre = _with_chicanes(centre, rng)
     if centre is None:
         return None
     centre = _ease_tight_corners(centre)
@@ -101,6 +115,9 @@ def _centre_line(rng):
     if not LENGTH_RANGE[0] <= length <= LENGTH_RANGE[1]:
         return None
     if _passes_too_close(centre):
+        return None
+    # Easing can round a sharp turn or a chicane off; a circuit that ends up with neither is drawn again.
+    if not _features(_curvature(_tangents(centre))):
         return None
     return centre
 
@@ -118,6 +135,111 @@ def _with_straights(controls, rng):
         if index == longest or (spans[index] > 120.0 and rng.random() < 0.5):
             result.extend([point + (following - point) * 0.3, point + (following - point) * 0.7])
     return np.array(result)
+
+
+def _with_sharp_turns(controls, rng):
+    """Makes one corner (sometimes two) sharp: where the line already turns by SHARP['turn'] or more at a control
+    point with room either side, extra points pinned along the straight line in (SHARP['pins'] metres before it)
+    and out (SHARP['exit'] after) make the spline run straight into the corner and turn hard in a few metres."""
+    count = len(controls)
+    incoming = controls - np.roll(controls, 1, axis=0)
+    outgoing = np.roll(controls, -1, axis=0) - controls
+    lengths_in, lengths_out = np.linalg.norm(incoming, axis=1), np.linalg.norm(outgoing, axis=1)
+    cosine = np.einsum('mk,mk->m', incoming, outgoing) / np.maximum(lengths_in * lengths_out, 1e-9)
+    turn = np.arccos(np.clip(cosine, -1, 1))
+    candidates = np.flatnonzero((turn >= SHARP['turn']) & (lengths_in > SHARP['room']) & (lengths_out > SHARP['room']))
+    if not len(candidates):
+        return controls
+    chosen = set(rng.choice(candidates, size=min(len(candidates), 2 if rng.random() < SHARP['second'] else 1), replace=False).tolist())
+    result = []
+    for index in range(count):
+        point = controls[index]
+        if index in chosen:
+            result.extend(point - incoming[index] / lengths_in[index] * distance for distance in SHARP['pins'])
+            result.append(point)
+            result.append(point + outgoing[index] / lengths_out[index] * SHARP['exit'])
+        else:
+            result.append(point)
+    return np.array(result)
+
+
+def _with_chicanes(centre, rng):
+    """Lays a chicane into some straights (always one, where any straight has room): a smooth jink left, then right,
+    then back onto the line, CHICANE['length'] long and up to CHICANE['swerve'] off it. On the longest straight it
+    goes in the first part only, leaving GRID_STRAIGHT clear for the grid."""
+    curvature = _curvature(_tangents(centre))
+    straight = np.abs(curvature) < CHICANE['straight']
+    runs, start = [], None
+    # Walk the loop from a bend, so a straight that wraps past index 0 is found whole.
+    first = int(np.flatnonzero(~straight)[0]) if (~straight).any() else 0
+    order = (np.arange(len(centre)) + first) % len(centre)
+    for position, index in enumerate(order):
+        if straight[index] and start is None:
+            start = position
+        if (not straight[index] or position == len(order) - 1) and start is not None:
+            runs.append(order[start:position])
+            start = None
+    runs.sort(key=len, reverse=True)
+    normals = np.stack([-_tangents(centre)[:, 1], _tangents(centre)[:, 0]], axis=1)
+    shifted = centre.copy()
+    grid = int(GRID_STRAIGHT / SPACING)
+    margin = int(CHICANE['margin'] / SPACING)
+    plans = []
+    for order_index, run in enumerate(runs):
+        samples = int(rng.uniform(*CHICANE['length']) / SPACING)
+        # The longest straight keeps its last GRID_STRAIGHT clear, for the grid.
+        room = len(run) - (grid if order_index == 0 else 0)
+        if room >= samples + 2 * margin:
+            plans.append((run[:room], samples, rng.random() < CHICANE['chance']))
+    if plans and not any(wanted for _, _, wanted in plans):
+        pick = int(rng.integers(len(plans)))
+        plans[pick] = (*plans[pick][:2], True)
+    for run, samples, wanted in plans:
+        if not wanted:
+            continue
+        begin = int(rng.integers(margin, len(run) - samples - margin + 1))
+        stretch = run[begin:begin + samples]
+        progress = np.linspace(0, 1, samples)
+        swerve = rng.uniform(*CHICANE['swerve']) * (1 if rng.random() < 0.5 else -1)
+        # Left then right then back, starting and ending square to the straight.
+        offset = swerve * np.sin(2 * np.pi * progress) * np.sin(np.pi * progress) ** 2
+        shifted[stretch] = centre[stretch] + normals[stretch] * offset[:, None]
+    return _resample(shifted, SPACING)
+
+
+def features(track):
+    """The track's sharp turns and chicanes, as (kind, index of where it is) pairs."""
+    return _features(track.curvature)
+
+
+def _features(curvature):
+    """Sharp turns and chicanes as FEATURE defines them, one entry per corner."""
+    size = len(curvature)
+
+    def turned(metres):
+        span = int(metres / SPACING)
+        return np.convolve(np.concatenate([curvature, curvature[:span]]), np.ones(span), mode='valid')[:size] * SPACING
+
+    found = []
+    straight = np.abs(curvature) < CHICANE['straight']
+    approach = int(FEATURE['approach'] / SPACING)
+    for index in np.flatnonzero(np.abs(turned(FEATURE['sharp_within'])) >= FEATURE['sharp_turn']):
+        if straight[(index - approach + np.arange(approach)) % size].mean() > 0.9:
+            found.append(('sharp turn', int(index)))
+    bend = turned(FEATURE['bend_within'])
+    rights = np.flatnonzero(bend <= -FEATURE['bend'])
+    reach = int(FEATURE['bends_apart'] / SPACING)
+    for left in np.flatnonzero(bend >= FEATURE['bend']):
+        apart = (rights - left + size // 2) % size - size // 2
+        if np.any(np.abs(apart) <= reach):
+            found.append(('chicane', int(left)))
+    # One entry per corner: detections of a kind within 60 m of each other are the same one.
+    merged = []
+    for kind, index in sorted(found, key=lambda item: item[1]):
+        if any(kind == other and (index - where) % size < int(60 / SPACING) for other, where in merged):
+            continue
+        merged.append((kind, index))
+    return merged
 
 
 def _catmull_rom_loop(controls, samples_per_segment):

@@ -398,3 +398,20 @@ body.loading .chrome, body.loading #grid-menu { display: none !important; }
 #loading.failed .loading-bar b::after { animation: none; }
 #loading.failed .loading-steps li.active .mark { animation: none; border: none; width: auto; height: auto; border-radius: 0; }
 #loading.failed .loading-steps li.active .mark::before { content: '✕'; color: var(--accent); font-weight: 700; }
+
+/* ---- Natural voices: offered once over the grid ---------------------------------------------------- */
+
+#voices-offer {
+  position: fixed; inset: 0; z-index: 15; display: grid; place-items: center; padding: var(--gutter);
+  background: rgba(5, 7, 12, 0.55); animation: grid-in 0.25s ease;
+}
+.offer-panel {
+  width: min(460px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 20px 22px;
+  background: var(--glass-strong); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.offer-panel h2 { margin: 0; font-size: 20px; font-weight: 900; letter-spacing: 0.03em; }
+.offer-panel p { margin: 0; color: var(--muted); line-height: 1.45; }
+.offer-buttons { display: flex; gap: 8px; margin-top: 6px; }
+.offer-buttons button { flex: 1; }
+.segmented button:disabled { opacity: 0.35; cursor: not-allowed; }

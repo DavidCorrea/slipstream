@@ -181,6 +181,7 @@ function showGrid(intro) {
   openDrawer(null);
   $('grid-menu').classList.remove('hidden');
   document.body.classList.add('on-grid');
+  offerVoices();
 }
 
 function lightsOut() {
@@ -479,43 +480,70 @@ function setCommentary(mode) {
   $('commentary').value = mode;
 }
 
-// The pickers fill again when voices arrive: the browser loads its own late (Chrome only after asking), and the
-// natural ones once they've downloaded.
+// ---- Voices: natural ones (offered once, a big download) or the browser's, and one for each role ----------------
+
+// The pickers list the voices of the kind in use; the browser's arrive late (Chrome only after asking).
 function fillVoices() {
-  const { natural, browser } = speech.options();
-  const group = (label, options) => {
-    const element = document.createElement('optgroup');
-    element.label = label;
-    element.append(...options.map(({ id, label: name }) => new Option(name, id)));
-    return element;
-  };
+  const usable = speech.naturalUsable();
+  document.querySelectorAll('[data-voice-kind]').forEach(button => {
+    button.classList.toggle('active', button.dataset.voiceKind === speech.kind);
+    button.disabled = button.dataset.voiceKind === 'natural' && !usable;
+  });
+  $('enable-voices').classList.toggle('hidden', usable || !speech.naturalPossible() || speech.naturalState === 'failed');
+  if (!speech.naturalPossible() && $('voices-status').classList.contains('hidden')) {
+    showVoicesStatus('Natural voices need a graphics card your browser can use (WebGPU, as in Chrome or Edge).');
+  }
+  const options = speech.options();
   for (const role of speech.roles) {
     const picker = $(`voice-${role}`);
-    picker.replaceChildren(new Option('Automatic', ''), ...(natural.length ? [group('Natural voices', natural)] : []),
-      ...(browser.length ? [group("Your browser's voices", browser)] : []));
+    picker.replaceChildren(new Option('Automatic', ''), ...options.map(({ id, label }) => new Option(label, id)));
     const wanted = speech.chosenVoice(role);
-    picker.value = [...natural, ...browser].some(({ id }) => id === wanted) ? wanted : '';
+    picker.value = options.some(({ id }) => id === wanted) ? wanted : '';
   }
 }
 
-function showVoicesProgress({ state, text }) {
+function showVoicesStatus(text) {
   $('voices-status').textContent = text;
-  $('voices-status').classList.remove('hidden');
-  $('load-voices').disabled = state === 'loading' || state === 'ready';
-  $('load-voices').textContent = state === 'ready' ? 'Natural voices on' : 'Load natural voices';
-  if (state === 'ready') {
-    fillVoices();
-    setTimeout(() => $('voices-status').classList.add('hidden'), 3000);
+  $('voices-status').classList.toggle('hidden', !text);
+}
+
+function showVoicesProgress({ state, text }) {
+  showVoicesStatus(text);
+  if (state === 'ready') setTimeout(() => showVoicesStatus(''), 3000);
+  fillVoices();
+}
+
+// Asked once, on the grid, where the browser could run them; the answer is kept.
+async function offerVoices() {
+  await speech.gpuChecked;
+  if (!speech.naturalPossible() || speech.consent || !document.body.classList.contains('on-grid')) return;
+  $('voices-offer').classList.remove('hidden');
+}
+
+function answerOffer(accepted) {
+  $('voices-offer').classList.add('hidden');
+  if (accepted) {
+    speech.accept();
+    // Spoken commentary is what they're for.
+    if (broadcaster.mode !== 'voice') setCommentary('voice');
+  } else {
+    speech.decline();
   }
+  fillVoices();
 }
 
 for (const role of speech.roles) $(`voice-${role}`).addEventListener('change', event => speech.setVoice(role, event.target.value));
 document.querySelectorAll('[data-preview]').forEach(button => button.addEventListener('click', () => speech.preview(button.dataset.preview)));
-$('load-voices').addEventListener('click', () => speech.loadNatural());
+document.querySelectorAll('[data-voice-kind]').forEach(button => button.addEventListener('click', () => {
+  speech.setKind(button.dataset.voiceKind);
+  fillVoices();
+}));
+$('enable-voices').addEventListener('click', () => answerOffer(true));
+$('accept-voices').addEventListener('click', () => answerOffer(true));
+$('decline-voices').addEventListener('click', () => answerOffer(false));
 if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', fillVoices);
-fillVoices();
-// Loaded on an earlier visit, so it comes from the browser's cache this time.
-if (speech.wantsNatural()) speech.loadNatural();
+speech.gpuChecked.then(fillVoices);
+speech.resume();
 
 $('ghost').addEventListener('click', () => setGhost(!ghost.enabled));
 

@@ -1,11 +1,11 @@
-// Lines spoken aloud: the commentator's, and your driver's and race engineer's on team radio. Each role speaks in
-// the voice chosen for it, either one of the browser's own or a natural voice (Kokoro, see voice-worker.js) once
-// those are loaded. Lines take turns rather than talk over each other, and team radio sounds like a radio:
-// squeezed into the telephone band, a little overdriven, with a click as the button's pressed.
+// Lines spoken aloud: the commentator's, and your driver's and race engineer's on team radio. The voices are either
+// natural (Kokoro on the graphics card, see voice-worker.js, which has to be accepted first: it's a big download)
+// or the browser's own, and each role picks one of that kind. Lines take turns rather than talk over each other,
+// and team radio sounds like a radio: squeezed into the telephone band, a little overdriven, with a click as the
+// button's pressed.
 //
-// A natural voice takes a while to generate a line, so it's done in pieces, split at the line's pauses: the first
-// piece plays as soon as it's ready while the rest are generated, faster than they're spoken. Lines known ahead
-// of time (team radio, given to createSpeech) are generated in the quiet moments, ready to play at once.
+// A natural voice generates a line in pieces, split at its pauses, so the first piece plays as soon as it's ready.
+// Lines known ahead of time (team radio, given to createSpeech) are generated in quiet moments, ready at once.
 import { loadSetting, saveSetting } from './settings.js';
 
 const ROLES = ['commentator', 'driver', 'engineer'];
@@ -17,9 +17,15 @@ const SAMPLES = {
   driver: 'The rear is gone, I have no grip at all.',
   engineer: 'Box this lap, box this lap. Softs are ready.',
 };
-const NATURAL = 'natural:';
-// A British commentator, an American driver and a British engineer, among Kokoro's better voices.
+// Kokoro's best-rated voices, two of each accent and gender; a British commentator, an American driver and a
+// British engineer unless chosen otherwise.
+const NATURAL_VOICES = {
+  bm_george: 'George · British man', bm_fable: 'Fable · British man', bf_emma: 'Emma · British woman', bf_isabella: 'Isabella · British woman',
+  am_michael: 'Michael · American man', am_fenrir: 'Fenrir · American man', af_heart: 'Heart · American woman', af_bella: 'Bella · American woman',
+};
 const NATURAL_DEFAULTS = { commentator: 'bm_george', driver: 'am_michael', engineer: 'bf_emma' };
+// Whether natural voices were offered and what was said: 'accepted', 'declined', or not asked yet.
+const CONSENT = 'naturalVoicesOffer';
 const RADIO = { low: 320, high: 3200, drive: 18, click: 0.04 };
 const SAFETY_SECONDS = { base: 3, perWord: 0.6 };   // a browser voice that never says it finished is given up on
 const PIECE_WORDS = 3;   // pieces shorter than this join the next one: a lone word sounds clipped
@@ -27,23 +33,36 @@ const GAP_SECONDS = 0.02;
 const GENERATE_LIMIT_MS = 12000;   // a piece taking longer than this is given up on, so the lines behind it go on
 
 export function createSpeech({ onProgress, knownLines = [] }) {
-  // role -> chosen voice: a browser voiceURI, or NATURAL + a Kokoro voice; a role missing from it gets the automatic one.
-  let chosen = loadSetting('voices', {});
-  const natural = { state: 'off', voices: [], worker: null, requests: new Map(), next: 0, downloads: new Map() };
+  // 'natural' or 'browser', and per kind, role -> chosen voice (a Kokoro voice or a browser voiceURI); a role with
+  // none gets the default.
+  let kind = loadSetting('voiceKind', 'natural');
+  let chosen = loadSetting('voiceChoices', { natural: {}, browser: {} });
+  const natural = { state: 'off', worker: null, requests: new Map(), next: 0, downloads: new Map() };
   // voice + text -> the pieces of a line generated ahead of time, as promises of their audio.
   const prepared = new Map();
   const playing = new Set();
   let audio = null, queue = Promise.resolve(), turn = 0;
+  // Natural voices need a graphics card the browser can use. Having WebGPU isn't enough (a browser can have it
+  // and no adapter), so it's asked for one, once.
+  let gpu = null;
+  const gpuChecked = (navigator.gpu ? navigator.gpu.requestAdapter().then(Boolean, () => false) : Promise.resolve(false))
+    .then(found => { gpu = found; });
 
   // ---- Choosing a voice ----------------------------------------------------------------------------------
 
+  function naturalUsable() {
+    return gpu === true && loadSetting(CONSENT, null) === 'accepted' && natural.state !== 'failed';
+  }
+
+  function shownKind() {
+    return naturalUsable() ? kind : 'browser';
+  }
+
+  // Natural voices until they're ready (or when the browser's are chosen) fall back to the browser's.
   function voiceFor(role) {
-    const choice = chosen[role];
-    if (choice?.startsWith(NATURAL) && natural.state === 'ready') return { natural: choice.slice(NATURAL.length) };
-    const browserVoice = choice && browserVoices().find(option => option.voiceURI === choice);
-    if (browserVoice) return { browser: browserVoice };
-    if (natural.state === 'ready') return { natural: NATURAL_DEFAULTS[role] };
-    return { browser: automaticBrowserVoice(role) };
+    if (kind === 'natural' && natural.state === 'ready') return { natural: chosen.natural[role] ?? NATURAL_DEFAULTS[role] };
+    const browserVoice = browserVoices().find(option => option.voiceURI === chosen.browser[role]);
+    return { browser: browserVoice ?? automaticBrowserVoice(role) };
   }
 
   // ---- Speaking --------------------------------------------------------------------------------------------
@@ -158,7 +177,8 @@ export function createSpeech({ onProgress, knownLines = [] }) {
   function loadNatural() {
     if (natural.state === 'loading' || natural.state === 'ready') return;
     natural.state = 'loading';
-    // Started by a click, which is what lets the page play sound later.
+    // Started from a click (the offer, Settings), it's that click which lets the page play sound; started on a
+    // later visit, the sound waits for the first click anywhere, which the grid's Start race always is.
     audioContext();
     natural.worker = new Worker(new URL('./voice-worker.js', import.meta.url), { type: 'module' });
     natural.worker.addEventListener('message', ({ data }) => receive(data));
@@ -176,8 +196,6 @@ export function createSpeech({ onProgress, knownLines = [] }) {
       onProgress({ state: 'loading', text: `Natural voices: ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB` });
     } else if (data.type === 'ready') {
       natural.state = 'ready';
-      natural.voices = data.voices;
-      saveSetting('naturalVoices', true);
       onProgress({ state: 'ready', text: 'Natural voices ready.' });
       prepareKnownLines();
     } else if (data.id !== undefined) {
@@ -190,7 +208,6 @@ export function createSpeech({ onProgress, knownLines = [] }) {
       natural.worker.terminate();
       for (const request of natural.requests.values()) request.reject(new Error(data.message));
       natural.requests.clear();
-      saveSetting('naturalVoices', false);
       onProgress({ state: 'failed', text: `Natural voices couldn't load (${data.message}). Using the browser's voices.` });
     }
   }
@@ -222,21 +239,41 @@ export function createSpeech({ onProgress, knownLines = [] }) {
 
   return {
     roles: ROLES,
-    say, cancel, loadNatural,
+    say, cancel,
     get naturalState() { return natural.state; },
-    wantsNatural: () => loadSetting('naturalVoices', false),
-
-    // What the voice pickers offer: the natural voices once loaded, then the browser's English ones.
-    options() {
-      const naturalOptions = natural.voices.map(voice => ({ id: NATURAL + voice.id, label: naturalLabel(voice) }));
-      const browserOptions = browserVoices().map(voice => ({ id: voice.voiceURI, label: `${voice.name} · ${voice.lang}` }));
-      return { natural: naturalOptions, browser: browserOptions };
+    gpuChecked,
+    // Whether natural voices could run here (known once gpuChecked has settled), and whether they can be chosen.
+    naturalPossible: () => gpu === true,
+    naturalUsable,
+    get consent() { return loadSetting(CONSENT, null); },
+    accept() {
+      saveSetting(CONSENT, 'accepted');
+      loadNatural();
     },
-    chosenVoice: role => chosen[role] ?? '',
+    decline: () => saveSetting(CONSENT, 'declined'),
+    // Loads them on a later visit, from the browser's cache, if they were accepted before.
+    resume() {
+      gpuChecked.then(() => { if (gpu && loadSetting(CONSENT, null) === 'accepted') loadNatural(); });
+    },
+
+    // The kind the pickers show and set: the chosen one, unless natural voices can't be had here.
+    get kind() { return shownKind(); },
+    setKind(value) {
+      kind = value;
+      saveSetting('voiceKind', value);
+      prepareKnownLines();
+    },
+    // The voices a role can pick, of the kind shown.
+    options() {
+      if (shownKind() === 'natural') return Object.entries(NATURAL_VOICES).map(([id, label]) => ({ id, label }));
+      return browserVoices().map(voice => ({ id: voice.voiceURI, label: `${voice.name} · ${voice.lang}` }));
+    },
+    chosenVoice: role => chosen[shownKind()][role] ?? '',
     setVoice(role, id) {
-      chosen = { ...chosen, [role]: id };
-      if (!id) delete chosen[role];
-      saveSetting('voices', chosen);
+      const of = shownKind();
+      chosen = { ...chosen, [of]: { ...chosen[of], [role]: id } };
+      if (!id) delete chosen[of][role];
+      saveSetting('voiceChoices', chosen);
       prepareKnownLines();
     },
     // Says a sample line in a role's voice, whatever the commentary mode, so you can hear it before choosing it.
@@ -267,11 +304,6 @@ export function pieces(text) {
     else joined.push(pending.trim());
   }
   return joined;
-}
-
-function naturalLabel({ name, language, gender, grade }) {
-  const accent = language.toLowerCase() === 'en-gb' ? 'British' : 'American';
-  return `${name} · ${accent} ${gender.toLowerCase().startsWith('f') ? 'woman' : 'man'} (natural, grade ${grade})`;
 }
 
 // The browser's English voices (every line is in English, and other voices mangle it), in a steady order.

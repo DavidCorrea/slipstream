@@ -1,14 +1,15 @@
 // Natural voices: Kokoro, a small open speech model (82M parameters, Apache-licensed), run in this worker with
-// kokoro-js, so speaking a line never stalls the race. It's the 8-bit model (92 MB, cached by the browser after
-// the first time) on the CPU: the GPU build wants the full-precision one, 325 MB, too much for a page.
+// kokoro-js, so speaking a line never stalls the race. It runs on the graphics card (WebGPU), where it speaks a
+// line in about a tenth of its length: on the CPU the same line took longer to generate than to say, too late for
+// a race. On the GPU only the full-precision model (325 MB, cached by the browser after the first time) works:
+// the half-precision one is half the size but gave broken audio for some voices.
 //
 // Messages in: { type: 'load' }, then { type: 'speak', id, text, voice, speed, urgent } for each piece of a line.
 // Pieces are generated one at a time, the urgent ones (being spoken now) before those prepared for later.
-// Messages out: 'progress' while loading, 'ready' with the voices, 'spoken' with each piece's audio, or 'failed'.
+// Messages out: 'progress' while loading, 'ready', 'spoken' with each piece's audio, or 'failed'.
 import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
 
 const MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-const ENGLISH = /^en/;
 // Background pieces wait this long after the last urgent one: a piece can't be interrupted once started, and
 // lines come in bursts (a pass, then the radio), so this keeps the background out of a burst's way.
 const BACKGROUND_PAUSE_MS = 3000;
@@ -18,7 +19,7 @@ const urgent = [], later = [];
 async function load() {
   // Downloads arrive file by file; the page adds them up for one progress figure.
   speaker = await KokoroTTS.from_pretrained(MODEL, {
-    dtype: 'q8', device: 'wasm',
+    dtype: 'fp32', device: 'webgpu',
     progress_callback: progress => {
       if (progress.status === 'progress') self.postMessage({ type: 'progress', file: progress.file, loaded: progress.loaded, total: progress.total });
     },
@@ -26,10 +27,7 @@ async function load() {
   // The first line generated takes several times longer than the rest (the model warming up); better here, while
   // loading, than on the first thing that happens in the race.
   await speaker.generate('Ready.', { voice: 'af_heart' });
-  const voices = Object.entries(speaker.voices)
-    .filter(([, voice]) => ENGLISH.test(voice.language))
-    .map(([id, voice]) => ({ id, name: voice.name, language: voice.language, gender: voice.gender, grade: voice.overallGrade }));
-  self.postMessage({ type: 'ready', voices });
+  self.postMessage({ type: 'ready' });
 }
 
 async function work() {

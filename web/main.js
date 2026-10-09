@@ -9,7 +9,7 @@ import { createDirector } from './director.js';
 import { createFeed } from './feed.js';
 import { createGhost } from './ghost.js';
 import { createHud } from './hud.js';
-import { createRaceEvents } from './race-events.js';
+import { createRaceEvents, radioLines } from './race-events.js';
 import { createRacerPanel } from './racer.js';
 import { createStage, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
@@ -44,7 +44,7 @@ const feed = createFeed({ onSelect: id => select(id) });
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
 window.addEventListener('resize', () => director.resize(window.innerWidth / window.innerHeight));
-const speech = createSpeech({ onProgress: showVoicesProgress });
+const speech = createSpeech({ onProgress: showVoicesProgress, knownLines: radioLines() });
 const broadcaster = createBroadcaster({ onStatus: text => hud.status(text), speech });
 
 const state = {

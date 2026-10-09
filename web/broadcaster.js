@@ -148,19 +148,29 @@ export function createBroadcaster({ onStatus, speech }) {
     recent.push(line);
     if (recent.length > 12) recent.shift();
     lastSpoke = performance.now();
+    const readingTime = 1500 + line.split(' ').length * 330;
+    speakingUntil = performance.now() + readingTime;
+    if (mode !== 'voice') return showCaption(line, readingTime);
+    // The caption comes up as the voice starts, so the two arrive together (a natural voice takes a moment to
+    // generate the first words). Speech that never starts still gets its caption once it gives up.
+    // A line cut short by a new race (speech.cancel) never gets a caption.
+    let captioned = false;
+    const forRace = race;
+    speakingUntil = performance.now() + readingTime * 3;
+    speech.say(line, 'commentator', { onStart: () => { captioned = true; showCaption(line, readingTime); } }).then(() => {
+      if (race !== forRace) return;
+      if (!captioned) showCaption(line, readingTime);
+      speakingUntil = Math.min(speakingUntil, performance.now());
+    });
+  }
+
+  function showCaption(line, readingTime) {
     caption.innerHTML = `<b>Commentary</b><span></span>`;
     caption.querySelector('span').textContent = line;
     caption.classList.remove('hidden');
     caption.style.animation = 'none';
     void caption.offsetWidth;
     caption.style.animation = '';
-    const readingTime = 1500 + line.split(' ').length * 330;
-    speakingUntil = performance.now() + readingTime;
-    if (mode === 'voice') {
-      // Until it's been said (a natural voice takes a moment to generate it), but never longer than this.
-      speakingUntil = performance.now() + readingTime * 3;
-      speech.say(line, 'commentator').then(() => { speakingUntil = Math.min(speakingUntil, performance.now()); });
-    }
     clearTimeout(captionTimer);
     captionTimer = setTimeout(() => caption.classList.add('hidden'), readingTime + 1200);
   }

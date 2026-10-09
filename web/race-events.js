@@ -55,7 +55,7 @@ export function createRaceEvents() {
       if (raining && !wasRaining) {
         const leader = frame.order[0];
         add({ kind: 'rainStarts', priority: 4, car: leader, wetness: frame.weather.wetness,
-              radio: { car: leader, speaker: 'driver', text: pick(RADIO.rain) } });
+              radio: radio('rain', leader) });
       }
       if (!raining && wasRaining) add({ kind: 'rainStops', priority: 3, car: frame.order[0], wetness: frame.weather.wetness });
     }
@@ -113,19 +113,19 @@ export function createRaceEvents() {
       }
       if (cars.damage[car] > DAMAGE_WORTH_A_CALL && !warned.damage.has(car)) {
         warned.damage.add(car);
-        add({ kind: 'damage', priority: 3, car, radio: { car, speaker: 'driver', text: pick(RADIO.damage) } });
+        add({ kind: 'damage', priority: 3, car, radio: radio('damage', car) });
       }
       if (cars.tyreWear[car] > TYRES_GONE && !warned.tyres.has(car) && cars.finishTime[car] === null) {
         warned.tyres.add(car);
-        add({ kind: 'tyresGone', priority: 2, car, compound: cars.compound[car], radio: { car, speaker: 'driver', text: pick(RADIO.tyres) } });
+        add({ kind: 'tyresGone', priority: 2, car, compound: cars.compound[car], radio: radio('tyres', car) });
       }
       if (cars.fuel[car] < FUEL_CRITICAL && !warned.fuel.has(car) && cars.finishTime[car] === null) {
         warned.fuel.add(car);
-        add({ kind: 'lowFuel', priority: 2, car, radio: { car, speaker: 'engineer', text: pick(RADIO.fuel) } });
+        add({ kind: 'lowFuel', priority: 2, car, radio: radio('fuel', car) });
       }
       // A stop gets called: the pit wall tells the driver.
       if (previous && cars.pit[car] === 1 && previous.cars.pit[car] === 0) {
-        add({ kind: 'pitCall', priority: 2, car, radio: { car, speaker: 'engineer', text: pick(RADIO.box) } });
+        add({ kind: 'pitCall', priority: 2, car, radio: radio('box', car) });
       }
       // Worn tyres and repairs get reset by a stop, so they can be warned about again.
       if (cars.tyreWear[car] < 0.2) warned.tyres.delete(car);
@@ -134,10 +134,10 @@ export function createRaceEvents() {
     }
 
     for (const car of frame.events.punctures ?? []) {
-      add({ kind: 'puncture', priority: 4, car, place: frame.order.indexOf(car) + 1, radio: { car, speaker: 'driver', text: pick(RADIO.puncture) } });
+      add({ kind: 'puncture', priority: 4, car, place: frame.order.indexOf(car) + 1, radio: radio('puncture', car) });
     }
     for (const car of frame.events.engineFailures ?? []) {
-      add({ kind: 'engineFailure', priority: 5, car, place: frame.order.indexOf(car) + 1, radio: { car, speaker: 'driver', text: pick(RADIO.engine) } });
+      add({ kind: 'engineFailure', priority: 5, car, place: frame.order.indexOf(car) + 1, radio: radio('engine', car) });
     }
     for (const car of frame.events.mistakes ?? []) {
       if (time - (lastMistake.get(car) ?? -Infinity) < MISTAKE_REPEAT_SECONDS || !racing(car)) continue;
@@ -165,7 +165,7 @@ export function createRaceEvents() {
     for (const timing of frame.events.timing) {
       if (timing.kind === 'lap' && timing.rating === 'overall' && cars.lap[timing.car] > 1) {
         add({ kind: 'fastestLap', priority: 3, car: timing.car, lapTime: timing.time,
-              radio: { car: timing.car, speaker: 'engineer', text: pick(RADIO.fastest) } });
+              radio: radio('fastest', timing.car) });
       }
     }
 
@@ -177,7 +177,7 @@ export function createRaceEvents() {
       const place = frame.order.indexOf(car) + 1;
       if (place === 1 && !winnerCalled) {
         winnerCalled = true;
-        add({ kind: 'win', priority: 5, car, radio: { car, speaker: 'engineer', text: pick(RADIO.win) } });
+        add({ kind: 'win', priority: 5, car, radio: radio('win', car) });
       } else {
         add({ kind: 'finish', priority: place <= 3 ? 3 : 1, car, place });
       }
@@ -190,17 +190,28 @@ export function createRaceEvents() {
   return { reset, read, gapAhead };
 }
 
+// Team radio, by who says it. Fixed lines with no names in them, so the natural voices can have them ready before
+// they're needed (see speech.js).
 const RADIO = {
-  box: ['Box, box.', 'Box this lap, box this lap.', 'Pit this lap, we are ready for you.', 'Box, box. Confirm.'],
-  tyres: ['These tyres are gone!', 'I have no grip at the rear.', 'The tyres are finished, mate.', 'Rears are dropping off a cliff.'],
-  fuel: ['Fuel is critical, lift and coast.', 'We are very low on fuel. Save it.', 'Fuel target minus, manage it.'],
-  damage: ['I have damage, front wing is broken!', 'Something is wrong with the car.', 'Someone hit me! I have damage.'],
-  fastest: ['Fastest lap, great job.', 'That is purple, fastest lap.', 'Mega lap, fastest of the race.'],
-  win: ['YES! You won it! Get in there!', 'P1! What a drive!', 'Race winner! Brilliant job, brilliant job.'],
-  rain: ['It is raining here. Rain, rain.', 'Spots of rain at the last corner.', 'It is getting slippery, it is raining.'],
-  puncture: ['Puncture! I have a puncture!', 'Tyre is going down, rear tyre!', 'I think I have a puncture, the car is all over the place.'],
-  engine: ['I have lost power! Engine is gone.', 'No power, no power! Stopping the car.', 'Engine failure. I am out.'],
+  box: { speaker: 'engineer', lines: ['Box, box.', 'Box this lap, box this lap.', 'Pit this lap, we are ready for you.', 'Box, box. Confirm.'] },
+  tyres: { speaker: 'driver', lines: ['These tyres are gone!', 'I have no grip at the rear.', 'The tyres are finished, mate.', 'Rears are dropping off a cliff.'] },
+  fuel: { speaker: 'engineer', lines: ['Fuel is critical, lift and coast.', 'We are very low on fuel. Save it.', 'Fuel target minus, manage it.'] },
+  damage: { speaker: 'driver', lines: ['I have damage, front wing is broken!', 'Something is wrong with the car.', 'Someone hit me! I have damage.'] },
+  fastest: { speaker: 'engineer', lines: ['Fastest lap, great job.', 'That is purple, fastest lap.', 'Mega lap, fastest of the race.'] },
+  win: { speaker: 'engineer', lines: ['YES! You won it! Get in there!', 'P1! What a drive!', 'Race winner! Brilliant job, brilliant job.'] },
+  rain: { speaker: 'driver', lines: ['It is raining here. Rain, rain.', 'Spots of rain at the last corner.', 'It is getting slippery, it is raining.'] },
+  puncture: { speaker: 'driver', lines: ['Puncture! I have a puncture!', 'Tyre is going down, rear tyre!', 'I think I have a puncture, the car is all over the place.'] },
+  engine: { speaker: 'driver', lines: ['I have lost power! Engine is gone.', 'No power, no power! Stopping the car.', 'Engine failure. I am out.'] },
 };
+
+function radio(kind, car) {
+  return { car, speaker: RADIO[kind].speaker, text: pick(RADIO[kind].lines) };
+}
+
+// Every radio line there is, with who says it.
+export function radioLines() {
+  return Object.values(RADIO).flatMap(({ speaker, lines }) => lines.map(text => ({ speaker, text })));
+}
 
 export function pick(lines) {
   return lines[Math.floor(Math.random() * lines.length)];

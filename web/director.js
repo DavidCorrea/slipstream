@@ -14,7 +14,7 @@ const STORY_SHOTS = {
   contact: ['helicopter', 'trackside'], offTrack: ['helicopter', 'trackside'], pitStop: ['pitlane'],
   fastestLap: ['onboard', 'chase'], finalLap: ['helicopter'], win: ['finish'], start: ['start'],
   rainStarts: ['onboard', 'chase'], rainStops: ['helicopter'],
-  puncture: ['chase', 'trackside'], engineFailure: ['helicopter', 'trackside'], mistake: ['trackside', 'helicopter'], tow: ['chase', 'onboard'],
+  puncture: ['chase', 'trackside'], engineFailure: ['helicopter', 'trackside'], crash: ['helicopter', 'trackside'], barrier: ['trackside', 'chase'], mistake: ['trackside', 'helicopter'], tow: ['chase', 'onboard'],
 };
 const LABELS = { trackside: '', helicopter: 'Helicopter', chase: '', onboard: 'Onboard', pitlane: 'Pit lane', start: 'Start', finish: 'Finish line' };
 

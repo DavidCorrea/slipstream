@@ -25,6 +25,8 @@ export function createFeed({ onSelect }) {
       case 'finalLap': return ['control', 'Final lap'];
       case 'puncture': return ['control', `${name(car)} has a puncture`];
       case 'engineFailure': return ['control', `${name(car)} retires: engine failure`];
+      case 'crash': return ['control', `${name(car)} retires: crashed`];
+      case 'barrier': return ['control', `${name(car)} hits the barrier`];
       case 'mistake': return ['control', `A mistake from ${name(car)}`];
       case 'tow': return ['control', `${name(car)} in the tow of ${name(other)}`];
       case 'rainStarts': return ['control', 'Rain is falling on the circuit', false];

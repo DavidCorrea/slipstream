@@ -6,14 +6,14 @@ import { LOCATIONS, canvasTexture, trackside } from './scenery.js';
 
 const CURB_CURVATURE = 1 / 85;      // corners tighter than this get curbs
 const GRAVEL_CURVATURE = 1 / 50;    // and tighter than this a gravel trap on the outside
-const TYRE_WALL_CURVATURE = 1 / 38;
+const PIT_WALL_CURVATURE = 1 / 150;   // the pit wall stands only beside the straight (slipstream/scenery.py)
 const CUTAWAY_COSINE = Math.cos(THREE.MathUtils.degToRad(70));   // backdrop within 70° of the camera's side is hidden
 const MOUTH_LENGTH = 20;            // metres over which the pit lane widens out of the track edge
 // Heights of the flat layers, far enough apart that the depth buffer never mixes them up at a distance.
 const LAYER = { verge: 0.03, gravel: 0.06, tarmac: 0.09, surface: 0.1, lines: 0.12, curbs: 0.14, paint: 0.13 };
 
-// `locationName` picks the scenery (see scenery.js).
-export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationName) {
+// `locationName` picks the look and `props` is everything around the track, placed by the sim (see scenery.js).
+export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationName, props) {
   const location = LOCATIONS[locationName];
   if (!location) throw new Error(`Unknown location ${locationName}`);
   const group = new THREE.Group();
@@ -46,33 +46,24 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
   group.add(pits.group);
   const stands = grandstands(points, normals, half, pitLane.side, Math.abs(pitLane.offset) + 22, random);
   group.add(stands.group);
-  if (!location.walled) group.add(tyreWalls(points, normals, curvature, half, clearOfLane));
-  const coarse = points.filter((_, index) => index % 4 === 0).map(([x, y]) => toWorld(x, y));
-  // Scenery keeps clear of the track, and well clear of the pits and grandstands behind them.
-  const reserved = Array.from({ length: 12 }, (_, step) => {
-    const [x, y] = pointAt(track, pitLane.entry + (pitLane.length * step) / 11, pitLane.offset + pitLane.side * 25);
-    return toWorld(x, y);
-  });
-  const awayFromTrack = spot => Math.min(
-    Math.sqrt(Math.min(...coarse.map(point => point.distanceToSquared(spot)))),
-    Math.sqrt(Math.min(...reserved.map(point => point.distanceToSquared(spot)))) - 25,
-  );
-  // Spots along both sides of the track every `spacing` samples, `lateral` metres out, facing across it.
-  const alongTrack = (spacing, lateral) => points.flatMap(([x, y], index) => {
-    if (index % spacing || !clearOfLane(index, 1) || !clearOfLane(index, -1)) return [];
-    const [nx, ny] = normals[index];
-    return [1, -1].map(side => ({ spot: toWorld(x + nx * side * lateral, y + ny * side * lateral), angle: Math.atan2(-ny * side, -nx * side) }));
-  });
-  const scenery = location.scenery({ points, half, centre, radius, random, awayFromTrack, alongTrack });
+  // What breaks registers how to hide itself, so a prop a car breaks disappears.
+  const breakers = new Map();
+  const breakable = (id, hide) => breakers.set(id, [...(breakers.get(id) ?? []), hide]);
+  const scenery = location.scenery({ props, random, breakable });
   group.add(scenery);
   const backdrop = [];
   scenery.traverse(object => { if (object.userData.backdrop) backdrop.push(object); });
-  const details = trackside({ points, normals, curvature, half, random, clearOfLane, location });
+  const details = trackside({ props, walled: !!location.walled, breakable });
   group.add(details.group);
   scene.add(group);
 
   return {
     group, centre, radius, pits, tarmac: tarmac.material, setSurface: surface.show,
+    // A car broke a prop (a board, a sign, a lamp): it's gone for the rest of the race.
+    breakProp(id) {
+      for (const hide of breakers.get(id) ?? []) hide();
+      breakers.delete(id);
+    },
     update(time, wind = 0) {
       stands.update(time);
       gantry.update(time);
@@ -394,33 +385,6 @@ function grandstands(points, normals, half, outside, distance, random) {
   };
 }
 
-function tyreWalls(points, normals, curvature, half, clearOfLane) {
-  const spots = [];
-  for (let index = 0; index < points.length; index += 2) {
-    const bend = curvature[index];
-    if (Math.abs(bend) < TYRE_WALL_CURVATURE) continue;
-    const side = bend > 0 ? -1 : 1;
-    if (!clearOfLane(index, side)) continue;
-    const [x, y] = points[index], [nx, ny] = normals[index];
-    const distance = half + 19;
-    spots.push(toWorld(x + nx * side * distance, y + ny * side * distance));
-  }
-  const geometry = new THREE.TorusGeometry(0.42, 0.2, 6, 12);
-  geometry.rotateX(Math.PI / 2);
-  const walls = new THREE.InstancedMesh(geometry, material('#ffffff', 0.9), spots.length * 3);
-  const matrix = new THREE.Matrix4();
-  const colors = ['#1b1b1b', '#1b1b1b', '#e10600', '#f2f2f2'].map(color => new THREE.Color(color));
-  spots.forEach((spot, index) => {
-    for (let layer = 0; layer < 3; layer++) {
-      matrix.makeTranslation(spot.x, 0.22 + layer * 0.4, spot.z);
-      walls.setMatrixAt(index * 3 + layer, matrix);
-      walls.setColorAt(index * 3 + layer, colors[(index + layer) % colors.length]);
-    }
-  });
-  walls.castShadow = walls.receiveShadow = true;
-  return walls;
-}
-
 function seeded(seed) {
   let state = (seed >>> 0) || 1;
   return () => {
@@ -510,6 +474,9 @@ function pitArea(track, lane, cars) {
   const post = new THREE.MeshStandardMaterial({ color: '#6c7280', roughness: 0.5, metalness: 0.6 });
   for (let along = wallFrom; along < wallTo; along += 6) {
     const length = Math.min(6, wallTo - along), middle = along + length / 2;
+    // Only beside the straight, as the sim has it (scenery.PIT_WALL_CURVATURE): in a corner, run-off parts them.
+    const sample = Math.floor((((lane.entry + middle) % track.length) + track.length) % track.length / (track.length / track.points.length));
+    if (Math.abs(track.curvature[sample % track.points.length]) >= PIT_WALL_CURVATURE) continue;
     const segment = new THREE.Group();
     const wall = new THREE.Mesh(new THREE.BoxGeometry(length, 1.1, 0.5), concrete);
     wall.position.y = 0.55;

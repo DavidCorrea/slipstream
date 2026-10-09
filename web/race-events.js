@@ -19,11 +19,12 @@ const LIGHTS_OUT = 1.9;              // when the start gantry goes green (see ci
 const TOW = 0.6;                     // how deep in another car's slipstream counts as a tow
 const TOW_REPEAT_SECONDS = 40;
 const MISTAKE_REPEAT_SECONDS = 20;
+const BARRIER_HIT = 8;   // m/s of speed lost against a prop that's worth a word, short of putting the car out
 
 export function createRaceEvents() {
   let race = null, previous = null;
   let started = false, finalLapCalled = false, winnerCalled = false;
-  const lastPass = new Map(), lastBattle = new Map(), lastOffTrack = new Map(), offSince = new Map(), lastTow = new Map(), lastMistake = new Map();
+  const lastPass = new Map(), lastBattle = new Map(), lastOffTrack = new Map(), offSince = new Map(), lastTow = new Map(), lastMistake = new Map(), lastBarrier = new Map();
   const warned = { tyres: new Set(), fuel: new Set(), damage: new Set() };
 
   function reset(intro) {
@@ -139,6 +140,17 @@ export function createRaceEvents() {
     for (const car of frame.events.engineFailures ?? []) {
       add({ kind: 'engineFailure', priority: 5, car, place: frame.order.indexOf(car) + 1, radio: radio('engine', car) });
     }
+    // Props: a car out of the race against something, or a big hit it drives away from.
+    const crashed = new Set(frame.events.crashed ?? []);
+    for (const car of crashed) {
+      add({ kind: 'crash', priority: 5, car, place: frame.order.indexOf(car) + 1, radio: radio('crash', car) });
+    }
+    for (const hit of frame.events.propHits ?? []) {
+      if (hit.broke || hit.impulse < BARRIER_HIT || crashed.has(hit.car)) continue;
+      if (time - (lastBarrier.get(hit.car) ?? -Infinity) < MISTAKE_REPEAT_SECONDS) continue;
+      lastBarrier.set(hit.car, time);
+      add({ kind: 'barrier', priority: 3, car: hit.car, place: frame.order.indexOf(hit.car) + 1, radio: radio('barrier', hit.car) });
+    }
     for (const car of frame.events.mistakes ?? []) {
       if (time - (lastMistake.get(car) ?? -Infinity) < MISTAKE_REPEAT_SECONDS || !racing(car)) continue;
       lastMistake.set(car, time);
@@ -202,6 +214,8 @@ const RADIO = {
   rain: { speaker: 'driver', lines: ['It is raining here. Rain, rain.', 'Spots of rain at the last corner.', 'It is getting slippery, it is raining.'] },
   puncture: { speaker: 'driver', lines: ['Puncture! I have a puncture!', 'Tyre is going down, rear tyre!', 'I think I have a puncture, the car is all over the place.'] },
   engine: { speaker: 'driver', lines: ['I have lost power! Engine is gone.', 'No power, no power! Stopping the car.', 'Engine failure. I am out.'] },
+  crash: { speaker: 'driver', lines: ['I am in the wall. Sorry guys.', 'I crashed, the car is finished.', 'I am out, I hit the barrier.'] },
+  barrier: { speaker: 'driver', lines: ['I hit the wall! Check the car.', 'Touched the barrier, I think it is okay.', 'Big hit, big hit! Still going.'] },
 };
 
 function radio(kind, car) {

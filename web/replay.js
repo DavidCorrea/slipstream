@@ -1,8 +1,9 @@
 // Action replays. The viewer keeps the last few seconds of frames; when a serious crash happens it lets the race
 // run on a moment for the aftermath, then plays the crash again in slow motion, close on the cars involved.
 //
-// Serious means a hit far harder than the rubbing of a fight (HARD_HIT, about the top 0.5% of contacts) or a car
-// losing a big piece of itself at once (DAMAGE_JUMP of wing, suspension or body damage within a second). With at
+// Serious means a hit far harder than the rubbing of a fight (HARD_HIT, about the top 0.5% of contacts), against
+// another car or a prop, a car losing a big piece of itself at once (DAMAGE_JUMP of wing, suspension or body damage
+// within a second), or a car crashing out. With at
 // most one replay every COOLDOWN_SECONDS of racing, that's one or two an 8-lap race, and nine races in ten have
 // one (measured over ten races with driver-rivals; a harder bar left four in ten without).
 const KEEP_SECONDS = 15;
@@ -25,10 +26,13 @@ export function createReplay() {
   const worstDamage = frame => frame.cars.x.map((_, car) => Math.max(...DAMAGE_KEYS.map(key => frame.cars[key]?.[car] ?? 0)));
 
   function seriousCrash(frame) {
-    const hardest = frame.events.contacts.reduce((best, contact) => (contact[2] > best[2] ? contact : best), [0, 0, 0]);
+    // Hits between cars, and against props (a wall, a building, a tree: anything solid), count alike.
+    const hits = [...frame.events.contacts, ...(frame.events.propHits ?? []).filter(hit => !hit.broke).map(hit => [hit.x, hit.y, hit.impulse])];
+    const hardest = hits.reduce((best, contact) => (contact[2] > best[2] ? contact : best), [0, 0, 0]);
     const earlier = frames.find(old => old.time >= frame.time - DAMAGE_WINDOW_SECONDS);
     const before = earlier ? worstDamage(earlier) : null, now = worstDamage(frame);
-    const broken = before ? now.map((value, car) => value - before[car] >= DAMAGE_JUMP) : now.map(() => false);
+    const out = new Set(frame.events.crashed ?? []);
+    const broken = now.map((value, car) => out.has(car) || (before !== null && value - before[car] >= DAMAGE_JUMP));
     if (hardest[2] < HARD_HIT && !broken.includes(true)) return null;
     // The cars to watch: those that broke, else the two nearest the hardest hit.
     const involved = broken.flatMap((isBroken, car) => (isBroken ? [car] : []));

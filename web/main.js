@@ -15,7 +15,7 @@ import { createRacerPanel } from './racer.js';
 import { createStage, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
 import { createSpeech } from './speech.js';
-import { LOCATIONS, locationFor } from './scenery.js';
+import { LOCATIONS } from './scenery.js';
 import { createWeather } from './weather.js';
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -36,6 +36,8 @@ const racer = createRacerPanel({
   onRename: id => hud.rename(id),
 });
 const raycaster = new THREE.Raycaster();
+// What a broken prop scatters, by kind; anything else breaks into pale bits.
+const PROP_COLORS = { bale: '#d9b45a', cactus: '#4d7a3a', lamp: '#4a4e57', board: '#f4f4f0', marker: '#ffffff' };
 const replays = createReplay();
 const REPLAY_ZOOM = 18;          // metres of half-height: close on the crash
 const REPLAY_ORBIT = 0.22;       // radians a second the replay camera swings round
@@ -101,6 +103,7 @@ function send(message) {
 function startRace(sameCircuit = false) {
   send({
     type: 'start', brain: $('brain').value || 'scripted', pitwall: $('pitwall').value || 'driver', weather: $('weather').value,
+    location: $('location').value,
     cars: Number($('cars').value), laps: Number($('laps').value),
     seed: sameCircuit && state.race ? state.race.seed : undefined,
   });
@@ -123,10 +126,10 @@ function setUpRace(intro) {
   state.crews?.dispose();
   state.cars.forEach(car => stage.scene.remove(car));
   state.race = intro;
-  const chosen = $('location').value;
-  const locationName = chosen === 'random' ? locationFor(intro.seed) : chosen;
+  // The sim decides the location (yours, or the circuit's) and everything standing in it.
+  const locationName = intro.location;
   state.location = LOCATIONS[locationName];
-  state.circuit = buildCircuit(stage.scene, intro.track, intro.grid, intro.seed, intro.pitLane, intro.cars, locationName);
+  state.circuit = buildCircuit(stage.scene, intro.track, intro.grid, intro.seed, intro.pitLane, intro.cars, locationName, intro.props);
   stage.setLocation(state.location);
   weather.setLocation(state.location);
   state.crews = createCrews(stage.scene, state.circuit.pits.boxes, intro.cars);
@@ -207,6 +210,18 @@ function receiveFrame(frame) {
   state.arrived = performance.now();
 
   for (const [x, y, impulse] of frame.events.contacts) state.effects.contact(toWorld(x, y), impulse);
+  // Props hit: sparks off the solid ones; a breakable one goes, in pieces.
+  for (const hit of frame.events.propHits ?? []) {
+    const point = toWorld(hit.x, hit.y);
+    if (!hit.broke) {
+      state.effects.contact(point, hit.impulse);
+      continue;
+    }
+    state.circuit.breakProp(hit.prop);
+    const heading = frame.cars.heading[hit.car], speed = frame.cars.speed[hit.car];
+    const velocity = new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading)).multiplyScalar(speed);
+    state.effects.shed(point, velocity, PROP_COLORS[state.race.props[hit.prop].kind] ?? '#d9d4c7', 5, 0.4);
+  }
   // Debris is the race's own (punctures come from it): each new piece flies from the hardest hit to where it landed,
   // in the colours of the cars involved, and disappears when a car runs over it.
   if (frame.events.debris.length) {

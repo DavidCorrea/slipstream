@@ -57,6 +57,8 @@ const TEMPLATES = {
   rainStarts: ['And here comes the rain! This changes everything.', 'Rain is falling! Who gambles on intermediates first?', 'The heavens open, it is raining on the circuit!'],
   rainStops: ['The rain has stopped. How quickly will this track dry?', 'No more rain, and the clock starts on a drying track.'],
   puncture: ['Oh, a puncture for {car}! That tyre is shredding.', 'Disaster for {car}, a puncture, and a long way back to the pits.', '{car} has picked up a puncture from the debris!'],
+  crash: ['Oh no, {car} is in the wall! That is the end of the race.', 'Big crash for {car}, and that car is not going any further.', '{car} hits the barrier and is out!'],
+  barrier: ['{car} clips the barrier, that was close!', 'A brush with the wall for {car}!', '{car} into the barrier, but still going!'],
   engineFailure: ['Smoke! {car} has a failure, the engine has gone!', 'And that is the end of the race for {car}, engine failure.', 'Heartbreak for {car}, the engine lets go.'],
   mistake: ['A big moment for {car}, a mistake there!', '{car} gets it wrong, that will cost time.', 'Oh, a lock-up from {car}!'],
   tow: ['{car} is right in the slipstream of {other}, getting a big tow.', 'Look at the tow {car} is getting from {other}!', '{car} uses the slipstream, closing on {other}.'],
@@ -264,6 +266,8 @@ function narrate(moment, facts) {
     case 'finalLap': return `The final lap has started. ${facts.car} leads ${facts.other}.`;
     case 'puncture': return `${facts.car} has just picked up a puncture and is in P${facts.place}.`;
     case 'engineFailure': return `${facts.car}'s engine has just failed and ${facts.car} is out of the race.`;
+    case 'crash': return `${facts.car} has crashed into a barrier and is out of the race.`;
+    case 'barrier': return `${facts.car} has hit a barrier but is still going.`;
     case 'mistake': return `${facts.car} has just made a driving mistake in P${facts.place}.`;
     case 'tow': return `${facts.car} is in the slipstream of ${facts.other}, gaining on the straight.`;
     case 'rainStarts': return 'It has just started raining on the circuit, and the cars are on the tyres they started with.';

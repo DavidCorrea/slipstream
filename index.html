@@ -11,7 +11,8 @@
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
   </script>
 </head>
-<body>
+<!-- Loading from the first paint, so nothing behind it shows before the page knows what it's running on. -->
+<body class="loading">
   <canvas id="scene"></canvas>
 
   <!-- Timing tower -->
@@ -218,7 +219,7 @@
   </section>
 
   <!-- Loading, on the published site: the race runs in the browser, which first downloads what it needs -->
-  <section id="loading" class="hidden">
+  <section id="loading">
     <div class="loading-panel">
       <span class="wordmark">Slipstream</span>
       <h1 id="loading-step">Getting the race ready</h1>

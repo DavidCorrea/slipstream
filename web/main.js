@@ -531,6 +531,8 @@ setCommentary(broadcaster.mode);
 if (broadcaster.wantsModel()) $('load-commentator').click();
 serverBrains().then(brains => {
   if (!brains) return startWorker();
+  // The local server is quick to start a race: no downloads to wait for.
+  loading.hide();
   showBrains(brains);
   connect();
   setInterval(() => serverBrains().then(listed => listed && showBrains(listed)), 30000);

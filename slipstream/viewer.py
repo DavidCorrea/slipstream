@@ -25,7 +25,7 @@ class Viewer:
         self.runs = runs
         self.session = None
         # `weather` is a forecast name, or 'random' to let each circuit's seed decide.
-        self.settings = {'brain': SCRIPTED, 'pitwall': DRIVER_DECIDES, 'cars': 6, 'laps': 8, 'weather': 'random'}
+        self.settings = {'brain': SCRIPTED, 'pitwall': DRIVER_DECIDES, 'cars': 6, 'laps': 8, 'weather': 'random', 'location': 'random'}
         # Like a championship, your driver, every driver you've edited and the names you've given them carry over
         # from race to race (by each driver's key, since the grid is drawn afresh each time).
         self.yours = None
@@ -39,11 +39,13 @@ class Viewer:
         # A new race waits on the grid, so you can pick your car and set it up, until you send 'go'.
         self.on_grid = False
 
-    async def start(self, brain=None, seed=None, cars=None, laps=None, pitwall=None, weather=None):
+    async def start(self, brain=None, seed=None, cars=None, laps=None, pitwall=None, weather=None, location=None):
         if brain is not None:
             self.settings['brain'] = str(brain)
         if weather is not None:
             self.settings['weather'] = str(weather)
+        if location is not None:
+            self.settings['location'] = str(location)
         if pitwall is not None:
             self.settings['pitwall'] = str(pitwall)
         for key, value in (('cars', cars), ('laps', laps)):
@@ -54,7 +56,8 @@ class Viewer:
             self.session = RaceSession(self.settings['brain'], seed=None if seed is None else int(seed),
                                        cars=self.settings['cars'], laps=self.settings['laps'], runs=self.runs,
                                        yours=self.yours, edited=self.edited, names=self.names, pitwall_id=self.settings['pitwall'],
-                                       forecast=None if self.settings['weather'] == 'random' else self.settings['weather'])
+                                       forecast=None if self.settings['weather'] == 'random' else self.settings['weather'],
+                                       location=None if self.settings['location'] == 'random' else self.settings['location'])
             if self.pit:
                 self.session.set_pit(self.pit['strategy'], self.pit['plan'])
         except ValueError as error:
@@ -76,7 +79,7 @@ class Viewer:
         kind = message.get('type')
         if kind == 'start':
             await self.start(message.get('brain'), message.get('seed'), message.get('cars'), message.get('laps'), message.get('pitwall'),
-                             message.get('weather'))
+                             message.get('weather'), message.get('location'))
         elif kind == 'go':
             self.on_grid = False
         elif kind == 'speed' and message.get('value') in SPEEDS:

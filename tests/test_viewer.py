@@ -101,3 +101,19 @@ class TestRaceSizes:
             await viewer.handle({'type': 'start', 'cars': 50, 'laps': 500})
         viewer = run(huge)
         assert viewer.session.race.count == 20 and viewer.session.race.laps == 70
+
+
+class TestLocations:
+    def test_races_where_the_tab_asked_and_keeps_it_for_the_next_race(self):
+        async def city(viewer):
+            await viewer.handle({'type': 'start', 'cars': 2, 'laps': 1, 'location': 'city'})
+            await viewer.handle({'type': 'start'})
+        viewer = run(city)
+        assert viewer.session.location == 'city'
+
+    def test_leaves_it_to_the_circuit_when_asked_to(self):
+        from slipstream.scenery import location_for
+        async def any_place(viewer):
+            await viewer.handle({'type': 'start', 'cars': 2, 'laps': 1, 'location': 'random', 'seed': 9})
+        viewer = run(any_place)
+        assert viewer.session.location == location_for(9)

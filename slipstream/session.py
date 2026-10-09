@@ -22,6 +22,7 @@ from .field import field_controls, makes_pit_calls
 from .strategy import scripted_strategy
 from .observe import OBSERVATION_NAMES
 from .race import Race
+from .scenery import location_for, place
 from .brains import NetworkDriver, load_network
 from .human import Driving
 from .surface import CELL_LENGTH
@@ -93,17 +94,20 @@ def spec_value(name, slider):
 
 class RaceSession:
     def __init__(self, brain_id=SCRIPTED, seed=None, cars=6, laps=3, runs=RUNS, yours=None, edited=None, names=None, pitwall_id=DRIVER_DECIDES,
-                 forecast=None):
+                 forecast=None, location=None):
         """`yours` is the key of the driver you race with (the cast's first when not given; they always make the
         field). `edited` maps driver keys to the stats you gave them, which they keep exactly; everyone else turns
-        up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them. `forecast` picks the weather (see weather.FORECASTS);
-        without one, the seed decides."""
+        up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them. `forecast` picks the weather (see weather.FORECASTS)
+        and `location` the scenery and everything in it the cars can hit (see scenery.LOCATIONS); without them, the
+        seed decides."""
         self.brain_id, self.pitwall_id = brain_id, pitwall_id
         self.policy = None if brain_id == SCRIPTED else load_policy(brain_path(brain_id, runs))
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
         self.seed = int(np.random.default_rng().integers(2 ** 31)) if seed is None else seed
         track = generate_track(self.seed)
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast))
+        self.location = location_for(self.seed) if location is None else location
+        self.race.place_props(place(track, self.race.pit, self.seed, self.location))
         self.timing = Timing(self.race.track.length, cars)
         self.driver = NetworkDriver(self.policy, cars) if self.policy is not None else None
         # Drivers trained with human hands and feet (see human.py) race with them here too.
@@ -199,7 +203,9 @@ class RaceSession:
     def intro(self):
         track = self.race.track
         return {
-            'type': 'race', 'seed': self.seed, 'brain': self.brain_id, 'pitwall': self.pitwall_id, 'laps': self.race.laps, 'dt': DT,
+            'type': 'race', 'seed': self.seed, 'location': self.location,
+            'props': [prop.describe(number) for number, prop in enumerate(self.race.props.props)],
+            'brain': self.brain_id, 'pitwall': self.pitwall_id, 'laps': self.race.laps, 'dt': DT,
             'track': {
                 'points': np.round(track.points, 2).tolist(), 'normals': np.round(track.normals, 4).tolist(),
                 'curvature': np.round(track.curvature, 5).tolist(), 'width': track.width, 'length': track.length,
@@ -226,7 +232,8 @@ class RaceSession:
         """Plays up to `ticks` physics ticks and returns a frame describing where everything is now."""
         race = self.race
         happened = {'contacts': [], 'laps': [], 'finished': [], 'pitEntered': [], 'pitStopped': [], 'pitReleased': [], 'pitExited': [],
-                    'punctures': [], 'engineFailures': [], 'mistakes': [], 'debris': [], 'timing': [], 'fastestLap': None}
+                    'punctures': [], 'engineFailures': [], 'mistakes': [], 'debris': [], 'timing': [], 'fastestLap': None,
+                    'propHits': [], 'crashed': []}
         for _ in range(ticks):
             if race.done:
                 break
@@ -241,8 +248,10 @@ class RaceSession:
             happened['debris'] += np.round(race.new_debris, 2).tolist()
             for key, values in (('laps', events.laps), ('finished', events.finished), ('pitEntered', events.pit_entered),
                                 ('pitReleased', events.pit_released), ('pitExited', events.pit_exited), ('punctures', events.punctures),
-                                ('engineFailures', events.engine_failures), ('mistakes', events.mistakes)):
+                                ('engineFailures', events.engine_failures), ('mistakes', events.mistakes), ('crashed', events.crashed)):
                 happened[key] += [int(car) for car in values]
+            happened['propHits'] += [{'car': hit.car, 'prop': hit.prop, 'impulse': round(hit.impulse, 2), 'broke': hit.broke,
+                                      'x': round(float(hit.point[0]), 2), 'y': round(float(hit.point[1]), 2)} for hit in events.prop_hits]
             for car, jobs, standing in events.pit_stopped:
                 plan = race.service_jobs[car]['plan']
                 happened['pitStopped'].append({

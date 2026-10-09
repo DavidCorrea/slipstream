@@ -13,8 +13,10 @@ from . import pit
 from .aero import air_between
 from .car import DAMAGE, DT, ENGINE_TEMPERATURE, CarSpecs, CarState, Conditions, step_cars, suited_compound
 from .human import Driving
+from .obstacles import Obstacles
 from .surface import Surface
 from .pit import PitLane, PitPlan
+from .scenery import SOFT
 from .track import Track
 from .weather import Weather
 
@@ -36,6 +38,22 @@ PART_HARM = 1.5
 DEBRIS = {'impulse': 3.5, 'per_impulse': 0.5, 'most': 6, 'spread': 3.0, 'reach': 1.1, 'puncture': 0.03}
 # A hot engine can fail: the chance per second grows from nothing at `from` to `rate` at the hottest.
 ENGINE_FAILURE = {'from': 0.85, 'rate': 0.002}
+# Hitting props (see scenery.py, obstacles.py). A solid one bounces a car off with RESTITUTION and takes some of its
+# speed along it too, more the harder the hit (`scrape` of it per m/s of impulse, at most `scrape_most`): rubbing
+# along a wall costs a little, a real impact a lot. A soft one (a tyre wall) gives more and harms less; a breakable
+# one breaks, taking a share of the car's speed and a light knock. At first the speed along went at a flat 10% a
+# tick of contact, and a 20-car field rubbing along the armco and pit wall lost whole laps. A hit harder than CRASH_OUT (about 100 km/h head on) ends the race,
+# and so does getting less than STUCK_METRES further in STUCK_SECONDS, there being no reverse gear: a car creeping
+# along a wall on the grass at walking pace got a metre further every few seconds and stayed in the race for ever.
+PROPS = {'scrape': 0.015, 'scrape_most': 0.5, 'soft_restitution': 0.05, 'soft_absorbs': 0.03, 'soft_harm': 0.35,
+         'breaks_speed': 0.15, 'breaks_knock': 0.2}
+CRASH_OUT = 35.0
+STUCK_SECONDS = 20.0
+STUCK_METRES = 25.0
+# A car up against something at walking pace backs off it and swings its nose round to the way the track goes, as a
+# driver would in reverse: cars have no reverse gear and can't steer standing still, and one nosed into the pit
+# wall otherwise pushed against it until it retired, with the cars behind piling up on it.
+RECOVERY = {'below': 3.0, 'turn': 0.9, 'back': 1.2}   # m/s; radians a second; m/s off the prop
 PRESSURE_GAP = 20.0        # metres to the car ahead or behind at which a driver starts to feel the pressure
 
 
@@ -48,8 +66,19 @@ class Contact:
 
 
 @dataclass
+class PropHit:
+    car: int
+    prop: int
+    impulse: float          # m/s of speed taken out, as for a contact between cars
+    point: np.ndarray       # where it hit
+    broke: bool             # a breakable prop the car went through
+
+
+@dataclass
 class TickEvents:
     contacts: list = field(default_factory=list)
+    prop_hits: list = field(default_factory=list)  # PropHits this tick
+    crashed: list = field(default_factory=list)    # cars out of the race from a big hit, or stuck where they hit
     laps: list = field(default_factory=list)       # car indices that crossed the line this tick
     finished: list = field(default_factory=list)   # car indices that took the flag this tick
     pit_entered: list = field(default_factory=list)
@@ -91,7 +120,8 @@ class Race:
         self.progress = -behind.astype(float)
         self.tick = 0
         self.finish_time = np.full(count, np.nan)
-        self.retired = np.zeros(count, dtype=bool)   # out of the race without finishing (an engine failure)
+        self.retired = np.zeros(count, dtype=bool)   # out of the race without finishing (an engine failure, a crash)
+        self.props = None                             # what stands around the track, once placed (place_props)
         # Running totals per car, for summaries: ticks spent off the tarmac and ticks spent touching another car.
         self.off_track_ticks = np.zeros(count, dtype=int)
         self.contact_ticks = np.zeros(count, dtype=int)
@@ -209,6 +239,8 @@ class Race:
         self.new_debris = np.zeros((0, 2))
         for contact in events.contacts:
             self._harm(contact)
+        if self.props is not None:
+            self._hit_props(events)
         self._run_over_debris(events)
         self._fail_engines(events)
         self._drive_pit_lane(plan or PitPlan.standard(self.count), events)
@@ -223,6 +255,8 @@ class Race:
         self.surface.update(self.progress % self.track.length, self.lateral, self.on_track & ~self.in_lane, shed, self.weather.rain, DT)
         self.tick += 1
         self.off_track_ticks += ~self.on_track
+        if self.props is not None:
+            self._retire_stuck(events)
 
         crossed = (self.lap_of() > laps_before) & ~self.finished
         events.laps = list(np.flatnonzero(crossed))
@@ -230,6 +264,80 @@ class Race:
         self.finish_time[finishing] = self.time
         events.finished = list(np.flatnonzero(finishing))
         return events
+
+    def place_props(self, props):
+        """Puts the circuit's props (scenery.place) where the cars can hit them. Races without them, like training's,
+        have nothing to hit beyond the grass."""
+        self.props = Obstacles(props)
+        self.furthest = self.progress.copy()
+        self.gained_at = np.zeros(self.count)
+
+    def _hit_props(self, events):
+        props, cars = self.props, self.cars
+        # Props all stand off the tarmac, so a car well inside its edges can't be touching one.
+        close = np.flatnonzero(~self.in_lane & (np.abs(self.lateral) > self.track.width / 2 - FOOTPRINT_REACH - 1.0))
+        for car in close:
+            centre = cars.position[car] + cars.forward[car] * FOOTPRINT_OFFSET
+            for prop, away, depth, point in props.touching(centre, cars.forward[car], cars.left[car], FOOTPRINT_HALF_LENGTH, FOOTPRINT_HALF_WIDTH):
+                closing = float(np.dot(cars.velocity[car], away))
+                if props.breaks(prop):
+                    props.broken[prop] = True
+                    impulse = abs(min(closing, 0.0)) * PROPS['breaks_knock']
+                    cars.velocity[car] *= 1 - PROPS['breaks_speed']
+                    events.prop_hits.append(PropHit(int(car), int(prop), impulse, point, True))
+                    self._harm_by_prop(car, impulse, point)
+                    continue
+                soft = props.hardness[prop] == SOFT
+                cars.position[car] += away * depth
+                impulse = 0.0
+                if closing < 0:
+                    impulse = -(1 + (PROPS['soft_restitution'] if soft else RESTITUTION)) * closing
+                    sliding = cars.velocity[car] - away * closing
+                    kept = 1 - min(PROPS['scrape_most'], impulse * (PROPS['soft_absorbs'] if soft else PROPS['scrape']))
+                    cars.velocity[car] = sliding * kept + away * (impulse + closing)
+                events.prop_hits.append(PropHit(int(car), int(prop), impulse, point, False))
+                self._harm_by_prop(car, impulse * (PROPS['soft_harm'] if soft else 1.0), point)
+                if np.linalg.norm(cars.velocity[car]) < RECOVERY['below']:
+                    self._back_off(car, away)
+                if impulse >= CRASH_OUT and not self.retired[car]:
+                    self.retired[car] = True
+                    events.crashed.append(int(car))
+
+    def _back_off(self, car, away):
+        cars = self.cars
+        tangent = self.track.tangents[self.track_index[car]]
+        turn = np.arctan2(tangent[1], tangent[0]) - cars.heading[car]
+        turn = np.arctan2(np.sin(turn), np.cos(turn))
+        cars.heading[car] += np.clip(turn, -RECOVERY['turn'] * DT, RECOVERY['turn'] * DT)
+        cars.position[car] += away * RECOVERY['back'] * DT
+
+    def _harm_by_prop(self, car, impulse, point):
+        """Damage from a prop, as from another car: general damage, and to the part of the car that hit."""
+        cars = self.cars
+        self.contact_ticks[car] += 1
+        harm = DAMAGE['per_impulse'] * max(impulse - DAMAGE['gentle'], 0.0)
+        cars.damage[car] = min(1.0, cars.damage[car] + harm)
+        towards = np.asarray(point) - cars.position[car]
+        towards /= max(np.linalg.norm(towards), 1e-6)
+        if np.dot(towards, cars.forward[car]) > 0.7:
+            cars.wing_damage[car] = min(1.0, cars.wing_damage[car] + PART_HARM * harm)
+        elif abs(np.dot(towards, cars.left[car])) > 0.7:
+            cars.suspension_damage[car] = min(1.0, cars.suspension_damage[car] + PART_HARM * harm)
+        if impulse >= DEBRIS['impulse']:
+            pieces = int(min(DEBRIS['most'], np.ceil(impulse * DEBRIS['per_impulse'])))
+            landed = np.asarray(point) + self.rng.normal(0, DEBRIS['spread'], (pieces, 2))
+            self.debris = np.concatenate([self.debris, landed])
+            self.new_debris = np.concatenate([self.new_debris, landed])
+
+    def _retire_stuck(self, events):
+        """A car that hasn't got STUCK_METRES further in STUCK_SECONDS is out: stuck against, or beached by,
+        something it hit."""
+        gaining = self.progress > self.furthest + STUCK_METRES
+        self.furthest = np.where(gaining, self.progress, self.furthest)
+        self.gained_at = np.where(gaining | self.in_lane, self.time, self.gained_at)
+        stuck = ~self.finished & ~self.retired & (self.time - self.gained_at > STUCK_SECONDS)
+        self.retired |= stuck
+        events.crashed += [int(car) for car in np.flatnonzero(stuck)]
 
     def _harm(self, contact):
         """Damage from one contact: general damage to both cars, and to whichever part of each car was hit.

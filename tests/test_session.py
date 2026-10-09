@@ -275,3 +275,34 @@ class TestAFullGrid:
         session = RaceSession(SCRIPTED, seed=5, cars=20, laps=1)
         cars = session.intro()['cars']
         assert len({car['name'] for car in cars}) == len({car['color'] for car in cars}) == len({car['number'] for car in cars}) == 20
+
+
+class TestTheScenery:
+    def test_describes_every_prop_for_the_viewer_to_draw(self):
+        intro = RaceSession(SCRIPTED, seed=5, cars=3, laps=1, location='desert').intro()
+        assert intro['location'] == 'desert'
+        kinds = {prop['kind'] for prop in intro['props']}
+        assert {'rock', 'cactus', 'mesa', 'board', 'grandstand', 'garage'} <= kinds
+        assert [prop['id'] for prop in intro['props']] == list(range(len(intro['props'])))
+        json.dumps(intro)
+
+    def test_picks_a_location_from_the_circuit_when_none_is_chosen(self):
+        from slipstream.scenery import location_for
+        assert RaceSession(SCRIPTED, seed=7, cars=2, laps=1).intro()['location'] == location_for(7)
+
+    def test_refuses_a_location_that_doesnt_exist(self):
+        with pytest.raises(ValueError, match='Unknown location'):
+            RaceSession(SCRIPTED, seed=7, cars=2, laps=1, location='moon')
+
+    def test_reports_props_hit_and_broken_in_the_frame(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=2, laps=1, location='countryside')
+        race = session.race
+        board = next(index for index, prop in enumerate(race.props.props) if prop.kind == 'board')
+        # Put car 0 right on top of the board, moving: it goes through it.
+        race.cars.position[0] = race.props.centre[board]
+        race.cars.velocity[0] = race.cars.forward[0] * 20
+        race.lateral[0] = race.track.width
+        frame = session.advance(2)
+        hits = frame['events']['propHits']
+        assert any(hit['prop'] == board and hit['broke'] and hit['car'] == 0 for hit in hits)
+        json.dumps(frame)

@@ -11,10 +11,12 @@
     "slipstream/human.py",
     "slipstream/numpy_network.py",
     "slipstream/observe.py",
+    "slipstream/obstacles.py",
     "slipstream/personality.py",
     "slipstream/pit.py",
     "slipstream/pitwall.py",
     "slipstream/race.py",
+    "slipstream/scenery.py",
     "slipstream/senses.py",
     "slipstream/session.py",
     "slipstream/strategy.py",
@@ -30,5 +32,5 @@
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
     "brains/pitwall-feel/driver.json"
   ],
-  "bytes": 1705298
+  "bytes": 1737436
 }

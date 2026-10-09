@@ -27,7 +27,7 @@ from .car import COMPOUNDS, FUEL_CAPACITY, TYRE_BLANKETS
 from .track import SPACING
 
 ENTRY_BEFORE = 160.0    # metres before the line where the lane leaves the track
-EXIT_AFTER = 120.0      # metres after the line where it rejoins
+EXIT_AFTER = 120.0      # metres after the line where it rejoins, at least: a bigger field's boxes take it further
 RAMP = 45.0             # metres the lane takes to move off the track and back on
 LANE_OFFSET = 9.0       # lane centre, metres beyond the track edge
 ENTRY_REACH = 15.0      # metres beyond the track edge a car can still turn into the lane from
@@ -105,7 +105,10 @@ class PitLane:
 
     def __init__(self, track, count):
         self.track = track
-        self.length = ENTRY_BEFORE + EXIT_AFTER
+        self.boxes = ENTRY_BEFORE + FIRST_BOX + np.arange(count) * BOX_SPACING
+        # The lane runs on past the last box far enough to pull out of it and ramp back onto the track. Twenty cars'
+        # boxes reach well beyond EXIT_AFTER, and a box past the lane's end had its car leave the moment it stopped.
+        self.length = max(ENTRY_BEFORE + EXIT_AFTER, self.boxes[-1] + PULL_OUT + RAMP)
         self.entry = track.length - ENTRY_BEFORE
         # The lane goes on the outside of the start straight: the side facing away from the middle of the circuit.
         middle = track.points.mean(axis=0)
@@ -114,7 +117,6 @@ class PitLane:
         self.offset = self.side * (track.width / 2 + LANE_OFFSET)
         self.fast_lane = self.offset - self.side * LANES_APART / 2
         self.working_lane = self.offset + self.side * LANES_APART / 2
-        self.boxes = ENTRY_BEFORE + FIRST_BOX + np.arange(count) * BOX_SPACING
 
     def lateral(self, along, start, shift=0.0):
         """Offset from the centre line `along` metres into the lane, for a car that came in at lateral `start` and is

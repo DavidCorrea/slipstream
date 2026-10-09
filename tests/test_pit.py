@@ -212,3 +212,27 @@ class TestTheLaneLikeARealOne:
             if held_until is None and race.lane_along[0] > lane.boxes[0] + 0.5:
                 held_until = race.lane_along[1]
         assert held_until is not None and held_until > lane.boxes[0] + 5.0
+
+
+class TestAFullField:
+    def test_every_box_fits_in_the_lane_with_room_to_pull_out_and_rejoin(self):
+        from slipstream.pit import PULL_OUT, RAMP, PitLane
+        track = generate_track(7)
+        for count in (2, 8, 14, 20):
+            lane = PitLane(track, count)
+            assert lane.boxes[-1] + PULL_OUT <= lane.length - RAMP
+
+    def test_reports_a_stop_in_the_last_box_of_a_twenty_car_field(self):
+        race = Race(generate_track(7), CarSpecs.uniform(20), laps=3)
+        last = 19
+        race.progress[last] = race.pit.entry - 5.0
+        stopped = []
+        calls = np.zeros(20, dtype=bool)
+        calls[last] = True
+        for _ in range(2000):
+            events = race.step(np.zeros(20), np.full(20, 0.4), np.zeros(20), calls, PitPlan.standard(20))
+            stopped += [car for car, _, _ in events.pit_stopped]
+            if stopped:
+                assert race.service_jobs[last] is not None
+                break
+        assert stopped == [last]

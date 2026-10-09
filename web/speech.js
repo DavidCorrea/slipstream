@@ -24,6 +24,7 @@ const RADIO = { low: 320, high: 3200, drive: 18, click: 0.04 };
 const SAFETY_SECONDS = { base: 3, perWord: 0.6 };   // a browser voice that never says it finished is given up on
 const PIECE_WORDS = 3;   // pieces shorter than this join the next one: a lone word sounds clipped
 const GAP_SECONDS = 0.02;
+const GENERATE_LIMIT_MS = 12000;   // a piece taking longer than this is given up on, so the lines behind it go on
 
 export function createSpeech({ onProgress, knownLines = [] }) {
   // role -> chosen voice: a browser voiceURI, or NATURAL + a Kokoro voice; a role missing from it gets the automatic one.
@@ -161,6 +162,8 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     audioContext();
     natural.worker = new Worker(new URL('./voice-worker.js', import.meta.url), { type: 'module' });
     natural.worker.addEventListener('message', ({ data }) => receive(data));
+    // A worker that dies (out of memory, say) sends no message about it.
+    natural.worker.addEventListener('error', event => receive({ type: 'failed', message: event.message || 'the voice worker stopped' }));
     natural.worker.postMessage({ type: 'load' });
     onProgress({ state: 'loading', text: 'Natural voices: starting…' });
   }
@@ -185,6 +188,8 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     } else if (data.type === 'failed') {
       natural.state = 'failed';
       natural.worker.terminate();
+      for (const request of natural.requests.values()) request.reject(new Error(data.message));
+      natural.requests.clear();
       saveSetting('naturalVoices', false);
       onProgress({ state: 'failed', text: `Natural voices couldn't load (${data.message}). Using the browser's voices.` });
     }
@@ -196,6 +201,11 @@ export function createSpeech({ onProgress, knownLines = [] }) {
     return new Promise((resolve, reject) => {
       natural.requests.set(id, { resolve, reject });
       natural.worker.postMessage({ type: 'speak', id, text, voice, speed, urgent });
+      // Live pieces only: background ones may rightly wait behind the race's commentary.
+      if (urgent) setTimeout(() => {
+        if (!natural.requests.delete(id)) return;
+        reject(new Error(`gave up on "${text}" after ${GENERATE_LIMIT_MS / 1000} s`));
+      }, GENERATE_LIMIT_MS);
     });
   }
 
@@ -241,7 +251,8 @@ export function createSpeech({ onProgress, knownLines = [] }) {
 // punctuation: each piece is spoken on its own, and splitting elsewhere (say, "Sato | and Kowalski") sounds
 // like two remarks.
 export function pieces(text) {
-  const parts = text.match(/[^,;:.!?]+[,;:.!?]*\s*/g) ?? [text];
+  // A full stop between digits is a decimal point ("2.0 seconds"), not a pause.
+  const parts = text.match(/(?:\d\.\d|[^,;:.!?])+[,;:.!?]*\s*/g) ?? [text];
   const joined = [];
   let pending = '';
   for (const part of parts) {

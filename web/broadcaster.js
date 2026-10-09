@@ -14,6 +14,7 @@ const MODEL = 'Llama-3.2-1B-Instruct-q4f16_1-MLC';
 const MODEL_WITHOUT_F16 = 'Llama-3.2-1B-Instruct-q4f32_1-MLC';
 const MODEL_WAIT_MS = 3500;              // a line later than this is old news
 const STALE_MS = 5000;                   // a moment nobody got round to within this long goes unsaid
+const CAPTION_WAIT_MS = 3000;            // a caption waits this long at most for its voice to start
 const QUIET_MS = 14000;                  // silence this long gets filled
 const PAUSE_BETWEEN_MS = 600;
 
@@ -154,12 +155,19 @@ export function createBroadcaster({ onStatus, speech }) {
     // The caption comes up as the voice starts, so the two arrive together (a natural voice takes a moment to
     // generate the first words). Speech that never starts still gets its caption once it gives up.
     // A line cut short by a new race (speech.cancel) never gets a caption.
+    // And speech running late never holds a caption back for more than CAPTION_WAIT_MS.
     let captioned = false;
     const forRace = race;
+    const caption = () => {
+      if (captioned || race !== forRace) return;
+      captioned = true;
+      showCaption(line, readingTime);
+    };
+    setTimeout(caption, CAPTION_WAIT_MS);
     speakingUntil = performance.now() + readingTime * 3;
-    speech.say(line, 'commentator', { onStart: () => { captioned = true; showCaption(line, readingTime); } }).then(() => {
+    speech.say(line, 'commentator', { onStart: caption }).then(() => {
       if (race !== forRace) return;
-      if (!captioned) showCaption(line, readingTime);
+      caption();
       speakingUntil = Math.min(speakingUntil, performance.now());
     });
   }

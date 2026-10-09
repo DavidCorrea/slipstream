@@ -4,6 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Slipstream</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 2h9l-5 12H0z' fill='%23e10600'/%3E%3C/svg%3E">
+  <script>
+    // Threads for the natural voices need a cross-origin isolated page, which isolation-worker.js makes this one.
+    // The first visit loads before the worker is in charge, so it reloads once when the worker takes over.
+    if (!window.crossOriginIsolated && window.isSecureContext && 'serviceWorker' in navigator) {
+      const firstVisit = !navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('isolation-worker.js').then(() => {
+        if (firstVisit) navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+      }).catch(error => console.warn('No threads for the natural voices:', error));
+    }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="web/style.css">

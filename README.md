@@ -40,6 +40,7 @@ The site at https://davidcorrea.github.io/slipstream/ is this repository served 
 
   Then commit and push; Pages updates within a minute or two. A test fails if `web/engine-files.json` misses a module the browser needs.
 - **The race code stays free of the training libraries** (PyTorch, Stable-Baselines3, Gymnasium, aiohttp), which the browser doesn't have; a test checks it. Training environments live in `env.py`, `driver_env.py` and `pitwall_env.py`.
+- **Threads**: `isolation-worker.js`, a service worker, makes the page cross-origin isolated (GitHub Pages can't send the headers itself), so WebAssembly can use several threads. The natural voices then generate a line in about half the time, faster than it's spoken; the first visit reloads once as the worker takes over. Browsers without support stay single-threaded.
 - **To try the published version locally**, serve the folder as plain files: `python3 -m http.server` and open http://127.0.0.1:8000.
 
 The viewer plays races live in the browser, in isometric 3D. Every race opens **on the grid**: a menu showing the field in grid order, where you pick the car you drive, set up any driver (personality, consistency, stamina) and their car (top speed, acceleration, braking, grip, handling), and choose the race. The cars wait until you press **Start race**; drivers and cars are fixed from then on. Training doesn't need to be stopped: every snapshot it saves shows up in the **Brain** list within half a minute, so you can watch the same circuit driven by the network at any stage of its training.

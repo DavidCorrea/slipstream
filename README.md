@@ -1,6 +1,8 @@
 # Slipstream
 
-A racing game where every driver is a neural network. You pick one racer and tune its stats while it races: its personality (aggression, risk, overtaking, how much it spares its tyres and fuel) and its car (top speed, grip, acceleration, braking). One network drives every car, and it reads those stats as inputs, so moving a slider changes how that driver races straight away.
+A racing game where every driver is a neural network. On the grid you pick your car and set up any driver: their personality (aggression, risk, overtaking, how much they spare their tyres and fuel, consistency, stamina) and their car (top speed, grip, acceleration, braking, handling). One network drives every car and reads those stats as inputs, so each driver races their own way. During the race you're your car's pit wall.
+
+**Play it online: https://davidcorrea.github.io/slipstream/** (Chrome, Edge, Firefox or Safari; the first visit downloads about 15 MB).
 
 ## Status
 
@@ -21,6 +23,24 @@ python3 -m venv .venv
 ```sh
 .venv/bin/python -m slipstream.server                # then open http://127.0.0.1:8765
 ```
+
+Run locally, the page races on the server and lists every snapshot of every run as training saves it.
+
+## The published site
+
+The site at https://davidcorrea.github.io/slipstream/ is this repository served as it is by GitHub Pages, with no server behind it. When the page finds no server (`api/brains`), it runs the simulation itself: Pyodide (Python and numpy compiled to WebAssembly) runs the same race code in a web worker (`web/engine-worker.js`, `slipstream/browser.py`), and three.js draws it as usual.
+
+- **Networks** race with numpy alone (`slipstream/numpy_network.py`): a trained network is exported to its actor's weights (0.8 MB for a driver), which give the same actions as the original to within 1e-6.
+- **Which brains are published** is up to you: training runs (`runs/`) stay private, and only the snapshots you publish go into `brains/`:
+
+  ```sh
+  .venv/bin/python -m slipstream.publish driver-rivals/step-000036016128 pitwall-feel/step-000000251904
+  .venv/bin/python -m slipstream.publish     # after changing the simulation: refreshes web/engine-files.json
+  ```
+
+  Then commit and push; Pages updates within a minute or two. A test fails if `web/engine-files.json` misses a module the browser needs.
+- **The race code stays free of the training libraries** (PyTorch, Stable-Baselines3, Gymnasium, aiohttp), which the browser doesn't have; a test checks it. Training environments live in `env.py`, `driver_env.py` and `pitwall_env.py`.
+- **To try the published version locally**, serve the folder as plain files: `python3 -m http.server` and open http://127.0.0.1:8000.
 
 The viewer plays races live in the browser, in isometric 3D. Every race opens **on the grid**: a menu showing the field in grid order, where you pick the car you drive, set up any driver (personality, consistency, stamina) and their car (top speed, acceleration, braking, grip, handling), and choose the race. The cars wait until you press **Start race**; drivers and cars are fixed from then on. Training doesn't need to be stopped: every snapshot it saves shows up in the **Brain** list within half a minute, so you can watch the same circuit driven by the network at any stage of its training.
 

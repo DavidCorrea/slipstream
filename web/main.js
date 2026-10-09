@@ -43,13 +43,13 @@ window.addEventListener('resize', () => director.resize(window.innerWidth / wind
 const broadcaster = createBroadcaster({ onStatus: text => hud.status(text) });
 
 const state = {
-  socket: null, race: null, circuit: null, effects: null, crews: null, cars: [],
+  socket: null, worker: null, race: null, circuit: null, effects: null, crews: null, cars: [],
   previous: null, current: null, arrived: 0,
   selected: 0, yours: 0, cameraMode: 'follow', shot: null,
   speed: 1, paused: false, announcedLap: 0, celebrated: false, brainLabels: new Map(),
 };
 
-// ---- Connection ---------------------------------------------------------------------------------------
+// ---- Connection: the local server, or the simulation in a web worker on the published site --------------
 
 function connect() {
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
@@ -62,7 +62,26 @@ function connect() {
   });
 }
 
+// With no server behind the page (the published site), the race code runs in a worker (engine-worker.js).
+function startWorker() {
+  hud.status('Loading the simulation… (about 15 MB the first time)');
+  const worker = new Worker(new URL('./engine-worker.js', import.meta.url), { type: 'module' });
+  state.worker = worker;
+  worker.addEventListener('message', ({ data }) => {
+    if (data.type === 'ready') {
+      hud.status('');
+      showBrains(data.brains);
+      startRace();
+    } else if (data.type === 'failed') {
+      hud.status(`The simulation stopped: ${data.message}`);
+    } else {
+      receive(JSON.parse(data.text));
+    }
+  });
+}
+
 function send(message) {
+  if (state.worker) return state.worker.postMessage({ text: JSON.stringify(message) });
   if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify(message));
 }
 
@@ -364,8 +383,17 @@ function setPaused(paused) {
   $('pause').setAttribute('aria-label', paused ? 'Resume' : 'Pause');
 }
 
-async function loadBrains() {
-  const { drivers, pitwalls } = await (await fetch('/api/brains')).json();
+// The server lists every snapshot as training saves it; the published site has the ones published with it.
+async function serverBrains() {
+  try {
+    const response = await fetch('api/brains');
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+function showBrains({ drivers, pitwalls }) {
   state.brainLabels = new Map([...drivers, ...pitwalls].map(brain => [brain.id, brain.label]));
   // Default to the newest snapshot of any run, since watching training is the point.
   fillPicker($('brain'), drivers, drivers[1]?.id ?? 'scripted');
@@ -492,6 +520,10 @@ setGhost(false);
 setCommentary(broadcaster.mode);
 // It was loaded on an earlier visit, so it comes from the browser's cache this time.
 if (broadcaster.wantsModel()) $('load-commentator').click();
-loadBrains().then(connect);
-setInterval(loadBrains, 30000);
+serverBrains().then(brains => {
+  if (!brains) return startWorker();
+  showBrains(brains);
+  connect();
+  setInterval(() => serverBrains().then(listed => listed && showBrains(listed)), 30000);
+});
 requestAnimationFrame(render);

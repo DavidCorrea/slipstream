@@ -15,11 +15,12 @@ from aiohttp import WSMsgType, web
 from .session import list_brains, list_pitwalls
 from .viewer import FRAMES_PER_SECOND, Viewer
 
-WEB = Path(__file__).resolve().parent.parent / 'web'
+ROOT = Path(__file__).resolve().parent.parent
+WEB = ROOT / 'web'
 
 
 async def index(request):
-    return web.FileResponse(WEB / 'index.html')
+    return web.FileResponse(ROOT / 'index.html')
 
 
 async def brains(request):

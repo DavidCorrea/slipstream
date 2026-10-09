@@ -67,7 +67,7 @@ const state = {
 function connect() {
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   state.socket = socket;
-  socket.addEventListener('open', () => { hud.status(''); startRace(); });
+  socket.addEventListener('open', () => { hud.status(''); sendPlayback(); startRace(); });
   socket.addEventListener('message', event => receive(JSON.parse(event.data)));
   socket.addEventListener('close', () => {
     hud.status('Lost the server. Retrying…');
@@ -88,6 +88,7 @@ function startWorker() {
     } else if (data.type === 'ready') {
       loading.ready();
       showBrains(data.brains);
+      sendPlayback();
       startRace();
     } else if (data.type === 'failed') {
       if (state.race) hud.status(`The simulation stopped: ${data.message}`);
@@ -96,6 +97,13 @@ function startWorker() {
       receive(JSON.parse(data.text));
     }
   });
+}
+
+// The speed and pause chosen so far, for a simulation that has just connected: chosen before it was there (as the
+// page sets them on load), they went nowhere, and the race played at its own default, real time, under "1×".
+function sendPlayback() {
+  send({ type: 'speed', value: state.speed * PLAYBACK });
+  send({ type: 'pause', value: state.paused });
 }
 
 function send(message) {

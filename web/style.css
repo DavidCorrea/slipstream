@@ -309,6 +309,8 @@ body.watching #dock { transform: translate(-50%, 8px); }
 @keyframes grid-in { from { opacity: 0; } }
 /* While on the grid, the race controls step aside. */
 body.on-grid #dock, body.on-grid #feed, body.on-grid #telemetry, body.on-grid #caption { display: none !important; }
+/* The top bar and its drawers stay usable over the grid, so the look and the voices can be set before the start. */
+body.on-grid #topbar, body.on-grid .drawer { z-index: 11; }
 .grid-panel {
   width: min(1180px, 100%); max-height: calc(100vh - 2 * var(--gutter)); overflow-y: auto;
   background: var(--glass-strong); border: 1px solid var(--line); border-top: 3px solid var(--accent);

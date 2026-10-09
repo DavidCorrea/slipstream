@@ -154,3 +154,16 @@ class TestComparingRaceTimes:
     def test_leaves_out_a_race_the_reference_didnt_finish_instead_of_scoring_it_infinite(self):
         from slipstream.pitwall_env import relative_pace
         assert relative_pace(np.inf, 100.0) is None
+
+
+class TestLongRaces:
+    def test_a_long_race_looks_like_the_longest_the_pit_wall_trained_on(self):
+        from slipstream.car import CarSpecs
+        from slipstream.pitwall import pitwall_observe
+        from slipstream.race import Race
+        from slipstream.track import generate_track
+        race = Race(generate_track(3), CarSpecs.uniform(4), laps=50)
+        race.stops[:] = 12
+        observed = pitwall_observe(race)
+        for name in ('race_laps', 'laps_left', 'stops'):
+            assert observed[:, PITWALL_OBSERVATION_NAMES.index(name)].max() <= 1.0

@@ -37,13 +37,15 @@ GAP_SCALE = 30.0      # seconds
 
 
 def pitwall_observe(race, personality=None):
+    # Laps and stops are capped where training's races (up to 10 laps) left them: a 50-lap race read as 5 times the
+    # longest race the network had seen, and it called every car in nearly every lap.
     cars = race.cars
     personality = (neutral(race.count) if personality is None else np.asarray(personality, dtype=float))[:, :len(PERSONALITY_TRAITS)]
     laps = laps_left(race)
     numbers = np.stack([
         cars.tyre_wear, cars.fuel / FUEL_CAPACITY, np.clip((cars.fuel - fuel_to_finish(race)) / FUEL_CAPACITY, -1, 1),
-        np.minimum(laps / LAPS_SCALE, 1.0), np.full(race.count, race.laps / LAPS_SCALE), cars.damage, cars.brake_wear,
-        centred(cars.wing), centred(cars.engine), tyre_outlook(cars.tyre_wear, cars.compound, laps) / 5, race.stops / 3,
+        np.minimum(laps / LAPS_SCALE, 1.0), np.full(race.count, min(race.laps / LAPS_SCALE, 1.0)), cars.damage, cars.brake_wear,
+        centred(cars.wing), centred(cars.engine), tyre_outlook(cars.tyre_wear, cars.compound, laps) / 5, np.minimum(race.stops / 3, 1.0),
         np.full(race.count, race.track.length / 1500),
     ], axis=1)
     specs = np.stack([getattr(race.specs, name) / scale for name, scale in SPEC_SCALE.items()], axis=1)

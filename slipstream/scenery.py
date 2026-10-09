@@ -208,7 +208,7 @@ def _city(where, night):
     for (x, y), look in where.around(40, 500, tower):
         props.append(Prop('skyline', x, y, SOLID, half_length=look['width'] / 2, half_width=look['depth'] / 2, look=look))
     # Street lamps along the track, closer together at night when they light it.
-    for x, y, angle in where.along_track(16 if night else 28, where.half + 4):
+    for x, y, angle in where.along_track(16 if night else 28, where.half + 6):
         props.append(Prop('lamp', x, y, BREAKABLE, radius=0.2, angle=angle))
     return props
 
@@ -277,7 +277,9 @@ def _trackside(where, walled):
             props.append(Prop('bridge', x, y, SOLID, half_length=0.6, half_width=0.6, angle=heading(best), look={'span': round(span, 2), 'end': end}))
     # Barriers: armco along the outside of straights, or concrete walls along both sides of a street circuit, as a
     # chain of short pieces from one sample to the next.
-    offset = half + 3.2 if walled else half + 12
+    # A street circuit's walls stand 5 m out: at 3.2 m, cars running a metre wide through a chicane clipped them and
+    # piled up behind, every car in the race out in the worst of six; at 5 m it was four.
+    offset = half + 5.0 if walled else half + 12
     for side in (1, -1):
         for index in range(count):
             keep = lambda sample: (walled or straight(sample)) and clear(sample % count, side)

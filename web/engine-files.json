@@ -28,9 +28,9 @@
   ],
   "brains": [
     "brains/driver-copy/checkpoints/step-000032022528.npz",
-    "brains/driver-rivals/checkpoints/step-000036016128.npz",
+    "brains/driver-grid-53/checkpoints/step-000056029184.npz",
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
     "brains/pitwall-feel/driver.json"
   ],
-  "bytes": 1744555
+  "bytes": 1744515
 }

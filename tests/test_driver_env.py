@@ -1,7 +1,7 @@
 import numpy as np
 
 from slipstream.car import BALANCE_RANGE
-from slipstream.driver_env import DriverEnv
+from slipstream.driver_env import RETIRE_COST, DriverEnv
 from slipstream.senses import SENSE_NAMES
 
 
@@ -93,3 +93,26 @@ class TestRacingScriptedRivals:
             assert dones.all() and 'race' in infos[0]
             seen.add(tuple(env.learner_cars[0]))
         assert len(seen) > 1
+
+
+class TestRacingAmongProps:
+    def test_training_races_stand_props_round_the_track_as_the_broadcast_does(self):
+        env = DriverEnv(races=2, cars=2, seed=4)
+        env.reset()
+        assert all(race.props is not None and len(race.props.props) > 0 for race in env.races)
+
+    def test_crashing_out_on_a_prop_costs_as_much_as_getting_beached(self):
+        env = DriverEnv(races=1, cars=2, seed=5)
+        env.reset()
+        race = env.races[0]
+        car = race.cars
+        # Car 0 flung at 80 m/s across the track, into whatever stands beside it.
+        car.velocity[0] = race.track.normals[int(race.progress[0] % race.track.length / 2.0) % race.track.size] * 80.0
+        car.heading[0] = float(np.arctan2(car.velocity[0][1], car.velocity[0][0]))
+        crashed_cost = None
+        for _ in range(60):
+            _, rewards, _, _ = env.step(np.tile([0.0, 1.0], (2, 1)))
+            if race.retired[0]:
+                crashed_cost = rewards[0]
+                break
+        assert crashed_cost is not None and crashed_cost <= -RETIRE_COST

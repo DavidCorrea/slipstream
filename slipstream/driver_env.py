@@ -15,6 +15,7 @@ from .env import LAPS, RaceVecEnv
 from .human import Driving
 from .personality import TRAITS, trait
 from .race import Race
+from .scenery import location_for, place
 from .senses import SENSE_NAMES, senses
 from .strategy import scripted_strategy
 from .track import generate_track
@@ -40,6 +41,8 @@ class DriverEnv(RaceVecEnv):
         super().__init__(races=races, cars=cars, laps=laps, seed=seed, rewards=rewards, rivals=rivals)
         # The driver makes no stops, so the value of the car's condition (which pays for stops) has no part here.
         self.condition_strength = 0.0
+        # Out of the race either way, and crashing must not be a way out of paying for time any more than stalling.
+        self.crash_cost = RETIRE_COST
 
     def new_race(self, personality=None):
         race = self._new_race(personality)
@@ -84,4 +87,6 @@ class DriverEnv(RaceVecEnv):
         race = Race(track, random_cars(self.cars, self.rng), laps, weather=Weather.for_race(seed, track.length, laps),
                     rng=np.random.default_rng(seed), driving=driving)
         race.cars.wing[:] = self.rng.uniform(*WING_RANGE, self.cars)
+        # The walls, barriers and trees a broadcast race has, so a driver learns what running wide into them costs.
+        race.place_props(place(track, race.pit, seed, location_for(seed)))
         return race

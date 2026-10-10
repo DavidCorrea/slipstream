@@ -71,6 +71,8 @@ class RaceVecEnv(VecEnv):
         # The same for condition (see strategy.py): its costs (damage from crashing, fuel burned while driving
         # erratically) also fall only on cars that move, so it too waits until the network can drive.
         self.condition_strength = 1.0
+        # What crashing out on a prop costs; only races with props (driver_env.py) have any to crash on.
+        self.crash_cost = 0.0
         self.returns = np.zeros(self.num_envs)
         self.lengths = np.zeros(self.num_envs, dtype=int)
         self.actions = np.zeros((self.num_envs, self.action_size()))
@@ -196,6 +198,7 @@ class RaceVecEnv(VecEnv):
             used_tyres = np.maximum(race.cars.tyre_wear - wear, 0.0)
             used_fuel = np.maximum(fuel - race.cars.fuel, 0.0)
             reward -= conservation * (weights['tyre_wear'] * used_tyres + weights['fuel'] * used_fuel)
+            reward[events.crashed] -= self.crash_cost
             for car in events.finished:
                 place = int(np.flatnonzero(race.standings() == car)[0])
                 reward[car] += self.rewards['finish'] + self.rewards['podium'] * (race.count - 1 - place) / max(race.count - 1, 1)

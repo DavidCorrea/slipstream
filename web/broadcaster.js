@@ -6,6 +6,7 @@
 // 0.9 GB, downloaded once and cached by the browser) that runs on your GPU in a web worker. It only gets the facts
 // of the moment, so it can't make up who's leading. If it's slow or fails, the template line goes out instead.
 import { formatLap } from './feed.js';
+import { REPLAY_LINES, TEMPLATES } from './commentary-lines.js';
 import { pick } from './race-events.js';
 import { loadSetting, saveSetting } from './settings.js';
 
@@ -31,39 +32,6 @@ Line: Vega looking very comfortable out front, 3.1 seconds clear of Lindqvist.`;
 // A small model copies names from its examples, and drivers can be renamed, so these count as drivers to check
 // for in every line, racing or not.
 const EXAMPLE_NAMES = ['Okafor', 'Sato', 'Vega', 'Lindqvist'];
-
-// To open a replay: of one car (a replay asked for), or of a crash between two.
-const REPLAY_LINES = {
-  one: ["Let's see that again, here's {car}.", 'Have a look at this again, {car}.', 'Here it is once more, watch {car}.'],
-  two: ["Let's see that again. {car} and {other}, look at this!", "Here's the replay, {car} and {other} come together.", 'Watch this again, {car} and {other}, a big moment.'],
-};
-
-const TEMPLATES = {
-  start: ['Lights out and away we go!', 'And it is lights out! {car} gets away cleanly from the front.', 'Green light, here we go, {laps} laps of racing ahead!'],
-  overtake: ['{car} goes past {other}, that is P{place}!', 'Brilliant move from {car}, through on {other} for P{place}!', '{car} makes it stick on {other}. Up to P{place}.', 'And {other} has nothing to answer {car} with. P{place} changes hands.'],
-  battle: ['{car} is right on the gearbox of {other}, fighting for P{place}.', 'Look at this, {car} all over the back of {other}!', 'The gap between {other} and {car} is nothing at all.'],
-  contact: ['Contact! {car} and {other} touch!', 'Oh, they have banged wheels, {car} and {other}!', 'A clash between {car} and {other}, any damage there?'],
-  offTrack: ['{car} is off! Into the run-off area.', 'A big moment for {car}, wide and onto the grass!', '{car} gets it all wrong there and runs off the road.'],
-  damage: ['{car} has damage, that front wing looks broken.', 'Trouble for {car}, the car is damaged.'],
-  tyresGone: ['{car} is complaining about the tyres, those {compound}s are finished.', 'The tyres are going away on the {car} car.'],
-  lowFuel: ['{car} is running very low on fuel now.', 'Fuel is getting critical for {car}.'],
-  pitCall: ['{car} is being called in this lap.', 'The pit wall wants {car} in, box this lap.'],
-  pitStop: ['{car} in the pits, {compound} tyres, {standing} seconds stationary.', 'Stop for {car}: on go the {compound}s, {standing} seconds.', 'A {standing} second stop for {car}, out on {compound} tyres.'],
-  pitExit: ['{car} rejoins in P{place}.', 'Out comes {car}, back on track in P{place}.'],
-  fastestLap: ['Fastest lap of the race for {car}, a {lapTime}!', 'Purple for {car}, a {lapTime} is the new fastest lap.'],
-  finalLap: ['Final lap! {car} leads, {other} is chasing.', 'The white flag is out, one lap to go and {car} is in front.'],
-  win: ['{car} wins it! What a drive!', 'And {car} takes the chequered flag, victory!', 'It is {car}! {car} wins the race!'],
-  finish: ['{car} crosses the line in P{place}.', 'P{place} at the flag for {car}.'],
-  rainStarts: ['And here comes the rain! This changes everything.', 'Rain is falling! Who gambles on intermediates first?', 'The heavens open, it is raining on the circuit!'],
-  rainStops: ['The rain has stopped. How quickly will this track dry?', 'No more rain, and the clock starts on a drying track.'],
-  puncture: ['Oh, a puncture for {car}! That tyre is shredding.', 'Disaster for {car}, a puncture, and a long way back to the pits.', '{car} has picked up a puncture from the debris!'],
-  crash: ['Oh no, {car} is in the wall! That is the end of the race.', 'Big crash for {car}, and that car is not going any further.', '{car} hits the barrier and is out!'],
-  barrier: ['{car} clips the barrier, that was close!', 'A brush with the wall for {car}!', '{car} into the barrier, but still going!'],
-  engineFailure: ['Smoke! {car} has a failure, the engine has gone!', 'And that is the end of the race for {car}, engine failure.', 'Heartbreak for {car}, the engine lets go.'],
-  mistake: ['A big moment for {car}, a mistake there!', '{car} gets it wrong, that will cost time.', 'Oh, a lock-up from {car}!'],
-  tow: ['{car} is right in the slipstream of {other}, getting a big tow.', 'Look at the tow {car} is getting from {other}!', '{car} uses the slipstream, closing on {other}.'],
-  quiet: ['{leader} leads by {leadGap} seconds on lap {lap} of {laps}.', 'Lap {lap} of {laps}, and {leader} is still out in front.', '{leader} controls it from the front, {second} is the nearest challenger.'],
-};
 
 export function createBroadcaster({ onStatus, speech }) {
   const caption = document.getElementById('caption');
@@ -116,7 +84,7 @@ export function createBroadcaster({ onStatus, speech }) {
 
   async function say(moment, context) {
     const facts = describe(moment, context);
-    const fallback = fill(pickFresh(TEMPLATES[moment.kind]), facts);
+    const fallback = pickFresh(TEMPLATES[moment.kind], facts);
     busy = true;
     let line = fallback;
     if (engine && modelState === 'ready') {
@@ -191,9 +159,11 @@ export function createBroadcaster({ onStatus, speech }) {
     captionTimer = setTimeout(() => caption.classList.add('hidden'), readingTime + 1200);
   }
 
-  function pickFresh(lines) {
-    const unused = lines.filter(line => !recent.includes(line));
-    return pick(unused.length ? unused : lines);
+  // A line not said lately, filled in with `facts`.
+  function pickFresh(lines, facts) {
+    const filled = lines.map(line => fill(line, facts));
+    const unused = filled.filter(line => !recent.includes(line));
+    return pick(unused.length ? unused : filled);
   }
 
   async function loadModel() {
@@ -233,7 +203,7 @@ export function createBroadcaster({ onStatus, speech }) {
     replay(names) {
       if (mode === 'off' || !race) return;
       pending = null;
-      show(fill(pickFresh(REPLAY_LINES[names.length > 1 ? 'two' : 'one']), { car: names[0], other: names[1] }));
+      show(pickFresh(REPLAY_LINES[names.length > 1 ? 'two' : 'one'], { car: names[0], other: names[1] }));
     },
   };
 
@@ -243,7 +213,7 @@ export function createBroadcaster({ onStatus, speech }) {
     return {
       car: name(moment.car), other: name(moment.other), place: moment.place ?? '', compound: moment.compound ?? '',
       standing: moment.standing?.toFixed(1) ?? '', lapTime: moment.lapTime ? formatLap(moment.lapTime) : '',
-      laps: context.laps, lap: context.lap, leader: context.leader, second: context.second, leadGap: context.leadGap,
+      laps: context.laps, lap: context.lap, lapsToGo: Math.max(context.laps - context.lap + 1, 1), leader: context.leader, second: context.second, leadGap: context.leadGap,
     };
   }
 }

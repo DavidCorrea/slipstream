@@ -9,8 +9,8 @@ from slipstream.train import (FEEL_CARS, FEEL_RIVALS, FEEL_SETTINGS, TRAFFIC_REW
 class TestTrainingADriverByFeel:
     def test_races_full_fields_where_places_are_worth_more(self):
         env = driver_env(races=1, seed=0)
-        assert env.cars == FEEL_CARS == 8
-        assert env.rivals == FEEL_RIVALS == 3 and env.num_envs == 5
+        assert env.cars == FEEL_CARS == 20
+        assert env.rivals == FEEL_RIVALS == 10 and env.num_envs == 10
         assert env.rewards['places'] == TRAFFIC_REWARDS['places'] > 1
         assert env.rewards['podium'] == TRAFFIC_REWARDS['podium'] > 1
 

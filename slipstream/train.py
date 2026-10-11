@@ -75,8 +75,11 @@ FEEL_SETTINGS = dict(
 # The clock costs more too: at the original 0.005 a decision, being 5% quicker saved less over a race than a
 # middling driver paid for cornering at the limit (personality's grip margin), so every run grew slower once it
 # could drive. At 0.012 the time a faster lap saves outweighs that.
-FEEL_CARS = 8
-FEEL_RIVALS = 3
+# The game races 20 cars, so training does too, and half of them are scripted: with 14 copies of itself among 20
+# (driver-grid, from 36M decisions), places traded between copies cancelled out while each copy paid its own
+# contact, so every run drifted back towards holding back.
+FEEL_CARS = 20
+FEEL_RIVALS = 10
 TRAFFIC_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012}
 
 

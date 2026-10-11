@@ -51,10 +51,11 @@ def main():
     parser.add_argument('--since', type=int, default=0, help='skip snapshots before this many decisions')
     arguments = parser.parse_args()
     run = Path('runs') / arguments.run
-    if not (run / 'checkpoints').is_dir():
-        raise SystemExit(f'No run with snapshots at {run}')
+    if not run.is_dir():
+        raise SystemExit(f'No run at {run}')
     while True:
-        for path in unchecked(run):
+        # A run just started has no snapshots yet; its first comes after a million decisions or so.
+        for path in unchecked(run) if (run / 'checkpoints').is_dir() else []:
             if int(path.stem.split('-')[1]) < arguments.since:
                 continue
             entry = record(run, path.stem, benchmark(load_network(path), seeds=CHECK_SEEDS))

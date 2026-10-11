@@ -1,7 +1,7 @@
 import numpy as np
 
 from slipstream.car import BALANCE_RANGE
-from slipstream.driver_env import RETIRE_COST, DriverEnv
+from slipstream.driver_env import RETIRE_COST, DriverEnv, random_cars
 from slipstream.senses import SENSE_NAMES
 
 
@@ -17,6 +17,14 @@ class TestTheDriversWorld:
         balances = np.concatenate([race.specs.balance for race in env.races])
         assert balances.min() < -BALANCE_RANGE / 3 and balances.max() > BALANCE_RANGE / 3
         assert all(race.driving is not None for race in env.races)
+
+    def test_cars_vary_only_as_far_as_the_games_own_cars_do(self):
+        from slipstream.car import SPEC_DEFAULTS, SPEC_SPREAD
+        cars = random_cars(500, np.random.default_rng(0))
+        for name, default in SPEC_DEFAULTS.items():
+            ratios = getattr(cars, name) / default
+            assert ratios.min() >= 1 - SPEC_SPREAD and ratios.max() <= 1 + SPEC_SPREAD
+            assert ratios.min() < 1 - SPEC_SPREAD * 0.9 and ratios.max() > 1 + SPEC_SPREAD * 0.9
 
     def test_drives_races_to_the_end_with_the_team_calling_the_stops(self):
         env = DriverEnv(races=1, cars=2, laps=1, seed=2)

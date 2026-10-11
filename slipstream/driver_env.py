@@ -1,8 +1,8 @@
 """The training world for drivers that drive by feel (see senses.py).
 
 The network here is only the driver. It steers and works one pedal; the team's scripted strategist calls the stops.
-It senses its car rather than reading its numbers, and every race hands it a different car: wider spreads of
-power, grip and braking than before, a random handling balance (some cars understeer, some oversteer), a random
+It senses its car rather than reading its numbers, and every race hands it a different car: the full spread of
+power, grip and braking the game races with, a random handling balance (some cars understeer, some oversteer), a random
 setup, and whatever the weather brings. Its own hands and feet sit between what it decides and what the car does
 (see human.py), with its consistency and stamina among its traits. To drive well across all that, it has to feel
 out each car and the conditions as it goes, which is why it trains with a memory (an LSTM, sb3-contrib's
@@ -10,7 +10,7 @@ RecurrentPPO).
 """
 import numpy as np
 
-from .car import BALANCE_RANGE, SPEC_DEFAULTS, CarSpecs
+from .car import BALANCE_RANGE, SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
 from .env import LAPS, RaceVecEnv
 from .human import Driving
 from .personality import TRAITS, trait
@@ -21,7 +21,6 @@ from .strategy import scripted_strategy
 from .track import generate_track
 from .weather import Weather
 
-SPEC_SPREAD = 0.35          # each spec anywhere this far either side of the default
 WING_RANGE = (0.2, 0.8)     # setups the team might send a car out with
 # A car that gains no ground for this long is beached and out of the race, and pays RETIRE_COST: otherwise a car
 # stuck on the grass sits there for the rest of the race, and getting stuck would be a way out of paying for time.
@@ -30,7 +29,9 @@ RETIRE_COST = 2.0
 
 
 def random_cars(count, rng):
-    """Cars drawn wide: every spec ±SPEC_SPREAD and a handling balance anywhere in ±BALANCE_RANGE."""
+    """Cars drawn across the game's whole range (car.py): every spec ±SPEC_SPREAD and a handling balance anywhere in
+    ±BALANCE_RANGE. Training on wider cars than the game ever races (±35% once) only filled training races with
+    cars that could barely get round, half of them failing to finish even with the scripted driver."""
     specs = [value * rng.uniform(1 - SPEC_SPREAD, 1 + SPEC_SPREAD, count) for value in SPEC_DEFAULTS.values()]
     return CarSpecs(*specs, balance=rng.uniform(-BALANCE_RANGE, BALANCE_RANGE, count))
 

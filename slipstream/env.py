@@ -182,7 +182,7 @@ class RaceVecEnv(VecEnv):
         grip_excess = weights['grip_excess'] * strength
         place_value = traits.blend(weights['place'], traits.trait(personality, 'overtaking')) * strength * self.rewards['places']
         conservation = traits.trait(personality, 'conservation') * strength
-        places_before = _places(race)
+        order_before = race.standings()
         reward = np.zeros(race.count)
         for _ in range(DECISION_TICKS):
             progress, wear, fuel = race.progress.copy(), race.cars.tyre_wear.copy(), race.cars.fuel.copy()
@@ -203,7 +203,9 @@ class RaceVecEnv(VecEnv):
             for car in events.finished:
                 place = int(np.flatnonzero(race.standings() == car)[0])
                 reward[car] += self.rewards['finish'] + self.rewards['podium'] * (race.count - 1 - place) / max(race.count - 1, 1)
-        reward += place_value * (places_before - _places(race)) * racing
+        # Places count only between cars still running: a car dropping out ahead is luck, not a place won.
+        running = ~race.retired
+        reward += place_value * (_places(order_before, running) - _places(race.standings(), running)) * racing
         reward -= self.rewards['time'] * racing
         return reward
 
@@ -232,10 +234,12 @@ class RaceVecEnv(VecEnv):
         return [indices] if isinstance(indices, int) else list(indices)
 
 
-def _places(race):
-    """Each car's position in the race, 0 for the leader."""
-    places = np.empty(race.count, dtype=int)
-    places[race.standings()] = np.arange(race.count)
+def _places(order, among):
+    """Each car's position among the cars `among` (a mask), 0 for the leader, given the order of the whole field;
+    0 for cars outside it."""
+    order = order[among[order]]
+    places = np.zeros(len(among), dtype=int)
+    places[order] = np.arange(len(order))
     return places
 
 

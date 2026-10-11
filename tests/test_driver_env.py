@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from slipstream.car import BALANCE_RANGE
 from slipstream.driver_env import RETIRE_COST, DriverEnv, random_cars
@@ -90,6 +91,22 @@ class TestRacingScriptedRivals:
         # Same move as the env test of a place gained, from the other side: the rival goes past.
         reward = env.step(np.zeros((1, 2), dtype=np.float32))[1][0]
         assert reward < -0.05
+
+    def test_a_rival_dropping_out_ahead_is_not_a_place_won(self):
+        rewards = {}
+        for drops_out in (False, True):
+            env = DriverEnv(races=1, cars=2, rivals=1, seed=2, rewards={'places': 2.0})
+            env.reset()
+            race = env.races[0]
+            mine, rival = env.learner_cars[0][0], 1 - env.learner_cars[0][0]
+            race.progress[[mine, rival]] = [10.0, 30.0]
+            if drops_out:
+                # The rival ahead has been stuck too long, and is retired during this decision.
+                race.furthest[rival] = 1e6
+                race.gained_at[rival] = race.time - 100.0
+            rewards[drops_out] = env.step(np.zeros((1, 2), dtype=np.float32))[1][0]
+            assert race.retired[rival] == drops_out
+        assert rewards[True] == pytest.approx(rewards[False], abs=0.01)
 
     def test_a_finished_race_starts_a_new_one_with_new_seats_for_its_cars(self):
         env = DriverEnv(races=1, cars=6, rivals=2, seed=3)

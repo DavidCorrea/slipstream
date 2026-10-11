@@ -83,8 +83,26 @@ FEEL_RIVALS = 10
 TRAFFIC_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012}
 
 
-def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS):
-    return DriverEnv(races=races, cars=cars, seed=seed, rewards=TRAFFIC_REWARDS, rivals=rivals)
+# Racing for passes (--passing): even with all that, drivers lapped quicker without winning more places. Here the
+# car behind pays for contact and the car ahead only a fifth of it, as stewards would see it, so defending a line
+# stops being as costly as diving into one; and closing in on the car ahead pays per metre (and dropping back costs
+# the same), so setting up a pass is worth something before the place is won.
+PASSING_REWARDS = {'contact_ahead': 0.2, 'closing': 0.008}
+PASSING_FILE = 'passing.json'
+
+
+def race_rewards(passing, run=None):
+    """The rewards a driver by feel trains on. A run started with `passing` keeps them whenever it's resumed."""
+    marker = run / PASSING_FILE if run is not None else None
+    if passing and marker is not None:
+        marker.write_text(json.dumps(PASSING_REWARDS))
+    if passing or (marker is not None and marker.exists()):
+        return {**TRAFFIC_REWARDS, **PASSING_REWARDS}
+    return TRAFFIC_REWARDS
+
+
+def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS, rewards=TRAFFIC_REWARDS):
+    return DriverEnv(races=races, cars=cars, seed=seed, rewards=rewards, rivals=rivals)
 
 
 def resume_driver(path, env):
@@ -198,6 +216,7 @@ def main():
     parser.add_argument('--from', dest='source', help='start a new run as a copy of this run, or of run/step-N (ignored when resuming)')
     parser.add_argument('--rivals', type=int, default=FEEL_RIVALS, help='with --feel, scripted cars in each race (see env.RaceVecEnv)')
     parser.add_argument('--feel', action='store_true', help='train a driver that drives by feel, with a memory (see driver_env.py)')
+    parser.add_argument('--passing', action='store_true', help='with --feel, race for passes (PASSING_REWARDS); the run remembers it')
     parser.add_argument('--imitate', type=int, default=0, metavar='DECISIONS',
                         help='with --feel, start a new run by copying the scripted driver over this many decisions (see driver_imitation.py)')
     arguments = parser.parse_args()
@@ -209,7 +228,10 @@ def main():
     if arguments.cars is None:
         arguments.cars = FEEL_CARS if arguments.feel else 6
     if arguments.feel:
-        env = driver_env(races=arguments.races, cars=arguments.cars, seed=arguments.seed, rivals=arguments.rivals)
+        env = driver_env(races=arguments.races, cars=arguments.cars, seed=arguments.seed, rivals=arguments.rivals,
+                         rewards=race_rewards(arguments.passing, run))
+        if env.rewards['closing']:
+            print('Racing for passes: the car behind pays for contact, and closing in on the car ahead pays', flush=True)
         if saved.exists():
             model = resume_driver(saved, env)
             print(f'Resuming {run} at step {model.num_timesteps:,}')

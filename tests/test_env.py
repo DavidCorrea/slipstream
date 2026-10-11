@@ -1,8 +1,9 @@
 import numpy as np
+import pytest
 
 from slipstream.car import CarSpecs
 from slipstream.drivers import scripted_controls
-from slipstream.env import REWARDS, RaceVecEnv
+from slipstream.env import REWARDS, RaceVecEnv, contact_shares, gap_closed
 from slipstream.observe import NEARBY, OBSERVATION_NAMES, OBSERVATION_SIZE, observe
 from slipstream.race import Race
 from slipstream.track import generate_track
@@ -269,3 +270,35 @@ class TestConservation:
         env.condition_strength = 0.0
         after = env.step(driving([[0.0, 0.0]]))[1][0]
         assert after <= before + 1e-6
+
+
+class TestRewardingRacecraft:
+    def test_the_car_behind_pays_for_contact_and_the_car_ahead_far_less(self):
+        progress = np.array([100.0, 104.0])
+        shares = contact_shares(progress, first=0, second=1, ahead_pays=0.2)
+        assert shares == {0: 1.0, 1: 0.2}
+        assert contact_shares(progress, first=1, second=0, ahead_pays=0.2) == {1: 0.2, 0: 1.0}
+
+    def test_closing_on_the_car_ahead_pays_and_dropping_back_costs_the_same(self):
+        running = np.ones(3, dtype=bool)
+        order = np.array([2, 1, 0])               # car 2 leads, car 0 is last
+        before = np.array([100.0, 120.0, 150.0])
+        closer = np.array([110.0, 121.0, 151.0])  # car 0 gains 9 m on car 1, car 1 loses 0 on car 2
+        gained = gap_closed(order, running, before, closer, cap=40.0)
+        assert gained[0] == pytest.approx(9.0) and gained[1] == pytest.approx(0.0) and gained[2] == 0.0
+        assert gap_closed(order, running, closer, before, cap=40.0)[0] == pytest.approx(-9.0)
+
+    def test_only_the_last_metres_count_so_nobody_is_paid_for_a_car_far_up_the_road(self):
+        running = np.ones(2, dtype=bool)
+        order = np.array([1, 0])
+        assert gap_closed(order, running, np.array([0.0, 200.0]), np.array([50.0, 200.0]), cap=40.0)[0] == pytest.approx(0.0)
+        assert gap_closed(order, running, np.array([0.0, 60.0]), np.array([30.0, 60.0]), cap=40.0)[0] == pytest.approx(10.0)
+
+    def test_passing_the_car_ahead_never_costs(self):
+        running = np.ones(2, dtype=bool)
+        order = np.array([1, 0])
+        gained = gap_closed(order, running, np.array([95.0, 100.0]), np.array([108.0, 106.0]), cap=40.0)
+        assert gained[0] == pytest.approx(5.0)
+
+    def test_the_original_rewards_leave_both_cars_paying_in_full_and_nothing_for_closing(self):
+        assert REWARDS['contact_ahead'] == 1.0 and REWARDS['closing'] == 0.0

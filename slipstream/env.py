@@ -32,8 +32,13 @@ from .weather import Weather
 # the driver's personality, which also adds its own terms. An earlier off-track cost of 0.02 outweighed the progress a
 # crawling car makes, and the first run learned to sit on the grid with the brake on. Progress made off the
 # tarmac earns nothing (see _drive): the second run learned to cut corners across the grass. `places` multiplies
-# what the personality pays per place gained or lost along the way (see personality.WEIGHTS).
-REWARDS = {'progress': 0.01, 'time': 0.005, 'off_track': 0.005, 'contact': 0.03, 'finish': 1.0, 'podium': 1.0, 'places': 1.0}
+# what the personality pays per place gained or lost along the way (see personality.WEIGHTS). `contact_ahead` is the
+# share of a contact's cost the car in front pays (the car behind pays it all), and `closing` is paid per metre
+# gained on the car directly ahead within CLOSING_REACH (and charged per metre lost to it): both leave the original
+# rewards as they were, and drivers by feel can race for passes with them (train.py PASSING_REWARDS).
+REWARDS = {'progress': 0.01, 'time': 0.005, 'off_track': 0.005, 'contact': 0.03, 'finish': 1.0, 'podium': 1.0, 'places': 1.0,
+           'contact_ahead': 1.0, 'closing': 0.0}
+CLOSING_REACH = 40.0   # metres: about the tow's reach (aero.py), where a pass starts to be set up
 # Training races are anywhere from this short (where a stop never pays) to this long (where one usually does).
 LAPS = (3, 10)
 
@@ -182,7 +187,7 @@ class RaceVecEnv(VecEnv):
         grip_excess = weights['grip_excess'] * strength
         place_value = traits.blend(weights['place'], traits.trait(personality, 'overtaking')) * strength * self.rewards['places']
         conservation = traits.trait(personality, 'conservation') * strength
-        order_before = race.standings()
+        order_before, progress_before = race.standings(), race.progress.copy()
         reward = np.zeros(race.count)
         for _ in range(DECISION_TICKS):
             progress, wear, fuel = race.progress.copy(), race.cars.tyre_wear.copy(), race.cars.fuel.copy()
@@ -191,7 +196,8 @@ class RaceVecEnv(VecEnv):
             reward += self.rewards['progress'] * (race.progress - progress) * race.on_track * racing
             reward -= off_track_cost / DECISION_TICKS * ~race.on_track
             for contact in events.contacts:
-                reward[[contact.first, contact.second]] -= contact_cost[[contact.first, contact.second]] * contact.impulse
+                for car, share in contact_shares(race.progress, contact.first, contact.second, self.rewards['contact_ahead']).items():
+                    reward[car] -= contact_cost[car] * contact.impulse * share
             # A cautious driver pays for using grip beyond its comfort margin; a risky one uses all of it freely.
             reward -= grip_excess / DECISION_TICKS * np.maximum(race.cars.lateral_load - free_grip, 0) * racing
             # Only what's used up counts: a stop refills the tank and resets the tyres, and if those counted as
@@ -206,6 +212,8 @@ class RaceVecEnv(VecEnv):
         # Places count only between cars still running: a car dropping out ahead is luck, not a place won.
         running = ~race.retired
         reward += place_value * (_places(order_before, running) - _places(race.standings(), running)) * racing
+        if self.rewards['closing']:
+            reward += self.rewards['closing'] * gap_closed(order_before, ~race.retired, progress_before, race.progress, CLOSING_REACH) * racing
         reward -= self.rewards['time'] * racing
         return reward
 
@@ -232,6 +240,26 @@ class RaceVecEnv(VecEnv):
         if indices is None:
             return range(self.num_envs)
         return [indices] if isinstance(indices, int) else list(indices)
+
+
+def contact_shares(progress, first, second, ahead_pays):
+    """How much of a contact's cost each car pays: all of it for the car behind, which ran into the other,
+    `ahead_pays` of it for the car in front."""
+    behind, ahead = (first, second) if progress[first] <= progress[second] else (second, first)
+    return {behind: 1.0, ahead: ahead_pays}
+
+
+def gap_closed(order, running, before, after, cap):
+    """Metres each car gained on the car that was directly ahead of it in `order` (among the `running` cars), with
+    the gap counted only up to `cap` and never below 0: a car far up the road isn't worth chasing yet, and getting
+    past isn't paid on top of the place. Ground lost to it comes out negative. Always measured to the same car, so
+    following one around pays nothing over time, and a pass, which changes who is ahead, never costs."""
+    order = order[running[order]]
+    ahead = np.full(len(before), -1)
+    ahead[order[1:]] = order[:-1]
+    chasing = ahead >= 0
+    gap = lambda progress: np.clip(progress[np.where(chasing, ahead, 0)] - progress, 0.0, cap)
+    return np.where(chasing, gap(before) - gap(after), 0.0)
 
 
 def _places(order, among):

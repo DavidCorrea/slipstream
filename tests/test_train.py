@@ -3,7 +3,7 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.logger import configure
 
 from slipstream.train import (FEEL_CARS, FEEL_RIVALS, FEEL_SETTINGS, TRAFFIC_REWARDS, Progress, copy_driver, driver_env,
-                             resume_driver, source_path)
+                             race_rewards, resume_driver, source_path)
 
 
 class TestTrainingADriverByFeel:
@@ -71,3 +71,15 @@ class TestShapingFadesIn:
         progress._set_shaping_strength()
         assert env.personality_strength == 1.0
         assert env.condition_strength == 0.0
+
+
+class TestRacingForPasses:
+    def test_a_passing_run_blames_the_car_behind_for_contact_and_pays_for_closing_in(self):
+        env = driver_env(races=1, seed=0, rewards=race_rewards(passing=True))
+        assert env.rewards['contact_ahead'] < 1.0 and env.rewards['closing'] > 0
+        assert env.rewards['time'] == TRAFFIC_REWARDS['time']
+
+    def test_a_run_started_for_passes_keeps_racing_for_them_when_resumed_without_saying_so(self, tmp_path):
+        assert race_rewards(passing=True, run=tmp_path) == race_rewards(passing=True)
+        assert race_rewards(passing=False, run=tmp_path) == race_rewards(passing=True)
+        assert race_rewards(passing=False, run=tmp_path / 'other') == TRAFFIC_REWARDS

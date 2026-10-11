@@ -1,6 +1,8 @@
 import json
 
-from slipstream.check import CHECKED_SCORES, record, unchecked
+import pytest
+
+from slipstream.check import CHECKED_SCORES, recent_average, record, unchecked
 
 
 def snapshot(run, step):
@@ -20,3 +22,10 @@ class TestCheckingSnapshots:
         record(tmp_path, 'step-000000001000', {'pace': 1.04, 'place': 0.5, 'damage': 0.3, 'off_track': 0.0, 'finished': 1.0, 'risk_pace': 1.1})
         line = json.loads((tmp_path / 'check.jsonl').read_text())
         assert line['step'] == 1000 and set(line) == {'checkpoint', 'step', *CHECKED_SCORES}
+
+    def test_averages_the_latest_snapshots_so_one_lucky_score_doesnt_decide(self, tmp_path):
+        for step, place in ((1000, 0.6), (2000, 0.3), (3000, 0.45), (4000, 0.45)):
+            snapshot(tmp_path, step)
+            record(tmp_path, f'step-{step:012d}', {'pace': 1.0, 'place': place, 'damage': 0.2, 'off_track': 0.01, 'finished': 1.0})
+        assert recent_average(tmp_path)['place'] == pytest.approx(0.4)
+        assert recent_average(tmp_path)['pace'] == pytest.approx(1.0)

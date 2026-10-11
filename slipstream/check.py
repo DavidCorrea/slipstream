@@ -19,6 +19,9 @@ from .brains import load_network
 CHECK_SEEDS = tuple(range(2001, 2025))
 CHECKED_SCORES = ('pace', 'place', 'damage', 'off_track', 'finished')
 WAIT_SECONDS = 60
+# Place moves by about 0.05 from one snapshot to the next with no real change, so a run is judged by the average of
+# its latest few rather than by its single best, which is as much luck as driving.
+AVERAGED = 3
 
 
 def unchecked(run):
@@ -33,6 +36,13 @@ def record(run, checkpoint, scores):
     with open(run / 'check.jsonl', 'a') as log:
         log.write(json.dumps(entry) + '\n')
     return entry
+
+
+def recent_average(run, count=AVERAGED):
+    """Each score averaged over the run's latest `count` checked snapshots."""
+    lines = [json.loads(line) for line in (run / 'check.jsonl').read_text().splitlines()]
+    latest = sorted(lines, key=lambda entry: entry['step'])[-count:]
+    return {name: sum(entry[name] for entry in latest) / len(latest) for name in CHECKED_SCORES}
 
 
 def main():
@@ -50,6 +60,9 @@ def main():
             entry = record(run, path.stem, benchmark(load_network(path), seeds=CHECK_SEEDS))
             print(f"checked {entry['step']:,}: pace {entry['pace']:.3f}x script, place vs script {entry['place']:.2f}, "
                   f"damage {entry['damage']:.2f}, off track {entry['off_track']:.1%}", flush=True)
+            average = recent_average(run)
+            print(f"  latest {AVERAGED} on average: pace {average['pace']:.3f}x, place {average['place']:.2f}, "
+                  f"damage {average['damage']:.2f}", flush=True)
         time.sleep(WAIT_SECONDS)
 
 

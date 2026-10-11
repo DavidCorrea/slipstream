@@ -50,10 +50,11 @@ PROPS = {'scrape': 0.015, 'scrape_most': 0.5, 'soft_restitution': 0.05, 'soft_ab
 CRASH_OUT = 35.0
 STUCK_SECONDS = 20.0
 STUCK_METRES = 25.0
-# A car up against something at walking pace backs off it and swings its nose round to the way the track goes, as a
-# driver would in reverse: cars have no reverse gear and can't steer standing still, and one nosed into the pit
-# wall otherwise pushed against it until it retired, with the cars behind piling up on it.
-RECOVERY = {'below': 3.0, 'turn': 0.9, 'back': 1.2}   # m/s; radians a second; m/s off the prop
+# A car up against something at walking pace backs off it and swings its nose round to the way the track goes (or,
+# off the track, towards the track ahead), as a driver would in reverse: cars have no reverse gear and can't steer
+# standing still, and one nosed into the pit wall otherwise pushed against it until it retired, with the cars
+# behind piling up on it.
+RECOVERY = {'below': 3.0, 'turn': 0.9, 'back': 1.2, 'rejoin': 15.0}   # m/s; radians a second; m/s off the prop; m ahead
 PRESSURE_GAP = 20.0        # metres to the car ahead or behind at which a driver starts to feel the pressure
 
 
@@ -305,8 +306,14 @@ class Race:
 
     def _back_off(self, car, away):
         cars = self.cars
-        tangent = self.track.tangents[self.track_index[car]]
-        turn = np.arctan2(tangent[1], tangent[0]) - cars.heading[car]
+        if self.on_track[car]:
+            tangent = self.track.tangents[self.track_index[car]]
+            turn = np.arctan2(tangent[1], tangent[0]) - cars.heading[car]
+        else:
+            # Off the track, towards it a little way ahead: a car beside the track that ran into something in front
+            # of it already points along the track, and lining up with it would only drive it back in.
+            rejoin = self.track.point_at(self.progress[car] % self.track.length + RECOVERY['rejoin']) - cars.position[car]
+            turn = np.arctan2(rejoin[1], rejoin[0]) - cars.heading[car]
         turn = np.arctan2(np.sin(turn), np.cos(turn))
         cars.heading[car] += np.clip(turn, -RECOVERY['turn'] * DT, RECOVERY['turn'] * DT)
         cars.position[car] += away * RECOVERY['back'] * DT

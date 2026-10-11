@@ -83,6 +83,23 @@ class TestHittingProps:
         assert not race.retired[0] and race.progress[0] > start + 40
 
 
+    def test_a_car_off_the_track_stopped_by_a_tree_in_front_turns_back_to_the_track(self):
+        track = generate_track(3)
+        race = Race(track, CarSpecs.uniform(1), laps=3)
+        start = float(race.progress[0])
+        index = int((race.progress[0] % track.length) / 2.0) % track.size
+        tangent, normal = track.tangents[index], track.normals[index]
+        # Off the left edge, pointing along the track, with a tree just ahead of its nose.
+        race.cars.position[0] = track.points[index] + normal * (track.width / 2 + 3.0)
+        race.cars.heading[0] = float(np.arctan2(tangent[1], tangent[0]))
+        tree = race.cars.position[0] + tangent * 4.0
+        race.place_props([Prop('tree', tree[0], tree[1], SOLID, radius=1.0)])
+        race.cars.velocity[0] = tangent * 2.0
+        for _ in range(int(12.0 / 0.05)):
+            race.step(*scripted_controls(race))
+        assert not race.retired[0] and race.progress[0] > start + 40
+
+
 class TestClearRacing:
     def test_a_clean_lap_hits_nothing(self):
         track = generate_track(5)

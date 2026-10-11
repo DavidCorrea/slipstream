@@ -41,6 +41,7 @@ class DriverEnv(RaceVecEnv):
         super().__init__(races=races, cars=cars, laps=laps, seed=seed, rewards=rewards, rivals=rivals)
         # The driver makes no stops, so the value of the car's condition (which pays for stops) has no part here.
         self.condition_strength = 0.0
+        self.pays_for_condition = False
         # Out of the race either way, and crashing must not be a way out of paying for time any more than stalling.
         self.crash_cost = RETIRE_COST
 

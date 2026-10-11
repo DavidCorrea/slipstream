@@ -132,7 +132,9 @@ class Progress(BaseCallback):
             print(f'step {self.num_timesteps:,}: the drivers can drive; personality and condition start to count', flush=True)
         strength = 0.0 if self.shaping_start is None else min(1.0, (self.num_timesteps - self.shaping_start) / SHAPING_RAMP)
         self.training_env.set_attr('personality_strength', strength)
-        self.training_env.set_attr('condition_strength', strength)
+        # A driver by feel makes no stops, so its car's condition is never part of its reward (driver_env.py).
+        if self.training_env.get_attr('pays_for_condition')[0]:
+            self.training_env.set_attr('condition_strength', strength)
         self.logger.record('train/shaping_strength', strength)
 
     def _on_step(self):

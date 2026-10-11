@@ -1,7 +1,9 @@
 import pytest
 from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.logger import configure
 
-from slipstream.train import FEEL_CARS, FEEL_RIVALS, FEEL_SETTINGS, TRAFFIC_REWARDS, copy_driver, driver_env, resume_driver, source_path
+from slipstream.train import (FEEL_CARS, FEEL_RIVALS, FEEL_SETTINGS, TRAFFIC_REWARDS, Progress, copy_driver, driver_env,
+                             resume_driver, source_path)
 
 
 class TestTrainingADriverByFeel:
@@ -46,3 +48,17 @@ class TestNamingARunToCopy:
     def test_refuses_a_snapshot_that_isnt_there(self, tmp_path):
         with pytest.raises(SystemExit, match='No run to start from'):
             source_path('main/step-missing', tmp_path)
+
+
+class TestShapingFadesIn:
+    def test_a_driver_by_feel_never_pays_for_its_cars_condition_once_shaping_is_full(self, tmp_path):
+        env = driver_env(races=1, cars=2, seed=0, rivals=0)
+        model = RecurrentPPO('MlpLstmPolicy', env, device='cpu', n_steps=8, batch_size=16)
+        model.set_logger(configure(None, []))
+        (tmp_path / 'shaping.json').write_text('{"start": 0}')
+        progress = Progress(tmp_path, every=1_000_000)
+        progress.init_callback(model)
+        progress.num_timesteps = 10_000_000
+        progress._set_shaping_strength()
+        assert env.personality_strength == 1.0
+        assert env.condition_strength == 0.0

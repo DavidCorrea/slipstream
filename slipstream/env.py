@@ -71,6 +71,7 @@ class RaceVecEnv(VecEnv):
         # The same for condition (see strategy.py): its costs (damage from crashing, fuel burned while driving
         # erratically) also fall only on cars that move, so it too waits until the network can drive.
         self.condition_strength = 1.0
+        self.pays_for_condition = True
         # What crashing out on a prop costs; only races with props (driver_env.py) have any to crash on.
         self.crash_cost = 0.0
         self.returns = np.zeros(self.num_envs)

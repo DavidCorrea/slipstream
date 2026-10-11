@@ -58,9 +58,12 @@ PPO_SETTINGS = dict(
 # Drivers by feel (see driver_env.py) have a memory: an LSTM between what they sense and what they do.
 # The driver by feel learned at 3e-4 until about 32M decisions, then its benchmarks went flat and noisy: steps that
 # size kept knocking it off what it had learned. Smaller ones let it settle and keep improving.
+# With nothing paying for exploration its steering and pedal noise kept shrinking (a standard deviation of 0.036 at
+# 32M, 0.022 at 76M), until it could only polish the careful driving it already had and never tried a riskier pass
+# that might pay. A little entropy bonus keeps it trying.
 FEEL_SETTINGS = dict(
     n_steps=256, batch_size=4096, n_epochs=5, learning_rate=1e-4, gamma=0.99, gae_lambda=0.95,
-    clip_range=0.2, ent_coef=0.0, max_grad_norm=0.5,
+    clip_range=0.2, ent_coef=0.001, max_grad_norm=0.5,
     policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), lstm_hidden_size=128, log_std_init=-0.5),
 )
 
@@ -82,9 +85,11 @@ def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS):
 
 
 def resume_driver(path, env):
-    """A saved driver by feel, carrying on at today's FEEL_SETTINGS learning rate rather than the one it was saved with."""
+    """A saved driver by feel, carrying on at today's FEEL_SETTINGS learning rate and exploration rather than the ones
+    it was saved with."""
     rate = FEEL_SETTINGS['learning_rate']
-    model = RecurrentPPO.load(path, env=env, device='cpu', custom_objects={'learning_rate': rate, 'lr_schedule': constant_fn(rate)})
+    model = RecurrentPPO.load(path, env=env, device='cpu', custom_objects={
+        'learning_rate': rate, 'lr_schedule': constant_fn(rate), 'ent_coef': FEEL_SETTINGS['ent_coef']})
     for group in model.policy.optimizer.param_groups:
         group['lr'] = rate
     return model

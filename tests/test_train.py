@@ -26,6 +26,11 @@ class TestTrainingADriverByFeel:
         assert resumed.lr_schedule(1.0) == FEEL_SETTINGS['learning_rate'] < 3e-4
         assert resumed.policy.optimizer.param_groups[0]['lr'] == FEEL_SETTINGS['learning_rate']
 
+    def test_keeps_exploring_even_when_resumed_from_a_driver_saved_without_it(self, tmp_path):
+        env = driver_env(races=1, cars=2, seed=0, rivals=0)
+        RecurrentPPO('MlpLstmPolicy', env, device='cpu', ent_coef=0.0, n_steps=8, batch_size=16).save(tmp_path / 'model')
+        assert resume_driver(tmp_path / 'model.zip', env).ent_coef == FEEL_SETTINGS['ent_coef'] > 0
+
     def test_starts_a_new_run_as_a_copy_of_a_snapshot_keeping_its_experience(self, tmp_path):
         env = driver_env(races=1, cars=2, seed=0, rivals=0)
         source = RecurrentPPO('MlpLstmPolicy', env, device='cpu', n_steps=8, batch_size=16)

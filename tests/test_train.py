@@ -14,6 +14,10 @@ class TestTrainingADriverByFeel:
         assert env.rewards['places'] == TRAFFIC_REWARDS['places'] > 1
         assert env.rewards['podium'] == TRAFFIC_REWARDS['podium'] > 1
 
+    def test_the_clock_costs_more_than_in_the_original_rewards(self):
+        from slipstream.env import REWARDS
+        assert driver_env(races=1, seed=0).rewards['time'] == TRAFFIC_REWARDS['time'] > 2 * REWARDS['time']
+
     def test_resumes_at_the_current_learning_rate_not_the_saved_one(self, tmp_path):
         env = driver_env(races=1, cars=2, seed=0, rivals=0)
         saved = RecurrentPPO('MlpLstmPolicy', env, device='cpu', learning_rate=3e-4, n_steps=8, batch_size=16)

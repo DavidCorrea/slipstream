@@ -69,9 +69,12 @@ FEEL_SETTINGS = dict(
 # with the scripted driver). Three of every eight cars are scripted rivals: in fields made only of copies of
 # itself (driver-traffic, 32M to 38M decisions) it learned to hold back instead, crashing half as much while
 # dropping from 3% faster than the scripted driver to level, and further behind it in traffic.
+# The clock costs more too: at the original 0.005 a decision, being 5% quicker saved less over a race than a
+# middling driver paid for cornering at the limit (personality's grip margin), so every run grew slower once it
+# could drive. At 0.012 the time a faster lap saves outweighs that.
 FEEL_CARS = 8
 FEEL_RIVALS = 3
-TRAFFIC_REWARDS = {'podium': 2.0, 'places': 2.0}
+TRAFFIC_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012}
 
 
 def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS):

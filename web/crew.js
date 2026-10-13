@@ -1,5 +1,7 @@
 // Pit crews: eight people per garage who wait out front, run to the car when it stops in its box, do the jobs
 // the stop calls for on the stop's own timeline, and jog back once the lollipop says go.
+// A full pit lane is 160 people of six parts each, so every part is one instanced mesh for the whole lane: each
+// person is posed as a skeleton of empty nodes, and the nodes' places are copied into the instances every frame.
 //
 // Timeline of a stop, in race seconds from the moment the car stops (jobs come from the server):
 //   0.0-0.5      crew run to their places, jacks go in and lift the car
@@ -18,49 +20,67 @@ const POSTS = [
   { role: 'fuel', x: -0.4, z: 1.7 }, { role: 'lollipop', x: 5.2, z: 0.4 },
 ];
 
-function figure(color) {
+// Every part of every crew, drawn as one instanced mesh each: its shape, look and whether it casts a shadow.
+const PARTS = {
+  torso: { shape: () => new THREE.BoxGeometry(0.42, 0.62, 0.3), surface: () => new THREE.MeshStandardMaterial({ roughness: 0.7 }), shadow: true },
+  head: { shape: () => new THREE.SphereGeometry(0.17, 10, 8), surface: () => new THREE.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.3 }), shadow: true },
+  leg: { shape: () => new THREE.BoxGeometry(0.14, 0.8, 0.16).translate(0, -0.4, 0), surface: () => new THREE.MeshStandardMaterial({ color: '#22252b', roughness: 0.8 }), shadow: true },
+  arm: { shape: () => new THREE.BoxGeometry(0.12, 0.55, 0.12).translate(0, -0.27, 0), surface: () => new THREE.MeshStandardMaterial({ roughness: 0.7 }), shadow: false },
+  pole: { shape: () => new THREE.CylinderGeometry(0.03, 0.03, 1.6, 6), surface: () => new THREE.MeshStandardMaterial({ color: '#c8ccd4' }), shadow: false },
+  // The lollipop's sign glows red or green, so it's lit by itself rather than by the sun.
+  sign: { shape: () => new THREE.CylinderGeometry(0.32, 0.32, 0.04, 20), surface: () => new THREE.MeshBasicMaterial(), shadow: false },
+  rig: { shape: () => new THREE.BoxGeometry(0.8, 1.6, 0.8), surface: () => new THREE.MeshStandardMaterial({ color: '#30343c', roughness: 0.6 }), shadow: true },
+};
+const LOLLIPOP = { stop: new THREE.Color('#e10600'), go: new THREE.Color('#19c94a') };
+
+// A node standing in for one part: posed like a mesh, drawn by that part's instanced mesh.
+function node(kind, parts, color = null) {
+  const part = new THREE.Object3D();
+  parts.push({ kind, node: part, color });
+  return part;
+}
+
+function figure(color, parts) {
   const person = new THREE.Group();
-  const suit = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
-  const dark = new THREE.MeshStandardMaterial({ color: '#22252b', roughness: 0.8 });
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.3), suit);
+  const torso = node('torso', parts, color);
   torso.position.y = 1.15;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), new THREE.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.3 }));
+  const head = node('head', parts);
   head.position.y = 1.62;
   const legs = [-0.11, 0.11].map(side => {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.8, 0.16), dark);
-    leg.geometry.translate(0, -0.4, 0);
+    const leg = node('leg', parts);
     leg.position.set(0, 0.84, side);
     return leg;
   });
   const arms = [-0.27, 0.27].map(side => {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.55, 0.12), suit);
-    arm.geometry.translate(0, -0.27, 0);
+    const arm = node('arm', parts, color);
     arm.position.set(0, 1.42, side);
     return arm;
   });
-  for (const part of [torso, head, ...legs, ...arms]) { part.castShadow = true; person.add(part); }
+  person.add(torso, head, ...legs, ...arms);
   person.userData = { legs, arms, torso };
   return person;
 }
 
-function lollipop() {
+function lollipop(parts) {
   const stick = new THREE.Group();
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.6, 6), new THREE.MeshStandardMaterial({ color: '#c8ccd4' }));
+  const pole = node('pole', parts);
   pole.position.y = 0.8;
-  const sign = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 20), new THREE.MeshStandardMaterial({ color: '#e10600', emissive: '#550000' }));
+  const sign = node('sign', parts, LOLLIPOP.stop);
   sign.rotation.x = Math.PI / 2;
   sign.position.y = 1.7;
   stick.add(pole, sign);
-  stick.userData = { sign };
+  stick.userData = { sign: parts[parts.length - 1] };
   return stick;
 }
 
 export function createCrews(scene, boxes, cars) {
   const group = new THREE.Group();
   scene.add(group);
+  const parts = [];
   const crews = boxes.map(box => {
+    const team = new THREE.Color(cars[box.car].color);
     const members = POSTS.map((post, index) => {
-      const person = figure(cars[box.car].color);
+      const person = figure(team, parts);
       // Waiting in a loose line in front of the garage.
       const spread = (index - (POSTS.length - 1) / 2) * 1.1;
       const forward = new THREE.Vector3(Math.cos(box.heading), 0, -Math.sin(box.heading));
@@ -70,18 +90,40 @@ export function createCrews(scene, boxes, cars) {
       group.add(person);
       return { person, post };
     });
-    const sign = lollipop();
+    const sign = lollipop(parts);
     members.find(member => member.post.role === 'lollipop').person.add(sign);
     sign.position.set(0.3, 0.6, 0);
     const hose = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 8), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.6 }));
     hose.visible = false;
     group.add(hose);
-    const rig = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), new THREE.MeshStandardMaterial({ color: '#30343c', roughness: 0.6 }));
+    const rig = node('rig', parts);
     rig.position.copy(box.home).add(new THREE.Vector3(0, 0.8, 0));
-    rig.castShadow = true;
     group.add(rig);
     return { box, members, sign, hose, rig, stop: null, loose: [] };
   });
+
+  // One instanced mesh per kind of part; its bounds would change as people move, so it's never culled.
+  const drawn = Object.fromEntries(Object.entries(PARTS).map(([kind, { shape, surface, shadow }]) => {
+    const ofKind = parts.filter(part => part.kind === kind);
+    const mesh = new THREE.InstancedMesh(shape(), surface(), Math.max(ofKind.length, 1));
+    mesh.count = ofKind.length;
+    mesh.castShadow = shadow;
+    mesh.frustumCulled = false;
+    ofKind.forEach((part, index) => {
+      part.index = index;
+      if (part.color) mesh.setColorAt(index, part.color);
+    });
+    group.add(mesh);
+    return [kind, mesh];
+  }));
+
+  // Copies every node's place into its instance.
+  function draw() {
+    group.updateMatrixWorld();
+    for (const part of parts) drawn[part.kind].setMatrixAt(part.index, part.node.matrixWorld);
+    for (const mesh of Object.values(drawn)) mesh.instanceMatrix.needsUpdate = true;
+  }
+  draw();
 
   // Temporary parts in flight: old wheels rolling away, new ones arriving, a nose or a wing being carried.
   function looseWheel(crew, compound, from, to, start, duration, fade) {
@@ -137,8 +179,7 @@ export function createCrews(scene, boxes, cars) {
 
         // Lollipop: red while they work, up and green when the car may go.
         const go = working && elapsed >= stop.standing - 0.2;
-        sign.userData.sign.material.color.set(go ? '#19c94a' : '#e10600');
-        sign.userData.sign.material.emissive.set(go ? '#0a5a22' : '#550000');
+        drawn.sign.setColorAt(sign.userData.sign.index, go ? LOLLIPOP.go : LOLLIPOP.stop);
         sign.position.y = go ? 1.1 : 0.6;
 
         // Fuel hose from the rig to the car while fuelling.
@@ -181,6 +222,9 @@ export function createCrews(scene, boxes, cars) {
         const noseJob = working && stop.jobs.repair && elapsed > stop.parallelEnd && elapsed < stop.repairEnd;
         parts.noseOff = noseJob ? Math.sin(Math.min(1, (elapsed - stop.parallelEnd) / stop.jobs.repair) * Math.PI) : 0;
       }
+
+      draw();
+      drawn.sign.instanceColor.needsUpdate = true;
 
       // Loose wheels glide between their two spots, fading out if they're the old ones.
       for (const crew of crews) {

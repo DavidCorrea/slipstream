@@ -100,6 +100,8 @@ export function createWeather(stage) {
       if (tarmac) {
         tarmac.roughness = tarmac.userData.dryRoughness - shownWetness * 0.55;
         tarmac.color.setScalar(1 - shownWetness * 0.4);
+        // Puddles only once the track is properly wet (see circuit.js).
+        if (tarmac.userData.puddles) tarmac.userData.puddles.value = Math.max(0, (shownWetness - 0.35) / 0.65);
       }
     },
 

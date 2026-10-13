@@ -18,6 +18,8 @@ const TARMAC_SECTION = { shortest: 25, longest: 90, shade: 0.09 };   // in sampl
 // Big soft patches of lighter and darker ground, grass verge and tarmac, so no stretch looks stamped out: how
 // wide a patch is (metres) and how much it changes the colour.
 const PATCHES = { ground: [70, 0.12], verge: [35, 0.1], tarmac: [22, 0.05] };
+// Standing water on a wet track: patches below this level of the noise fill first.
+const PUDDLES = { spread: 0.45 };
 const PATCH_NOISE = `
   varying vec2 patchPosition;
   float patchHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -47,7 +49,7 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
   const clearOfLane = pitLaneClearance(track, pitLane);
   if (!location.walled) group.add(gravelTraps(points, normals, curvature, half, clearOfLane));
   const tarmac = ribbon(points, normals, -half, half, LAYER.tarmac,
-    patchy(new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.92, vertexColors: true }), ...PATCHES.tarmac), 18, tarmacSections(points.length, random));
+    patchy(new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.92, vertexColors: true }), ...PATCHES.tarmac, true), 18, tarmacSections(points.length, random));
   tarmac.receiveShadow = true;
   group.add(tarmac);
   const surface = trackSurface(points, normals, half, track.length);
@@ -118,16 +120,29 @@ function material(color, roughness = 0.8, extra = {}) {
 }
 
 // Varies `surface`'s colour in soft patches about `metres` across, by up to `amount` either way, by where on the
-// ground each point is.
-function patchy(surface, metres, amount) {
+// ground each point is. With `puddles`, its `userData.puddles` (0-1, set with the track's wetness) also gathers
+// standing water in the lowest of those patches: darker, and smooth enough to mirror the sky.
+function patchy(surface, metres, amount, puddles = false) {
+  surface.userData.puddles = { value: 0 };
   surface.onBeforeCompile = shader => {
+    shader.uniforms.puddles = surface.userData.puddles;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 patchPosition;')
       .replace('#include <project_vertex>', '#include <project_vertex>\npatchPosition = (modelMatrix * vec4(transformed, 1.0)).xz;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${PATCH_NOISE}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
-        diffuseColor.rgb *= 1.0 + ${amount.toFixed(3)} * (patchNoise(patchPosition / ${metres.toFixed(1)}) - 0.5) * 2.0;`);
+        float groundPatch = patchNoise(patchPosition / ${metres.toFixed(1)});
+        diffuseColor.rgb *= 1.0 + ${amount.toFixed(3)} * (groundPatch - 0.5) * 2.0;`);
+    if (!puddles) return;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float puddles;')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        // Water stands where the patches are lowest, more of it the wetter the track: there, the tarmac darkens
+        // and goes glassy.
+        float water = (1.0 - smoothstep(${(PUDDLES.spread - 0.15).toFixed(2)}, ${PUDDLES.spread.toFixed(2)}, groundPatch + (1.0 - puddles) * 0.4)) * puddles;
+        roughnessFactor = mix(roughnessFactor, 0.04, water);
+        diffuseColor.rgb *= 1.0 - water * 0.45;`);
   };
   return surface;
 }

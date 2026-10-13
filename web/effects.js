@@ -293,6 +293,15 @@ export function createEffects(scene) {
             color: SPRAY, size: 1.2, grow: 4.5, life: 0.7 + Math.random() * 0.4, drag: 2.2, opacity: 0.32,
           });
         }
+        // And the tall mist the rear wing pulls up behind a car at speed, which hangs in the air for the cars behind.
+        if (state.speed > 25 && Math.random() < amount * 0.9 * rate) {
+          const behind = rear[0].clone().add(rear[1]).multiplyScalar(0.5).addScaledVector(velocity.clone().normalize(), -1.5);
+          soft.emit({
+            position: behind.add(new THREE.Vector3(jitter(0.6), 1.1, jitter(0.6))),
+            velocity: velocity.clone().multiplyScalar(0.45).add(new THREE.Vector3(jitter(1.2), 0.6 + Math.random(), jitter(1.2))),
+            color: SPRAY, size: 2.2, grow: 6, life: 1.2 + Math.random() * 0.6, drag: 1.6, opacity: 0.16,
+          });
+        }
       }
       // In another car's tow the air ahead streams past in lines.
       if ((state.draft ?? 0) > 0.3 && state.speed > 30) {

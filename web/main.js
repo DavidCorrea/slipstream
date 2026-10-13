@@ -301,6 +301,30 @@ const MOVING_SHOTS = new Set(['chase', 'onboard', 'wheel']);
 const ON_THE_CAR = new Set(['onboard', 'wheel', 'lookingBack']);
 const FULL_BLUR_SPEED = 80;   // m/s
 const blurAt = speed => Math.min(1, Math.max(0, speed) / FULL_BLUR_SPEED);
+// Heat haze behind the exhausts of cars on the throttle (see post.js): where the pipe is on the car, how big the
+// plume is, and how small on screen it can get before it isn't worth drawing.
+const EXHAUST = new THREE.Vector3(-2.35, 0.4, 0);
+const PLUME_METRES = 0.9;
+const SMALLEST_PLUME = 0.01;   // of the screen's height
+const HAZE_THROTTLE = 0.5;
+
+// The exhausts shimmering in a close-up from `camera`, biggest first, as [x, y, size] on the screen.
+function exhaustHaze(frame, camera) {
+  if (!camera.isPerspectiveCamera) return [];
+  const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  const haze = [];
+  state.cars.forEach((car, id) => {
+    if (frame.cars.throttle[id] < HAZE_THROTTLE || !car.visible) return;
+    const pipe = car.localToWorld(EXHAUST.clone());
+    const distance = pipe.distanceTo(camera.position);
+    const size = PLUME_METRES / (2 * halfHeight * Math.max(distance, 0.5));
+    if (size < SMALLEST_PLUME) return;
+    const onScreen = pipe.project(camera);
+    if (onScreen.z > 1 || Math.abs(onScreen.x) > 1.2 || Math.abs(onScreen.y) > 1.2) return;
+    haze.push([(onScreen.x + 1) / 2, (onScreen.y + 1) / 2, size]);
+  });
+  return haze.sort((a, b) => b[2] - a[2]);
+}
 
 let lastRender = performance.now();
 function render(now) {
@@ -339,7 +363,7 @@ function renderLive(frame, seconds, now) {
   }
   showShot(state.shot, frame);
   const moving = state.shot && MOVING_SHOTS.has(state.shot.kind);
-  state.look = { speed: moving ? blurAt(frame.cars.speed[state.shot.car]) : 0, timed: !state.paused };
+  state.look = { speed: moving ? blurAt(frame.cars.speed[state.shot.car]) : 0, heat: state.shot ? exhaustHaze(frame, director.camera) : [], timed: !state.paused };
   weather.update(frame.weather.wetness, frame.weather.rain, state.shot ? state.shot.focus : stage.view.focus, seconds, now / 1000, frame.weather.wind);
   const lapStart = frame.cars.lapStart[state.selected];
   ghost.update(lapStart === null || frame.cars.finishTime[state.selected] !== null ? null : frame.time - lapStart);
@@ -372,7 +396,7 @@ function renderReplay(seconds, now) {
   // Slow motion streaks less than real time does; the lens focuses on the car the replay is about.
   const blur = MOVING_SHOTS.has(part.shot.kind) ? blurAt(frame.cars.speed[replay.cars[0]]) * Math.min(1, part.speed * 1.5) : 0;
   const focus = ON_THE_CAR.has(part.shot.kind) ? null : replayCamera.camera.position.distanceTo(state.cars[replay.cars[0]].position);
-  state.look = { speed: blur, focus, timed: true };
+  state.look = { speed: blur, focus, heat: exhaustHaze(frame, replayCamera.camera), timed: true };
   state.effects.update(seconds * part.speed, stage.pixelsTall() / (2 * Math.tan(THREE.MathUtils.degToRad(replayCamera.camera.fov) / 2) * Math.max(distance, 1)));
   if (replay.time < part.to) return;
   // On to the next part (a cut), which may go back to show the impact again.

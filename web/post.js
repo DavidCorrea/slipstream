@@ -3,6 +3,7 @@
 //                      (from the isometric camera only: close up, at half size, it speckles the cars)
 //   glow               bright lights (brake discs, brake and rain lights, headlights, street lamps) bleed a little
 //   speed blur         on the chase, onboard and wheel cameras, the edges of the picture streak at speed
+//   heat haze          the air shimmers behind the exhaust of a car on the throttle, seen close up
 //   depth of field     in replays, a long lens keeps the cars sharp and lets what's near and far go soft
 //
 // They cost GPU time, so they adapt: the occlusion is drawn at half size, and when frames take too long the
@@ -22,13 +23,15 @@ const GLOW = { strength: 0.35, radius: 0.3, threshold: 1.6 };
 const OCCLUSION = { radius: 1.6, distanceExponent: 1.5, thickness: 2.5, scale: 1.0, samples: 12, distanceFallOff: 1.0 };
 const SPEED_BLUR = { samples: 8, reach: 0.06 };     // reach: how far the edges streak at full strength, of the screen
 const LENS = { aperture: 0.0016, maxblur: 0.008 };
+const HEAT_SOURCES = 6;                              // the nearest exhausts that shimmer
+const HEAT = { wobble: 0.08, rise: 1.6 };           // how far the picture shifts, of a source's size; how far it rises
 // Dropping effects: frames slower than this on average over a few seconds of racing (the race is drawn at up to 60
 // a second, a paused one at 30, which isn't counted). A gap longer than a hitch (a hidden tab) isn't counted either.
 const SLOW_FRAME_MS = 1000 / 42;
 const HITCH_MS = 250;
 const MEASURE_SECONDS = 4;
 // Most costly first: the occlusion renders the whole scene a second time, the lens a third time in replays.
-const DROP_ORDER = ['occlusion', 'lens', 'glow'];
+const DROP_ORDER = ['occlusion', 'lens', 'glow', 'heat'];
 
 const speedBlurShader = {
   uniforms: { tDiffuse: { value: null }, strength: { value: 0 } },
@@ -52,6 +55,34 @@ const speedBlurShader = {
   `,
 };
 
+const heatShader = {
+  uniforms: { tDiffuse: { value: null }, sources: { value: Array.from({ length: HEAT_SOURCES }, () => new THREE.Vector3()) },
+              count: { value: 0 }, time: { value: 0 }, aspect: { value: 1 } },
+  vertexShader: speedBlurShader.vertexShader,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec3 sources[${HEAT_SOURCES}];
+    uniform int count;
+    uniform float time;
+    uniform float aspect;
+    varying vec2 vUv;
+    void main() {
+      vec2 shift = vec2(0.0);
+      for (int i = 0; i < ${HEAT_SOURCES}; i++) {
+        if (i >= count) break;
+        vec3 source = sources[i];
+        // A plume above and behind the exhaust: strongest at the pipe, fading as it rises.
+        vec2 away = (vUv - source.xy) * vec2(aspect, 1.0) / source.z;
+        away.y = away.y > 0.0 ? away.y / ${HEAT['rise']} : away.y * 2.0;
+        float plume = exp(-dot(away, away) * 2.5);
+        shift += plume * source.z * vec2(sin(vUv.y * 340.0 / max(source.z * 40.0, 1.0) + time * 23.0),
+                                         cos(vUv.x * 300.0 / max(source.z * 40.0, 1.0) + time * 19.0));
+      }
+      gl_FragColor = texture2D(tDiffuse, vUv + shift * ${HEAT['wobble']});
+    }
+  `,
+};
+
 export function createPost(renderer, scene, camera) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   // Drawing into a texture loses the canvas's own antialiasing, so the texture is multisampled instead.
@@ -66,8 +97,9 @@ export function createPost(renderer, scene, camera) {
   occlusion.setSize = (width, height) => fullSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
   const glow = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), GLOW.strength, GLOW.radius, GLOW.threshold);
   const speedBlur = new ShaderPass(speedBlurShader);
+  const heat = new ShaderPass(heatShader);
   const lens = new BokehPass(scene, camera, { focus: 20, ...LENS });
-  for (const pass of [scenePass, occlusion, glow, speedBlur, lens, new OutputPass()]) composer.addPass(pass);
+  for (const pass of [scenePass, occlusion, heat, glow, speedBlur, lens, new OutputPass()]) composer.addPass(pass);
 
   const dropped = new Set();
   let enabled = true, measuredMs = 0, measuredFrames = 0, lastFrame = null;
@@ -99,15 +131,23 @@ export function createPost(renderer, scene, camera) {
       composer.setSize(width, height);
     },
 
-    // `look`: `speed` (0-1) streaks the edges, `focus` (metres from the camera) puts the lens on, and `timed` says
+    // `look`: `speed` (0-1) streaks the edges, `focus` (metres from the camera) puts the lens on, `heat` lists the
+    // exhausts that shimmer as [x, y, size] on the screen (0-1, size a share of its height), and `timed` says
     // whether this frame counts towards the frame rate (not while paused).
-    render(activeCamera, { speed = 0, focus = null, timed = true } = {}, now = performance.now()) {
+    render(activeCamera, { speed = 0, focus = null, heat: exhausts = [], timed = true } = {}, now = performance.now()) {
       if (timed) measure(now);
       else lastFrame = null;
       scenePass.camera = lens.camera = activeCamera;
       occlusion.enabled = activeCamera === camera && !dropped.has('occlusion');
       glow.enabled = !dropped.has('glow');
       speedBlur.enabled = speed > 0.02;
+      heat.enabled = exhausts.length > 0 && !dropped.has('heat');
+      if (heat.enabled) {
+        exhausts.slice(0, HEAT_SOURCES).forEach(([x, y, size], index) => heat.uniforms.sources.value[index].set(x, y, size));
+        heat.uniforms.count.value = Math.min(exhausts.length, HEAT_SOURCES);
+        heat.uniforms.time.value = now / 1000;
+        heat.uniforms.aspect.value = renderer.domElement.width / Math.max(renderer.domElement.height, 1);
+      }
       speedBlur.uniforms.strength.value = speed;
       lens.enabled = focus !== null && activeCamera.isPerspectiveCamera && !dropped.has('lens');
       if (lens.enabled) lens.uniforms.focus.value = focus;

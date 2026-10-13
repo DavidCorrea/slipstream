@@ -88,17 +88,30 @@ TRAFFIC_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012}
 # stops being as costly as diving into one; and closing in on the car ahead pays per metre (and dropping back costs
 # the same), so setting up a pass is worth something before the place is won.
 PASSING_REWARDS = {'contact_ahead': 0.2, 'closing': 0.008}
-PASSING_FILE = 'passing.json'
+# Racing clean (--rewards clean): racing for passes won places, but in a field of itself driver-pass 90M had four
+# times as many cars crash out as driver-race 82M and three times the time off the track. A hit's damage and a
+# crash's lost race come mostly after the few seconds a driver looks ahead, so here a hard hit costs a quarter of
+# a place's worth at the most, crashing out costs what a stuck car's retirement would at 2.5 times, and time off
+# the tarmac three times as much.
+CLEAN_REWARDS = {'hard_hit': 0.5, 'retire': 5.0, 'off_track': 0.015}
+REWARD_STYLES = {'traffic': TRAFFIC_REWARDS, 'passing': {**TRAFFIC_REWARDS, **PASSING_REWARDS},
+                 'clean': {**TRAFFIC_REWARDS, **CLEAN_REWARDS}}
+STYLE_FILE = 'rewards.json'
+PASSING_FILE = 'passing.json'   # how runs started for passes before there was more than one style
 
 
-def race_rewards(passing, run=None):
-    """The rewards a driver by feel trains on. A run started with `passing` keeps them whenever it's resumed."""
-    marker = run / PASSING_FILE if run is not None else None
-    if passing and marker is not None:
-        marker.write_text(json.dumps(PASSING_REWARDS))
-    if passing or (marker is not None and marker.exists()):
-        return {**TRAFFIC_REWARDS, **PASSING_REWARDS}
-    return TRAFFIC_REWARDS
+def race_rewards(style=None, run=None):
+    """The rewards a driver by feel trains on (REWARD_STYLES). A run started with a style keeps it whenever it's
+    resumed."""
+    marker = run / STYLE_FILE if run is not None else None
+    if style and marker is not None:
+        marker.write_text(json.dumps({'style': style}))
+    if not style and marker is not None:
+        if marker.exists():
+            style = json.loads(marker.read_text())['style']
+        elif (run / PASSING_FILE).exists():
+            style = 'passing'
+    return REWARD_STYLES[style or 'traffic']
 
 
 def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS, rewards=TRAFFIC_REWARDS):
@@ -216,7 +229,7 @@ def main():
     parser.add_argument('--from', dest='source', help='start a new run as a copy of this run, or of run/step-N (ignored when resuming)')
     parser.add_argument('--rivals', type=int, default=FEEL_RIVALS, help='with --feel, scripted cars in each race (see env.RaceVecEnv)')
     parser.add_argument('--feel', action='store_true', help='train a driver that drives by feel, with a memory (see driver_env.py)')
-    parser.add_argument('--passing', action='store_true', help='with --feel, race for passes (PASSING_REWARDS); the run remembers it')
+    parser.add_argument('--rewards', choices=sorted(REWARD_STYLES), help='with --feel, what to race for (REWARD_STYLES); the run remembers it')
     parser.add_argument('--imitate', type=int, default=0, metavar='DECISIONS',
                         help='with --feel, start a new run by copying the scripted driver over this many decisions (see driver_imitation.py)')
     arguments = parser.parse_args()
@@ -229,9 +242,11 @@ def main():
         arguments.cars = FEEL_CARS if arguments.feel else 6
     if arguments.feel:
         env = driver_env(races=arguments.races, cars=arguments.cars, seed=arguments.seed, rivals=arguments.rivals,
-                         rewards=race_rewards(arguments.passing, run))
+                         rewards=race_rewards(arguments.rewards, run))
         if env.rewards['closing']:
             print('Racing for passes: the car behind pays for contact, and closing in on the car ahead pays', flush=True)
+        if env.rewards['hard_hit']:
+            print('Racing clean: hard hits, crashing out and running off the track cost more', flush=True)
         if saved.exists():
             model = resume_driver(saved, env)
             print(f'Resuming {run} at step {model.num_timesteps:,}')

@@ -176,6 +176,18 @@ class TestPersonality:
             rewards[aggression] = env.step(driving([[0.0, 0.0], [0.0, 0.0]]))[1][0]
         assert rewards[0.0] < rewards[1.0]
 
+    def test_charges_extra_for_a_hard_hit_when_hard_hits_cost(self):
+        rewards = {}
+        for hard_hit in (0.0, 0.5):
+            env = RaceVecEnv(races=1, cars=2, seed=8, rewards={'hard_hit': hard_hit})
+            env.reset()
+            race = env.races[0]
+            # Into the back of a car stopped just ahead, at 15 m/s.
+            race.cars.position[1] = race.cars.position[0] + race.cars.forward[0] * 6.0
+            race.cars.velocity[0] = race.cars.forward[0] * 15
+            rewards[hard_hit] = env.step(driving([[0.0, 0.0], [0.0, 0.0]]))[1][0]
+        assert rewards[0.5] < rewards[0.0] - 0.4
+
     def test_pays_eager_overtakers_more_for_a_place_gained(self):
         gains = {}
         for overtaking in (0.0, 1.0):

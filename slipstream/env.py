@@ -22,7 +22,7 @@ from . import personality as traits
 from .observe import OBSERVATION_SIZE, observe
 from .pit import PitPlan
 from .strategy import ACTION_NAMES, condition_value, decode, scripted_strategy
-from .race import Race
+from .race import HARD_HIT, Race
 from .track import generate_track
 from .weather import Weather
 
@@ -35,9 +35,11 @@ from .weather import Weather
 # what the personality pays per place gained or lost along the way (see personality.WEIGHTS). `contact_ahead` is the
 # share of a contact's cost the car in front pays (the car behind pays it all), and `closing` is paid per metre
 # gained on the car directly ahead within CLOSING_REACH (and charged per metre lost to it): both leave the original
-# rewards as they were, and drivers by feel can race for passes with them (train.py PASSING_REWARDS).
+# rewards as they were, and drivers by feel can race for passes with them (train.py PASSING_REWARDS). `hard_hit`
+# is paid per hit of HARD_HIT or more, shared as contact is: a hit's damage costs pace for the rest of the race, long
+# after the few seconds a driver looks ahead, so on its own a hit is nearly free (train.py CLEAN_REWARDS).
 REWARDS = {'progress': 0.01, 'time': 0.005, 'off_track': 0.005, 'contact': 0.03, 'finish': 1.0, 'podium': 1.0, 'places': 1.0,
-           'contact_ahead': 1.0, 'closing': 0.0}
+           'contact_ahead': 1.0, 'closing': 0.0, 'hard_hit': 0.0}
 CLOSING_REACH = 40.0   # metres: about the tow's reach (aero.py), where a pass starts to be set up
 # Training races are anywhere from this short (where a stop never pays) to this long (where one usually does).
 LAPS = (3, 10)
@@ -198,6 +200,8 @@ class RaceVecEnv(VecEnv):
             for contact in events.contacts:
                 for car, share in contact_shares(race.progress, contact.first, contact.second, self.rewards['contact_ahead']).items():
                     reward[car] -= contact_cost[car] * contact.impulse * share
+                    if contact.impulse >= HARD_HIT:
+                        reward[car] -= self.rewards['hard_hit'] * share
             # A cautious driver pays for using grip beyond its comfort margin; a risky one uses all of it freely.
             reward -= grip_excess / DECISION_TICKS * np.maximum(race.cars.lateral_load - free_grip, 0) * racing
             # Only what's used up counts: a stop refills the tank and resets the tyres, and if those counted as

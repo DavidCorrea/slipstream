@@ -44,7 +44,7 @@ class DriverEnv(RaceVecEnv):
         self.condition_strength = 0.0
         self.pays_for_condition = False
         # Out of the race either way, and crashing must not be a way out of paying for time any more than stalling.
-        self.crash_cost = RETIRE_COST
+        self.crash_cost = self.rewards.get('retire', RETIRE_COST)
 
     def new_race(self, personality=None):
         race = self._new_race(personality)
@@ -63,7 +63,7 @@ class DriverEnv(RaceVecEnv):
         race.retired |= beached
         if race.done:
             del self.furthest[id(race)]
-        return -RETIRE_COST * beached
+        return -self.crash_cost * beached
 
     def observation_size(self):
         return len(SENSE_NAMES)

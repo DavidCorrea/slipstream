@@ -1,6 +1,6 @@
 """Gets the site ready to publish: the trained networks it races with, and the list of files the page downloads.
 
-    .venv/bin/python -m slipstream.publish driver-clean/step-000093018944 pitwall-feel/step-000000251904
+    .venv/bin/python -m slipstream.publish driver-steady/step-000088018944 pitwall-feel/step-000000251904
     .venv/bin/python -m slipstream.publish            # only refreshes the list, after changing the simulation
 
 The published site has no server: the page runs the simulation itself (browser.py in a web worker). Static

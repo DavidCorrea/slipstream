@@ -274,6 +274,7 @@ export function trackside({ props, walled, breakable }) {
   const boardMaterials = SPONSORS.map(sponsor => new THREE.MeshStandardMaterial({ map: sponsorTexture(sponsor), roughness: 0.6 }));
   // A breakable prop drawn as its own object: hidden whole when it breaks.
   const own = (object, prop) => {
+    object.userData.changes = true;
     breakable(prop.id, () => { object.visible = false; });
     group.add(object);
   };
@@ -307,6 +308,7 @@ export function trackside({ props, walled, breakable }) {
     pole.position.set(0.35, 1.7, -1.8);
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), flagCloth);
     flag.position.set(0.7, 2.3, -1.8);
+    flag.userData.changes = true;
     post.add(hut, marshal, pole, flag);
     post.position.copy(spot(prop));
     post.rotation.y = prop.angle;

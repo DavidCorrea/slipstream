@@ -1,6 +1,7 @@
 // Everything about the circuit that doesn't move (and the crowd, which does), built from the track the server
 // sends: tarmac, lines, curbs, gravel traps, the start gantry and grid, grandstands, tyre walls and trees.
 import * as THREE from 'three';
+import { mergeStatic } from './batch.js';
 import { toWorld } from './scene.js';
 import { LOCATIONS, canvasTexture, trackside } from './scenery.js';
 
@@ -59,13 +60,13 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
   }
   group.add(curbs(points, normals, curvature, half, clearOfLane));
   group.add(startLine(points, normals, track.width));
-  group.add(gridBoxes(grid));
+  group.add(mergeStatic(gridBoxes(grid)));
   const gantry = startGantry(points, normals, half);
-  group.add(gantry.group);
+  group.add(mergeStatic(gantry.group));
   const pits = pitArea(track, pitLane, cars);
-  group.add(pits.group);
+  group.add(mergeStatic(pits.group));
   const stands = grandstands(points, normals, half, pitLane.side, Math.abs(pitLane.offset) + 22, random);
-  group.add(stands.group);
+  group.add(mergeStatic(stands.group));
   // What breaks registers how to hide itself, so a prop a car breaks disappears.
   const breakers = new Map();
   const breakable = (id, hide) => breakers.set(id, [...(breakers.get(id) ?? []), hide]);
@@ -74,7 +75,7 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
   const backdrop = [];
   scenery.traverse(object => { if (object.userData.backdrop) backdrop.push(object); });
   const details = trackside({ props, walled: !!location.walled, breakable });
-  group.add(details.group);
+  group.add(mergeStatic(details.group));
   scene.add(group);
 
   return {
@@ -378,6 +379,7 @@ function startGantry(points, normals, half) {
   for (let index = 0; index < 5; index++) {
     const light = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), new THREE.MeshStandardMaterial({ color: '#330000', emissive: '#000000', emissiveIntensity: 2.5 }));
     light.position.set(0.65, 7.5, (index - 2) * 1.6);
+    light.userData.changes = true;
     lights.push(light);
     group.add(light);
   }

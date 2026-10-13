@@ -13,7 +13,7 @@ import { createRaceEvents, radioLines } from './race-events.js';
 import { blend, createReplay, replayAt } from './replay.js';
 import { createReplayCamera } from './replay-camera.js';
 import { createRacerPanel } from './racer.js';
-import { createStage, toWorld } from './scene.js';
+import { createStage, timeOfDay, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
 import { createSpeech } from './speech.js';
 import { LOCATIONS } from './scenery.js';
@@ -144,7 +144,7 @@ function setUpRace(intro) {
   const locationName = intro.location;
   state.location = LOCATIONS[locationName];
   state.circuit = buildCircuit(stage.scene, intro.track, intro.grid, intro.seed, intro.pitLane, intro.cars, locationName, intro.props);
-  stage.setLocation(state.location);
+  stage.setLocation(state.location, timeOfDay(intro.seed));
   weather.setLocation(state.location);
   state.crews = createCrews(stage.scene, state.circuit.pits.boxes, intro.cars);
   weather.setTarmac(state.circuit.tarmac);

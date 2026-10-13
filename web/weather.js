@@ -58,12 +58,14 @@ export function createWeather(stage) {
   // The location's clear-weather sky, fog and sun (see scenery.js), which rain greys over.
   const clearSky = new THREE.Color('#9cc7e8'), clearFog = new THREE.Color('#b9d6ea');
   let sunshine = 2.3, darkness = 0;
+  const horizon = new THREE.Color(), haze = new THREE.Color();
 
   return {
     setLocation(location) {
       clearSky.set(location.sky);
-      clearFog.set(location.fog);
-      sunshine = location.sun[1];
+      // The haze is the time of day's (see scene.js), warmer late in the afternoon.
+      clearFog.copy(stage.daylight.haze);
+      sunshine = location.sun[1] * stage.daylight.strength;
       // At night rain clouds have no daylight to grey: the sky stays dark.
       darkness = location.night ? 1 : 0;
     },
@@ -89,9 +91,11 @@ export function createWeather(stage) {
       material.uniforms.opacity.value = 0.15 + shownRain * 0.4;
       geometry.setDrawRange(0, Math.round(DROPS * Math.min(1, shownRain * 1.2)) * 2);
 
-      const gloom = Math.min(1, shownRain * 1.4);
-      stage.scene.background.copy(clearSky).lerp(WET_SKY, gloom * (1 - darkness));
-      stage.scene.fog.color.copy(clearFog).lerp(WET_FOG, gloom * (1 - darkness));
+      const gloom = Math.min(1, shownRain * 1.4) * (1 - darkness);
+      horizon.copy(clearSky).lerp(WET_SKY, gloom);
+      haze.copy(clearFog).lerp(WET_FOG, gloom);
+      stage.setSky(horizon, haze, gloom);
+      stage.scene.fog.color.copy(haze);
       stage.sun.intensity = sunshine * (1 - gloom * 0.65);
       if (tarmac) {
         tarmac.roughness = tarmac.userData.dryRoughness - shownWetness * 0.55;

@@ -1,10 +1,14 @@
 // The cars: a low-poly open-wheeler per driver, posed every frame from the sim, with every part showing the
 // car's setup and condition.
+//   shape       a tub and nose that taper to the tip, sidepods that narrow towards the back, an engine cover that
+//               slopes down into a shark fin, a halo round the cockpit, and wishbones out to every wheel
 //   paint       a clear-coated gloss over the livery colour; carbon parts matte, with a fine weave
 //   livery      the race number on the nose and sidepods, a sponsor's name on the sidepods, engine cover and
 //               rear wing endplates
-//   wheels      spin with speed, fronts steer; the sidewall stripe is the compound's colour, greying as it wears,
-//               and the tread goes from matte black to a shinier, greyer grained look
+//   driver      a helmet in the livery with a dark visor; the head leans against the corner, tips forward under
+//               braking and looks into the turn, and the steering wheel turns with the steering
+//   wheels      rounded tyres that spin with speed, fronts steer; the sidewall stripe is the compound's colour,
+//               greying as it wears, and the tread goes from matte black to a shinier, greyer grained look
 //   brakes      discs glow orange under hard braking and cool off after
 //   body        leans in corners, dips under braking, and sits lower on a full tank
 //   rear wing   steeper the more wing it runs, with an extra flap at high settings
@@ -13,17 +17,226 @@
 //               darkens throughout. Lost halves of wing are left on the track.
 //   exhaust     a flame on full throttle, bigger and hotter in the more powerful engine modes
 // The crew can lift the car on jacks, take the rear wing off, open the engine cover and swap the nose.
+//
+// Twenty cars are drawn every frame, twice (the picture and the sun's shadow), so each car is cheap to draw: the
+// parts that move together are merged into one mesh per material, every car shares the same geometry, only the
+// big parts cast shadows, and a car too small on screen to show its details is drawn as a simple two-mesh car
+// instead (setCarDetail).
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { toWorld } from './scene.js';
 import { SPONSORS } from './scenery.js';
 
 const WHEEL_RADIUS = 0.36;
 const WHEELBASE = 3.0;
 const TRACK_WIDTH = 1.7;
+// Where the tyres touch: the tarmac's top (see circuit.js), or the grass and gravel a little below it.
+export const ROAD_HEIGHT = 0.1;
+const OFF_ROAD_HEIGHT = 0.05;
+const RIDE_HEIGHT = 0.3;            // the body's floor plane above the ground
 export const COMPOUND_COLORS = { soft: '#e63946', medium: '#ffd23f', hard: '#f2f2f2', intermediate: '#3ddc84', wet: '#2f8cff' };
 const WORN = new THREE.Color('#6b6b6b');
 const FRESH_TREAD = new THREE.Color('#141414'), WORN_TREAD = new THREE.Color('#34312e');
 const TREAD_ROUGHNESS = { fresh: 0.88, worn: 0.5 };
+// How the driver's head moves: rolled against the corner and pitched under braking, more than the body (a neck
+// isn't a suspension), and turned towards where the car is steering.
+const HEAD = { roll: 3.5, pitch: 5, look: 0.55 };
+const STEERING_LOCK = 1.6;          // steering wheel turn for full steering, radians
+
+// ---- Shapes --------------------------------------------------------------------------------------------------
+
+// The car's cross sections from nose to tail, in the body's frame: [x, half width, bottom, top]. Each is a
+// rectangle with its corners cut, so the panels between them come out as flat facets, like the rest of the scene.
+const NOSE = [[2.75, 0.07, -0.02, 0.06], [2.2, 0.13, -0.04, 0.14], [1.4, 0.24, -0.08, 0.24]];
+const TUB = [[1.4, 0.24, -0.08, 0.24], [0.9, 0.36, -0.1, 0.34], [0, 0.42, -0.1, 0.36], [-0.6, 0.4, -0.1, 0.32],
+             [-1.6, 0.22, -0.06, 0.2], [-2.05, 0.15, -0.04, 0.14]];
+// Wide at the radiator inlets, narrowing towards the rear wheels (the "coke bottle").
+const SIDEPODS = [[0.78, 0.66, -0.08, 0.17], [0.4, 0.74, -0.1, 0.22], [-0.5, 0.62, -0.1, 0.2], [-1.2, 0.38, -0.08, 0.14],
+                  [-1.6, 0.25, -0.06, 0.1]];
+// From the airbox over the driver's head down to the gearbox; hinged at COVER_HINGE so the crew can open it.
+const COVER = [[0.08, 0.15, 0.3, 0.64], [-0.2, 0.2, 0.3, 0.6], [-0.9, 0.24, 0.28, 0.42], [-1.6, 0.12, 0.16, 0.24]];
+const COVER_HINGE = new THREE.Vector3(-0.55, 0.56, 0);
+const NOSE_MOUNT = new THREE.Vector3(1.9, 0.05, 0);
+const REAR_WING_MOUNT = new THREE.Vector3(-1.9, 0.75, 0);
+const CHAMFER = 0.35;
+
+// A shape through cross sections, as flat-shaded triangles. Shifted by `origin`, for parts on their own hinge.
+function loft(sections, origin = new THREE.Vector3()) {
+  const rings = sections.map(([x, half, bottom, top]) => {
+    const cut = CHAMFER * Math.min(half, (top - bottom) / 2);
+    return [[half, bottom + cut], [half, top - cut], [half - cut, top], [cut - half, top], [-half, top - cut],
+            [-half, bottom + cut], [cut - half, bottom], [half - cut, bottom]]
+      .map(([z, y]) => new THREE.Vector3(x, y, z).sub(origin));
+  });
+  const positions = [];
+  const triangle = (a, b, c) => positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  for (let ring = 0; ring + 1 < rings.length; ring++) {
+    const [front, back] = [rings[ring], rings[ring + 1]];
+    for (let corner = 0; corner < 8; corner++) {
+      const next = (corner + 1) % 8;
+      triangle(front[corner], back[corner], back[next]);
+      triangle(front[corner], back[next], front[next]);
+    }
+  }
+  // Close both ends.
+  for (const [ring, flip] of [[rings[0], false], [rings[rings.length - 1], true]]) {
+    for (let corner = 1; corner + 1 < 8; corner++) {
+      if (flip) triangle(ring[0], ring[corner + 1], ring[corner]);
+      else triangle(ring[0], ring[corner], ring[corner + 1]);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3 * 2), 2));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// The width, bottom and top of a shape at `x`, and how fast its width and top change along it.
+function sectionAt(sections, x) {
+  for (let index = 0; index + 1 < sections.length; index++) {
+    const [x0, half0, bottom0, top0] = sections[index], [x1, half1, bottom1, top1] = sections[index + 1];
+    if (x > x0 || x < x1) continue;
+    const along = (x0 - x) / (x0 - x1);
+    return { half: half0 + (half1 - half0) * along, bottom: bottom0 + (bottom1 - bottom0) * along, top: top0 + (top1 - top0) * along,
+             widening: (half1 - half0) / (x1 - x0), rising: (top1 - top0) / (x1 - x0) };
+  }
+  throw new Error(`x ${x} is outside the shape`);
+}
+
+// A geometry moved into place: position, then rotation (Euler XYZ) and scale.
+function placed(geometry, [x, y, z], rotation = [0, 0, 0], scale = [1, 1, 1]) {
+  const matrix = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)),
+                                             new THREE.Vector3(...scale));
+  return (geometry.index ? geometry.toNonIndexed() : geometry.clone()).applyMatrix4(matrix);
+}
+
+// Several placed pieces as one geometry, so they draw as one.
+function merged(pieces) {
+  const geometry = mergeGeometries(pieces.map(piece => {
+    for (const name of Object.keys(piece.attributes)) if (!['position', 'normal', 'uv'].includes(name)) piece.deleteAttribute(name);
+    return piece;
+  }));
+  if (!geometry) throw new Error('Car pieces could not be merged: their attributes differ');
+  return geometry;
+}
+
+// A rod between two points, for wishbones and arms.
+function rod(from, to, radius) {
+  const length = from.distanceTo(to);
+  const geometry = new THREE.CylinderGeometry(radius, radius, length, 5).toNonIndexed();
+  geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize()));
+  return geometry.translate(...from.clone().add(to).multiplyScalar(0.5).toArray());
+}
+
+// A decal plane lying on the side of a shape at `x`, turned to follow its taper.
+function onSide(sections, x, side, [width, height]) {
+  const at = sectionAt(sections, x);
+  const facing = Math.atan2(-at.widening, side);
+  return placed(new THREE.PlaneGeometry(width, height), [x, (at.bottom + at.top) / 2, side * (at.half + 0.006)], [0, facing, 0]);
+}
+
+// A decal plane lying on top of a shape at `x`, tilted to follow its slope, turned to read along the car.
+function onTop(sections, x, z, [width, height], turned = false) {
+  const at = sectionAt(sections, x);
+  const geometry = new THREE.PlaneGeometry(width, height).rotateX(-Math.PI / 2);
+  if (turned) geometry.rotateY(-Math.PI / 2);
+  geometry.rotateZ(Math.atan(at.rising));
+  return placed(geometry, [x, at.top + 0.006, z]);
+}
+
+// Every car has the same shape, so the geometry is built once and shared.
+let shapes = null;
+function carShapes() {
+  if (shapes) return shapes;
+  const box = (size, at, rotation) => placed(new THREE.BoxGeometry(...size), at, rotation);
+  const sides = [-1, 1];
+
+  // The halo: a hoop round the driver's head on a pillar in front of the cockpit.
+  const hoop = new THREE.CatmullRomCurve3([[0.02, 0.4, 0.33], [0.4, 0.6, 0.3], [0.7, 0.65, 0], [0.4, 0.6, -0.3], [0.02, 0.4, -0.33]]
+    .map(point => new THREE.Vector3(...point)));
+  const halo = [new THREE.TubeGeometry(hoop, 16, 0.03, 5).toNonIndexed(), rod(new THREE.Vector3(0.95, 0.33, 0), new THREE.Vector3(0.7, 0.65, 0), 0.028)];
+
+  // A shark fin along the top of the engine cover, its foot following the cover's slope.
+  const finShape = new THREE.Shape([[-0.15, 0.6], [-0.9, 0.41], [-1.45, 0.26], [-1.45, 0.4], [-0.3, 0.63]].map(([x, y]) => new THREE.Vector2(x, y)));
+  const fin = new THREE.ExtrudeGeometry(finShape, { depth: 0.02, bevelEnabled: false }).translate(-COVER_HINGE.x, -COVER_HINGE.y, -0.01);
+
+  shapes = {
+    bodyPaint: merged([loft(TUB), loft(SIDEPODS), ...sides.map(side => box([0.07, 0.06, 0.14], [0.74, 0.57, side * 0.47]))]), // and mirrors
+    bodyCarbon: merged([
+      box([3.9, 0.04, 1.3], [0, -0.135, 0]),                                    // floor, just under the bodywork
+      box([2.6, 0.03, 0.3], [-0.1, -0.165, 0]),                                 // plank
+      ...[-0.4, 0, 0.4].map(fin => box([0.6, 0.18, 0.03], [-1.75, -0.06, fin])), // diffuser fins
+      box([0.08, 0.5, 0.08], [-1.65, 0.45, 0]),                                 // rear wing pillar
+      ...halo,
+      ...sides.map(side => rod(new THREE.Vector3(0.62, 0.3, side * 0.36), new THREE.Vector3(0.74, 0.55, side * 0.46), 0.015)), // mirror stalks
+    ]),
+    // The dark of the cockpit opening and the radiator inlets.
+    bodyInterior: merged([
+      placed(new THREE.PlaneGeometry(0.85, 0.5).rotateX(-Math.PI / 2), [0.35, 0.365, 0]),
+      ...sides.map(side => placed(new THREE.PlaneGeometry(0.24, 0.16), [0.785, 0.045, side * 0.52], [0, Math.PI / 2, 0])),
+      box([0.16, 0.1, 0.12], [-0.05, 0.6, 0]),                                  // airbox intake over the driver
+    ]),
+    cover: loft(COVER, COVER_HINGE),
+    coverFin: fin,
+    nose: loft(NOSE, NOSE_MOUNT),
+    // Each half of the front wing: main plane and endplate (the flap is its own, as it moves with the setting).
+    wingHalf: sides.map(side => merged([box([0.45, 0.05, 1.02], [0, 0, 0]), box([0.55, 0.24, 0.04], [0, 0.09, side * 0.5])])),
+    frontFlap: new THREE.BoxGeometry(0.3, 0.04, 0.95),
+    mainPlane: new THREE.BoxGeometry(0.5, 0.07, 1.55),
+    rearFlap: new THREE.BoxGeometry(0.32, 0.05, 1.5),
+    endplates: merged(sides.map(side => box([0.75, 0.6, 0.05], [0.05, -0.25, side * 0.78]))),
+    brakeLight: new THREE.BoxGeometry(0.06, 0.1, 0.22),
+    headlights: merged(sides.map(side => box([0.05, 0.06, 0.1], [2.62, 0.05, side * 0.13]))),
+    flame: new THREE.ConeGeometry(0.12, 0.7, 8),
+    disc: new THREE.CylinderGeometry(WHEEL_RADIUS * 0.5, WHEEL_RADIUS * 0.5, 0.05, 14).rotateX(Math.PI / 2),
+    // Upper and lower wishbones from the body to each hub, in the car's frame (they don't lean with the body).
+    wishbones: merged([WHEELBASE / 2 + 0.05, -WHEELBASE / 2 + 0.05].flatMap(x => sides.flatMap(side => [[-0.1, 0], [0.1, 0.17]].flatMap(([atHub, atBody]) => {
+      const hub = new THREE.Vector3(x, WHEEL_RADIUS + atHub, side * (TRACK_WIDTH / 2 - 0.2));
+      return [-0.3, 0.3].map(spread => rod(new THREE.Vector3(x + spread, RIDE_HEIGHT + atBody, side * 0.2), hub, 0.018));
+    })))),
+    // The driver: shoulders and arms reaching to the wheel, and a helmet with a visor and a stripe.
+    suit: merged([box([0.22, 0.12, 0.44], [0.2, 0.33, 0]), ...sides.map(side => rod(new THREE.Vector3(0.24, 0.36, side * 0.19), new THREE.Vector3(0.6, 0.42, side * 0.11), 0.035))]),
+    helmet: new THREE.SphereGeometry(0.16, 12, 9).scale(1.12, 1, 1),
+    visor: new THREE.SphereGeometry(0.163, 10, 4, Math.PI - 0.95, 1.9, 1.15, 0.38).scale(1.12, 1, 1),
+    helmetStripe: new THREE.SphereGeometry(0.163, 12, 2, 0, Math.PI * 2, 0.55, 0.18).scale(1.12, 1, 1),
+    steeringWheel: merged([box([0.03, 0.1, 0.26], [0, 0, 0]), ...sides.map(side => box([0.04, 0.12, 0.04], [0, 0, side * 0.13]))]),
+    // The simple car, far away: one mesh in the paint and one for everything dark.
+    simplePaint: merged([loft(TUB), loft(NOSE), loft(COVER), loft(SIDEPODS),
+                         box([0.45, 0.05, 2.04], [2.55, -0.12, 0]), ...sides.map(side => box([0.75, 0.6, 0.05], [-1.85, 0.5, side * 0.78]))]).translate(0, RIDE_HEIGHT, 0),
+    simpleDark: merged([box([3.9, 0.04, 1.3], [0, RIDE_HEIGHT - 0.135, 0]), box([0.5, 0.07, 1.55], [-1.9, RIDE_HEIGHT + 0.75, 0]),
+      ...[WHEELBASE / 2 + 0.05, -WHEELBASE / 2 + 0.05].flatMap(x => sides.map(side =>
+        placed(new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, 0.38, 10), [x, WHEEL_RADIUS, side * TRACK_WIDTH / 2], [Math.PI / 2, 0, 0])))]),
+  };
+  return shapes;
+}
+
+// The tyre's section: flat across the tread with rounded shoulders, revolved round its axle.
+let wheelShapes = null;
+function wheelShape(front) {
+  wheelShapes ??= {};
+  const key = front ? 'front' : 'rear';
+  if (wheelShapes[key]) return wheelShapes[key];
+  const width = front ? 0.34 : 0.42, half = width / 2, shoulder = 0.06;
+  const profile = [[0.22, -half], [0.31, -half], [WHEEL_RADIUS - 0.015, -half + 0.02], [WHEEL_RADIUS, -half + shoulder],
+                   [WHEEL_RADIUS, half - shoulder], [WHEEL_RADIUS - 0.015, half - 0.02], [0.31, half], [0.22, half]]
+    .map(([radius, along]) => new THREE.Vector2(radius, along));
+  const sides = [-1, 1];
+  wheelShapes[key] = {
+    tyre: new THREE.LatheGeometry(profile, 20).rotateX(Math.PI / 2),
+    // The compound's stripe round each sidewall.
+    stripes: merged(sides.map(side => placed(new THREE.TorusGeometry(WHEEL_RADIUS * 0.8, 0.03, 5, 24), [0, 0, side * (half + 0.003)]))),
+    // The rim, with five spokes on each face and the wheel nut, so the spin reads at a glance.
+    rim: merged([placed(new THREE.CylinderGeometry(0.225, 0.225, width - 0.02, 12), [0, 0, 0], [Math.PI / 2, 0, 0]),
+                 ...sides.map(side => placed(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 6), [0, 0, side * half], [Math.PI / 2, 0, 0]))]),
+    spokes: merged(sides.flatMap(side => [0, 1, 2, 3, 4].map(spoke =>
+      placed(new THREE.BoxGeometry(0.2, 0.035, 0.02), [0, 0, side * (half - 0.01)], [0, 0, spoke * Math.PI * 2 / 5]).translate(
+        Math.cos(spoke * Math.PI * 2 / 5) * 0.1, Math.sin(spoke * Math.PI * 2 / 5) * 0.1, 0)))),
+  };
+  return wheelShapes[key];
+}
+
+// ---- Surfaces ------------------------------------------------------------------------------------------------
 
 // A fine twill weave for the carbon parts, shared by every car.
 let carbonWeave = null;
@@ -42,6 +255,48 @@ function weave() {
   carbonWeave.magFilter = THREE.NearestFilter;
   carbonWeave.colorSpace = THREE.SRGBColorSpace;
   return carbonWeave;
+}
+
+// What every car has in common, made once.
+let common = null;
+function commonSurfaces() {
+  common ??= {
+    carbon: new THREE.MeshStandardMaterial({ map: weave(), roughness: 0.72, metalness: 0.1 }),
+    interior: new THREE.MeshStandardMaterial({ color: '#0d0e11', roughness: 0.9 }),
+    visor: new THREE.MeshPhysicalMaterial({ color: '#0b0c10', roughness: 0.08, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.05 }),
+    rim: new THREE.MeshStandardMaterial({ color: '#b9bec7', roughness: 0.3, metalness: 0.8 }),
+    spokes: new THREE.MeshStandardMaterial({ color: '#2b2b2b', roughness: 0.5, metalness: 0.4 }),
+    dark: new THREE.MeshStandardMaterial({ color: '#1a1c20', roughness: 0.7 }),
+    footprint: new THREE.MeshBasicMaterial({ map: footprintTexture(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }),
+  };
+  return common;
+}
+
+// The shade right under a car: soft round the body, darkest where the tyres press on the road. The sun's shadow
+// can't draw this (it's too fine for its map), and without it a car looks as if it hovers.
+function footprintTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 128;
+  const paint = canvas.getContext('2d');
+  const soft = (x, y, radiusX, radiusY, darkness) => {
+    const gradient = paint.createRadialGradient(0, 0, 0, 0, 0, 1);
+    gradient.addColorStop(0, `rgba(0,0,0,${darkness})`);
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    paint.save();
+    paint.translate(x, y);
+    paint.scale(radiusX, radiusY);
+    paint.fillStyle = gradient;
+    paint.fillRect(-1, -1, 2, 2);
+    paint.restore();
+  };
+  soft(128, 64, 120, 46, 0.42);
+  // The tyres, at their places on the 6 m by 3 m footprint (see createCar).
+  for (const x of [128 + (WHEELBASE / 2 + 0.05) / 6 * 256, 128 - (WHEELBASE / 2 - 0.05) / 6 * 256]) {
+    for (const y of [64 - TRACK_WIDTH / 2 / 3 * 128, 64 + TRACK_WIDTH / 2 / 3 * 128]) soft(x, y, 16, 12, 0.75);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 // Which sponsor a car carries: always the same for the same driver.
@@ -68,29 +323,6 @@ function sponsorDecal(sponsorName, ink) {
                                           polygonOffset: true, polygonOffsetFactor: -2 });
 }
 
-// One wheel: tyre, rim, and a stripe in the compound's colour. Also used for the loose wheels in a pit stop.
-export function createWheel(compound = 'medium', front = true) {
-  const wheel = new THREE.Group();
-  const width = front ? 0.34 : 0.42;
-  const treadMaterial = new THREE.MeshStandardMaterial({ color: FRESH_TREAD, roughness: TREAD_ROUGHNESS.fresh });
-  const rubber = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, width, 18), treadMaterial);
-  rubber.rotation.x = Math.PI / 2;
-  rubber.castShadow = true;
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS * 0.6, WHEEL_RADIUS * 0.6, width + 0.01, 6), new THREE.MeshStandardMaterial({ color: '#b9bec7', roughness: 0.3, metalness: 0.8 }));
-  rim.rotation.x = Math.PI / 2;
-  const stripeMaterial = new THREE.MeshStandardMaterial({ color: COMPOUND_COLORS[compound] ?? COMPOUND_COLORS.medium, roughness: 0.5 });
-  for (const side of [-1, 1]) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(WHEEL_RADIUS * 0.82, 0.035, 6, 24), stripeMaterial);
-    ring.position.z = side * (width / 2 + 0.005);
-    wheel.add(ring);
-  }
-  // A notch on the sidewall, so the spin reads at a glance.
-  const notch = new THREE.Mesh(new THREE.BoxGeometry(WHEEL_RADIUS * 1.4, 0.07, width + 0.02), new THREE.MeshStandardMaterial({ color: '#2b2b2b' }));
-  wheel.add(rubber, rim, notch);
-  wheel.userData = { stripeMaterial, treadMaterial };
-  return wheel;
-}
-
 // The livery's second colour: white on dark paint, near-black on light, so the stripes always read.
 function accentFor(color) {
   const { l } = new THREE.Color(color).getHSL({});
@@ -111,10 +343,38 @@ function numberDecal(number, color, accent) {
   paint.fillText(String(number), 64, 72);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 });
+  return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 });
+}
+
+// ---- Building ------------------------------------------------------------------------------------------------
+
+function mesh(geometry, material, parent, { shadow = false, at = null } = {}) {
+  const part = new THREE.Mesh(geometry, material);
+  part.castShadow = shadow;
+  if (at) part.position.copy(at);
+  parent.add(part);
+  return part;
+}
+
+// One wheel: tyre, rim and spokes, and a stripe in the compound's colour. Also used for the loose wheels in a pit
+// stop. A car's four wheels share their tyre and stripe materials, passed in as `surfaces`.
+export function createWheel(compound = 'medium', front = true, surfaces = null) {
+  const wheel = new THREE.Group();
+  const shape = wheelShape(front);
+  const { rim, spokes } = commonSurfaces();
+  const treadMaterial = surfaces?.treadMaterial ?? new THREE.MeshStandardMaterial({ color: FRESH_TREAD, roughness: TREAD_ROUGHNESS.fresh });
+  const stripeMaterial = surfaces?.stripeMaterial ?? new THREE.MeshStandardMaterial({ color: COMPOUND_COLORS[compound] ?? COMPOUND_COLORS.medium, roughness: 0.5 });
+  mesh(shape.tyre, treadMaterial, wheel, { shadow: true });
+  mesh(shape.stripes, stripeMaterial, wheel);
+  mesh(shape.rim, rim, wheel);
+  mesh(shape.spokes, spokes, wheel);
+  wheel.userData = { stripeMaterial, treadMaterial };
+  return wheel;
 }
 
 export function createCar(color, name, number = null) {
+  const shape = carShapes();
+  const surfaces = commonSurfaces();
   const car = new THREE.Group();
   car.name = name;
   const baseColor = new THREE.Color(color);
@@ -122,117 +382,104 @@ export function createCar(color, name, number = null) {
   // Paint under a clear coat: the colour stays satin, the coat on top catches the sky's reflections sharply.
   const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
   const accent = new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.45, metalness: 0.1, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
-  const carbon = new THREE.MeshStandardMaterial({ map: weave(), roughness: 0.72, metalness: 0.1 });
+  // The driver wears the team's colour: the suit matte, the helmet glossy, neither darkening with the car's damage.
+  const suit = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  const helmetShell = new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08 });
 
-  // The body leans and pitches on its own, while the wheels stay planted.
+  // The detailed car: the body leans and pitches on its own, while the wheels stay planted.
+  const detailed = new THREE.Group();
+  car.add(detailed);
   const body = new THREE.Group();
-  body.position.y = 0.3;
-  car.add(body);
-  const part = (geometry, surface, x, y, z, parent = body) => {
-    const mesh = new THREE.Mesh(geometry, surface);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = true;
-    parent.add(mesh);
-    return mesh;
-  };
-  part(new THREE.BoxGeometry(2.6, 0.38, 0.95), paint, 0.1, 0.12, 0);             // monocoque
-  part(new THREE.BoxGeometry(1.4, 0.32, 1.45), paint, -0.35, 0.08, 0);           // sidepods
-  part(new THREE.BoxGeometry(0.75, 0.12, 0.62), carbon, 0.45, 0.36, 0);          // cockpit rim
-  const helmet = part(new THREE.SphereGeometry(0.2, 12, 10), new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.3 }), 0.3, 0.5, 0);
-  helmet.scale.set(1.1, 1, 1);
-  part(new THREE.BoxGeometry(0.22, 0.05, 0.95), carbon, 0.45, 0.62, 0);          // halo bar
-  part(new THREE.BoxGeometry(2.4, 0.02, 0.2), accent, 0.2, 0.32, 0);             // livery stripe down the spine
-  for (const side of [-1, 1]) {
-    part(new THREE.BoxGeometry(1.2, 0.08, 0.02), accent, -0.35, -0.02, side * 0.73); // stripe along each sidepod
-    part(new THREE.BoxGeometry(0.06, 0.2, 0.45), carbon, 0.36, 0.1, side * 0.5);     // sidepod inlet
-    part(new THREE.BoxGeometry(0.04, 0.3, 0.04), carbon, 0.75, 0.42, side * 0.42);   // mirror stalk
-    part(new THREE.BoxGeometry(0.06, 0.08, 0.16), paint, 0.75, 0.58, side * 0.48);   // mirror
+  body.position.y = RIDE_HEIGHT;
+  detailed.add(body);
+  mesh(shape.bodyPaint, paint, body, { shadow: true });
+  mesh(shape.bodyCarbon, surfaces.carbon, body, { shadow: true });
+  mesh(shape.bodyInterior, surfaces.interior, body);
+
+  // The driver, sitting in the cockpit: the head turns and leans on its neck, the steering wheel on its column.
+  mesh(shape.suit, suit, body);
+  const head = new THREE.Group();
+  head.position.set(0.3, 0.47, 0);
+  body.add(head);
+  for (const [geometry, material] of [[shape.helmet, helmetShell], [shape.visor, surfaces.visor], [shape.helmetStripe, accent]]) {
+    mesh(geometry, material, head, { at: new THREE.Vector3(0, 0.1, 0) });
   }
-  part(new THREE.BoxGeometry(0.3, 0.22, 0.28), carbon, -0.05, 0.62, 0);          // airbox above the driver
-  part(new THREE.BoxGeometry(3.9, 0.04, 1.3), carbon, 0, -0.1, 0);               // floor
-  for (const fin of [-0.4, 0, 0.4]) part(new THREE.BoxGeometry(0.6, 0.18, 0.03), carbon, -1.75, -0.04, fin);   // diffuser fins
-  if (number !== null) {
-    const decal = numberDecal(number, color, accentColor);
-    const onNose = part(new THREE.PlaneGeometry(0.34, 0.34), decal, 1.6, 0.17, 0);
-    onNose.rotation.x = -Math.PI / 2;
-    onNose.rotation.z = -Math.PI / 2;
-    for (const side of [-1, 1]) {
-      const onPod = part(new THREE.PlaneGeometry(0.3, 0.3), decal, -0.7, 0.14, side * 0.731);
-      onPod.rotation.y = side > 0 ? 0 : Math.PI;
-    }
-  }
+  const steeringWheel = mesh(shape.steeringWheel, surfaces.carbon, body, { at: new THREE.Vector3(0.64, 0.44, 0) });
 
   // Engine cover, hinged at its front so the crew can open it.
   const cover = new THREE.Group();
-  cover.position.set(-0.55, 0.56, 0);
+  cover.position.copy(COVER_HINGE);
   body.add(cover);
-  part(new THREE.BoxGeometry(1.0, 0.42, 0.55), paint, -0.5, -0.21, 0, cover);
-
-  // The sponsor's name: along the top of each sidepod, on both sides of the engine cover and on the endplates.
-  const [sponsorName] = sponsorOf(name);
-  const sponsor = sponsorDecal(sponsorName, accentColor);
-  for (const side of [-1, 1]) {
-    const onPod = part(new THREE.PlaneGeometry(0.9, 0.2), sponsor, -0.4, 0.245, side * 0.6);
-    onPod.rotation.set(-Math.PI / 2, 0, 0);
-    onPod.castShadow = false;
-    const onCover = part(new THREE.PlaneGeometry(0.8, 0.2), sponsor, -0.5, -0.2, side * 0.278, cover);
-    onCover.rotation.y = side > 0 ? 0 : Math.PI;
-    onCover.castShadow = false;
-  }
+  mesh(shape.cover, paint, cover, { shadow: true });
+  mesh(shape.coverFin, paint, cover);
 
   // Nose and front wing: one assembly that droops with damage and comes off for repairs.
   const nose = new THREE.Group();
-  nose.position.set(1.9, 0.05, 0);
+  nose.position.copy(NOSE_MOUNT);
   body.add(nose);
-  part(new THREE.BoxGeometry(1.5, 0.22, 0.42), paint, 0, 0, 0, nose);
+  mesh(shape.nose, paint, nose, { shadow: true });
   // The front wing is two halves (plane, flap and endplate each), so a hit can break one off and leave the other.
-  const wingHalves = [-1, 1].map(side => {
+  const wingHalves = [-1, 1].map((side, index) => {
     const half = new THREE.Group();
     half.position.set(0.65, -0.17, side * 0.52);
     nose.add(half);
-    part(new THREE.BoxGeometry(0.45, 0.06, 1.02), paint, 0, 0, 0, half);
-    part(new THREE.BoxGeometry(0.5, 0.22, 0.05), paint, 0, 0.09, side * 0.5, half);
+    mesh(shape.wingHalf[index], paint, half, { shadow: true });
     return half;
   });
-  const frontFlaps = wingHalves.map(half => part(new THREE.BoxGeometry(0.3, 0.05, 0.95), carbon, -0.2, 0.07, 0, half));
+  const frontFlaps = wingHalves.map(half => mesh(shape.frontFlap, surfaces.carbon, half, { at: new THREE.Vector3(-0.2, 0.07, 0) }));
   const firstToGo = Math.random() < 0.5 ? 0 : 1;
 
   // Rear wing: main plane and flap tilt with the wing setting; the whole assembly lifts off in a stop.
   const rearWing = new THREE.Group();
-  rearWing.position.set(-1.9, 0.75, 0);
+  rearWing.position.copy(REAR_WING_MOUNT);
   body.add(rearWing);
-  const mainPlane = part(new THREE.BoxGeometry(0.5, 0.07, 1.55), carbon, 0, 0, 0, rearWing);
-  const flap = part(new THREE.BoxGeometry(0.32, 0.05, 1.5), paint, -0.12, 0.17, 0, rearWing);
-  for (const side of [-1, 1]) {
-    part(new THREE.BoxGeometry(0.75, 0.6, 0.06), paint, 0.05, -0.25, side * 0.78, rearWing);
-    const onEndplate = part(new THREE.PlaneGeometry(0.7, 0.18), sponsor, 0.05, -0.2, side * 0.812, rearWing);
-    onEndplate.rotation.y = side > 0 ? 0 : Math.PI;
-    onEndplate.castShadow = false;
-  }
-  part(new THREE.BoxGeometry(0.08, 0.5, 0.08), carbon, -1.65, 0.45, 0);          // wing pillar
+  const mainPlane = mesh(shape.mainPlane, surfaces.carbon, rearWing, { shadow: true });
+  const flap = mesh(shape.rearFlap, paint, rearWing, { at: new THREE.Vector3(-0.12, 0.17, 0) });
+  mesh(shape.endplates, paint, rearWing, { shadow: true });
 
-  const brakeLight = part(new THREE.BoxGeometry(0.06, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a1a', emissiveIntensity: 0 }), -2.17, 0.32, 0);
+  // Livery: the number on the nose and both sidepods, the sponsor along the sidepods, the cover and the endplates.
+  const [sponsorName] = sponsorOf(name);
+  const sponsor = sponsorDecal(sponsorName, accentColor);
+  const sides = [-1, 1];
+  mesh(merged(sides.map(side => onTop(SIDEPODS, -0.2, side * 0.5, [0.7, 0.17]))), sponsor, body);
+  mesh(merged(sides.map(side => onSide(COVER, -0.55, side, [0.75, 0.18]).translate(-COVER_HINGE.x, -COVER_HINGE.y, 0))), sponsor, cover);
+  mesh(merged(sides.map(side => placed(new THREE.PlaneGeometry(0.7, 0.18), [0.05, -0.2, side * 0.81], [0, side > 0 ? 0 : Math.PI, 0]))), sponsor, rearWing);
+  if (number !== null) {
+    const decal = numberDecal(number, color, accentColor);
+    mesh(onTop(NOSE, 1.75, 0, [0.3, 0.3], true).translate(-NOSE_MOUNT.x, -NOSE_MOUNT.y, 0), decal, nose);
+    mesh(merged(sides.map(side => onSide(SIDEPODS, -0.15, side, [0.2, 0.2]))), decal, body);
+  }
+
+  const brakeLight = mesh(shape.brakeLight, new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a1a', emissiveIntensity: 0 }), body,
+                          { at: new THREE.Vector3(-2.07, 0.05, 0) });
   // Headlights for racing at night, set into the nose.
   const headlightGlow = new THREE.MeshStandardMaterial({ color: '#333', emissive: '#fff4d6', emissiveIntensity: 0 });
-  for (const side of [-1, 1]) part(new THREE.BoxGeometry(0.05, 0.07, 0.12), headlightGlow, 2.66, 0.05, side * 0.13);
-  const flame = part(new THREE.ConeGeometry(0.12, 0.7, 8), new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }), -2.0, 0.28, 0);
+  mesh(shape.headlights, headlightGlow, body);
+  const flame = mesh(shape.flame, new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }),
+                     body, { at: new THREE.Vector3(-2.0, 0.2, 0) });
   flame.rotation.z = Math.PI / 2;
   flame.visible = false;
-  flame.castShadow = false;
 
+  // The wishbones hang off the chassis, which the jacks lift with the body.
+  const chassis = new THREE.Group();
+  detailed.add(chassis);
+  mesh(shape.wishbones, surfaces.carbon, chassis);
+
+  const wheelSurfaces = {
+    treadMaterial: new THREE.MeshStandardMaterial({ color: FRESH_TREAD, roughness: TREAD_ROUGHNESS.fresh }),
+    stripeMaterial: new THREE.MeshStandardMaterial({ color: COMPOUND_COLORS.medium, roughness: 0.5 }),
+  };
+  const discMaterial = new THREE.MeshStandardMaterial({ color: '#555', emissive: '#ff5a00', emissiveIntensity: 0, roughness: 0.4, metalness: 0.7 });
   const wheels = [], hubs = [], steering = [], discs = [];
   for (const [x, front] of [[WHEELBASE / 2 + 0.05, true], [-WHEELBASE / 2 + 0.05, false]]) {
-    for (const side of [-1, 1]) {
+    for (const side of sides) {
       const hub = new THREE.Group();
       hub.position.set(x, WHEEL_RADIUS, side * TRACK_WIDTH / 2);
-      const wheel = createWheel('medium', front);
+      const wheel = createWheel('medium', front, wheelSurfaces);
       hub.add(wheel);
-      // The brake disc sits inside the wheel on the hub, so it glows without spinning with the tyre's notch.
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS * 0.5, WHEEL_RADIUS * 0.5, 0.05, 14), new THREE.MeshStandardMaterial({ color: '#555', emissive: '#ff5a00', emissiveIntensity: 0, roughness: 0.4, metalness: 0.7 }));
-      disc.rotation.x = Math.PI / 2;
-      disc.position.z = -side * 0.24;
-      hub.add(disc);
-      car.add(hub);
+      // The brake disc sits inside the wheel on the hub, so it glows without spinning with the spokes.
+      const disc = mesh(shape.disc, discMaterial, hub, { at: new THREE.Vector3(0, 0, -side * 0.24) });
+      detailed.add(hub);
       wheels.push(wheel);
       hubs.push(hub);
       discs.push(disc);
@@ -240,21 +487,25 @@ export function createCar(color, name, number = null) {
     }
   }
 
-  // A soft round shadow under the car, so it sits on the ground even far from the sun's shadow box.
-  const blob = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.22, depthWrite: false }));
-  blob.rotation.x = -Math.PI / 2;
-  blob.scale.set(2.6, 1.15, 1);
-  blob.position.y = 0.15;
-  car.add(blob);
+  // The simple car, for when it's too small on screen for any of that to show.
+  const simple = new THREE.Group();
+  simple.visible = false;
+  car.add(simple);
+  mesh(shape.simplePaint, paint, simple, { shadow: true });
+  mesh(shape.simpleDark, surfaces.dark, simple, { shadow: true });
+
+  // The shade under the car, so it sits on the ground whatever the sun's shadow does.
+  const footprint = mesh(new THREE.PlaneGeometry(6, 3).rotateX(-Math.PI / 2), surfaces.footprint, car, { at: new THREE.Vector3(0, 0.035, 0) });
+  footprint.renderOrder = -1;
 
   // A gold chevron hovering over the car the camera follows, so you can find it in the pack.
-  const chevron = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.3, 4), new THREE.MeshStandardMaterial({ color: '#ffd23f', emissive: '#ffb000', emissiveIntensity: 0.6, roughness: 0.4 }));
+  const chevron = mesh(new THREE.ConeGeometry(0.7, 1.3, 4), new THREE.MeshStandardMaterial({ color: '#ffd23f', emissive: '#ffb000', emissiveIntensity: 0.6, roughness: 0.4 }), car);
   chevron.rotation.x = Math.PI;
   chevron.visible = false;
-  car.add(chevron);
 
   car.userData = {
-    body, wheels, hubs, steering, discs, brakeLight, headlightGlow, flame, chevron, cover, nose, wingHalves, frontFlaps, rearWing, mainPlane, flap,
+    detailed, simple, body, chassis, head, steeringWheel, wheels, hubs, steering, discs, discMaterial, wheelSurfaces, brakeLight, headlightGlow, flame,
+    chevron, cover, nose, wingHalves, frontFlaps, rearWing, mainPlane, flap,
     // Set from outside each frame: lights on (night) and a wet track (the rear light flashes in the rain).
     lightsOn: false, raining: false,
     // Parts that come off as damage builds, in the order they go, with the damage that takes each one.
@@ -262,19 +513,36 @@ export function createCar(color, name, number = null) {
     splayedWheel: Math.random() < 0.5 ? 0 : 1,
     justLost: [],
     paint, baseColor, compound: 'medium',
-    spin: 0, lean: 0, pitch: 0, lastSpeed: 0, brakeHeat: 0,
+    spin: 0, lean: 0, pitch: 0, lastSpeed: 0, brakeHeat: 0, ground: ROAD_HEIGHT,
     // Set by the pit crew while it works on the car.
     lift: 0, rearWingLift: 0, coverOpen: 0, noseOff: 0,
   };
   return car;
 }
 
+// Draws a car in full, or as the simple car when it's too small on screen for its details to show.
+export function setCarDetail(car, detailed) {
+  car.userData.detailed.visible = detailed;
+  car.userData.simple.visible = !detailed;
+}
+
 // Poses a car from interpolated sim values for this render frame. `seconds` is the real time since the last
 // render frame and `simSeconds` how much race time it covered, so wheels spin at the race's pace.
 export function poseCar(car, state, seconds, simSeconds, followed, time) {
   const data = car.userData;
-  car.position.copy(toWorld(state.x, state.y));
+  // On the tarmac the tyres sit on its top; off it they settle a little into the grass or gravel.
+  data.ground += ((state.offTrack ? OFF_ROAD_HEIGHT : ROAD_HEIGHT) - data.ground) * (1 - Math.exp(-seconds * 10));
+  car.position.copy(toWorld(state.x, state.y)).setY(data.ground);
   car.rotation.y = state.heading;
+
+  data.chevron.visible = followed;
+  if (followed) {
+    data.chevron.position.y = 3.2 + Math.sin(time * 3) * 0.35;
+    data.chevron.rotation.y = time * 1.5;
+  }
+  // Damage darkens the paint, which the simple car shares, so it's set even when only that one shows.
+  data.paint.color.copy(data.baseColor).multiplyScalar(1 - (state.damage ?? 0) * 0.5);
+  if (!data.detailed.visible) return;
 
   data.spin -= state.speed * simSeconds / WHEEL_RADIUS;
   for (const wheel of data.wheels) wheel.rotation.z = data.spin;
@@ -283,17 +551,14 @@ export function poseCar(car, state, seconds, simSeconds, followed, time) {
   // Tyres: compound colour, greying as they wear, and the tread grains from matte black to a greyer sheen.
   if (state.compound) data.compound = state.compound;
   const wear = Math.min(1, state.tyreWear ?? 0);
-  const stripe = new THREE.Color(COMPOUND_COLORS[data.compound] ?? COMPOUND_COLORS.medium).lerp(WORN, wear * 0.8);
-  for (const wheel of data.wheels) {
-    wheel.userData.stripeMaterial.color.copy(stripe);
-    wheel.userData.treadMaterial.color.copy(FRESH_TREAD).lerp(WORN_TREAD, wear);
-    wheel.userData.treadMaterial.roughness = TREAD_ROUGHNESS.fresh + (TREAD_ROUGHNESS.worn - TREAD_ROUGHNESS.fresh) * wear;
-  }
+  data.wheelSurfaces.stripeMaterial.color.set(COMPOUND_COLORS[data.compound] ?? COMPOUND_COLORS.medium).lerp(WORN, wear * 0.8);
+  data.wheelSurfaces.treadMaterial.color.copy(FRESH_TREAD).lerp(WORN_TREAD, wear);
+  data.wheelSurfaces.treadMaterial.roughness = TREAD_ROUGHNESS.fresh + (TREAD_ROUGHNESS.worn - TREAD_ROUGHNESS.fresh) * wear;
 
   // Brake discs glow with the race's own brake temperature: dull red past about 400°C, bright orange near 1000°C.
   const heat = Math.min(1, Math.max(0, ((state.brakeTemp ?? 0.1) - 0.3) / 0.6));
   data.brakeHeat += (heat - data.brakeHeat) * (1 - Math.exp(-seconds * 6));
-  for (const disc of data.discs) disc.material.emissiveIntensity = data.brakeHeat * 3;
+  data.discMaterial.emissiveIntensity = data.brakeHeat * 3;
   // A puncture: the rear tyre sags flat on its rim.
   data.wheels[3].scale.y = state.punctured ? 0.55 : 1;
 
@@ -307,19 +572,24 @@ export function poseCar(car, state, seconds, simSeconds, followed, time) {
   data.body.rotation.x = data.lean;
   data.body.rotation.z = data.pitch;
   // A full tank sits the car a little lower; the jacks lift it in the pits.
-  data.body.position.y = 0.3 - (state.fuel ?? 0) * 0.05 + data.lift;
+  data.body.position.y = RIDE_HEIGHT - (state.fuel ?? 0) * 0.05 + data.lift;
+  data.chassis.position.y = data.lift;
   for (const hub of data.hubs) hub.position.y = WHEEL_RADIUS + data.lift;
+
+  // The driver: the head pushed the way the body leans and forward under braking, looking into the turn.
+  data.head.rotation.set(data.lean * HEAD.roll, state.steer * HEAD.look, data.pitch * HEAD.pitch, 'YXZ');
+  data.steeringWheel.rotation.x = -state.steer * STEERING_LOCK;
 
   // Wing: steeper planes for more wing, the extra flap only on higher settings; lifted off by the crew.
   const wing = state.wing ?? 0.5;
   data.mainPlane.rotation.z = -0.05 - wing * 0.3;
   data.flap.rotation.z = -0.2 - wing * 0.55;
   data.flap.visible = wing > 0.25;
-  data.rearWing.position.y = 0.75 + data.rearWingLift;
+  data.rearWing.position.y = REAR_WING_MOUNT.y + data.rearWingLift;
   for (const flap of data.frontFlaps) flap.rotation.z = -wing * 0.4;
 
-  // Damage: the front wing droops, then breaks; the rear wing hangs off, a wheel splays, the paint darkens. The
-  // nose comes away while the crew swaps it.
+  // Damage: the front wing droops, then breaks; the rear wing hangs off, a wheel splays. The nose comes away
+  // while the crew swaps it.
   // Where the damage is shows where the car was hit: the front wing from hits to the nose, a splayed wheel from
   // hits to the side, and the rest (darker, rear wing hanging) from everything.
   const damage = state.damage ?? 0, wingDamage = state.wingDamage ?? damage, suspension = state.suspensionDamage ?? 0;
@@ -328,13 +598,12 @@ export function poseCar(car, state, seconds, simSeconds, followed, time) {
     half.rotation.x = (side ? -1 : 1) * wingDamage * 0.5;
     half.position.y = -0.17 - wingDamage * 0.15;
   });
-  data.paint.color.copy(data.baseColor).multiplyScalar(1 - damage * 0.5);
   const hanging = damage > 0.5;
   data.rearWing.rotation.x = hanging ? 0.55 : 0;
   data.rearWing.rotation.z = hanging ? 0.35 : 0;
   data.hubs[data.splayedWheel].rotation.x = suspension * 0.45;
-  data.nose.position.x = 1.9 + data.noseOff * 2.5;
-  data.nose.position.y = 0.05 + data.noseOff * 0.6;
+  data.nose.position.x = NOSE_MOUNT.x + data.noseOff * 2.5;
+  data.nose.position.y = NOSE_MOUNT.y + data.noseOff * 0.6;
   data.cover.rotation.z = data.coverOpen * 0.9;
 
   // The rear light: bright under braking, flashing in the rain so the cars behind can see it through the spray,
@@ -349,12 +618,6 @@ export function poseCar(car, state, seconds, simSeconds, followed, time) {
     const flicker = 0.8 + Math.sin(time * 70) * 0.2;
     data.flame.scale.set(0.6 + engine, (0.5 + engine * 1.2) * flicker, 0.6 + engine);
     data.flame.material.color.set(engine > 0.66 ? '#ff7a1a' : engine < 0.33 ? '#7ab8ff' : '#ffb347');
-  }
-
-  data.chevron.visible = followed;
-  if (followed) {
-    data.chevron.position.y = 3.2 + Math.sin(time * 3) * 0.35;
-    data.chevron.rotation.y = time * 1.5;
   }
 }
 
@@ -378,7 +641,7 @@ export function contactPatches(car) {
   return car.userData.hubs.map(hub => {
     const point = new THREE.Vector3();
     hub.getWorldPosition(point);
-    point.y = 0.05;
+    point.y = car.position.y;
     return point;
   });
 }

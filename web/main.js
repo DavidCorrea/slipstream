@@ -1,7 +1,7 @@
 // Connects to the server, keeps the last two frames and draws smoothly between them, and wires up the controls.
 import * as THREE from 'three';
 import { buildCircuit } from './circuit.js';
-import { contactPatches, createCar, poseCar } from './cars.js';
+import { contactPatches, createCar, poseCar, setCarDetail } from './cars.js';
 import { createCrews } from './crew.js';
 import { createEffects } from './effects.js';
 import { createBroadcaster } from './broadcaster.js';
@@ -407,10 +407,22 @@ function renderReplay(seconds, now) {
   replay.time = replay.shown = part.from;
 }
 
+// A car shorter than this on screen is drawn as the simple car (see cars.js): its details wouldn't show.
+const CAR_LENGTH = 5.4;
+const DETAIL_PIXELS = 40;
+
+// How many pixels a metre at `position` covers on screen from `camera`.
+function pixelsPerMetreAt(camera, position) {
+  if (camera.isOrthographicCamera) return stage.pixelsTall() / ((camera.top - camera.bottom) / camera.zoom);
+  return stage.pixelsTall() / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * Math.max(camera.position.distanceTo(position), 0.1));
+}
+
 // Poses every car. Live, cars also leave tyre marks and spray; a replay leaves none (they're already down).
 function drawCars(frame, seconds, simRate, now, live) {
+  const camera = activeCamera();
   state.cars.forEach((car, id) => {
     const pose = carState(frame.cars, id);
+    setCarDetail(car, pixelsPerMetreAt(camera, car.position) * CAR_LENGTH >= DETAIL_PIXELS);
     // The chevron marks the car you follow, live on the game's own cameras; a replay and TV are the broadcast's,
     // which doesn't point at anyone, and with the interface hidden there's only the race.
     const followed = live && id === state.selected && state.cameraMode !== 'tv' && !document.body.classList.contains('immersive');

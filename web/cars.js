@@ -1,6 +1,10 @@
 // The cars: a low-poly open-wheeler per driver, posed every frame from the sim, with every part showing the
 // car's setup and condition.
-//   wheels      spin with speed, fronts steer; the sidewall stripe is the compound's colour, greying as it wears
+//   paint       a clear-coated gloss over the livery colour; carbon parts matte, with a fine weave
+//   livery      the race number on the nose and sidepods, a sponsor's name on the sidepods, engine cover and
+//               rear wing endplates
+//   wheels      spin with speed, fronts steer; the sidewall stripe is the compound's colour, greying as it wears,
+//               and the tread goes from matte black to a shinier, greyer grained look
 //   brakes      discs glow orange under hard braking and cool off after
 //   body        leans in corners, dips under braking, and sits lower on a full tank
 //   rear wing   steeper the more wing it runs, with an extra flap at high settings
@@ -11,18 +15,65 @@
 // The crew can lift the car on jacks, take the rear wing off, open the engine cover and swap the nose.
 import * as THREE from 'three';
 import { toWorld } from './scene.js';
+import { SPONSORS } from './scenery.js';
 
 const WHEEL_RADIUS = 0.36;
 const WHEELBASE = 3.0;
 const TRACK_WIDTH = 1.7;
 export const COMPOUND_COLORS = { soft: '#e63946', medium: '#ffd23f', hard: '#f2f2f2', intermediate: '#3ddc84', wet: '#2f8cff' };
 const WORN = new THREE.Color('#6b6b6b');
+const FRESH_TREAD = new THREE.Color('#141414'), WORN_TREAD = new THREE.Color('#34312e');
+const TREAD_ROUGHNESS = { fresh: 0.88, worn: 0.5 };
+
+// A fine twill weave for the carbon parts, shared by every car.
+let carbonWeave = null;
+function weave() {
+  if (carbonWeave) return carbonWeave;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 16;
+  const paint = canvas.getContext('2d');
+  for (let row = 0; row < 16; row += 2) for (let column = 0; column < 16; column += 2) {
+    paint.fillStyle = ((row + column) / 2) % 4 < 2 ? '#26292e' : '#16181c';
+    paint.fillRect(column, row, 2, 2);
+  }
+  carbonWeave = new THREE.CanvasTexture(canvas);
+  carbonWeave.wrapS = carbonWeave.wrapT = THREE.RepeatWrapping;
+  carbonWeave.repeat.set(6, 6);
+  carbonWeave.magFilter = THREE.NearestFilter;
+  carbonWeave.colorSpace = THREE.SRGBColorSpace;
+  return carbonWeave;
+}
+
+// Which sponsor a car carries: always the same for the same driver.
+function sponsorOf(name) {
+  let hash = 0;
+  for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return SPONSORS[hash % SPONSORS.length];
+}
+
+// The sponsor's name as a decal in the livery's accent colour, on a clear background so the paint shows round it.
+function sponsorDecal(sponsorName, ink) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 64;
+  const paint = canvas.getContext('2d');
+  paint.fillStyle = ink;
+  paint.font = '900 44px "Titillium Web", sans-serif';
+  paint.textAlign = 'center';
+  paint.textBaseline = 'middle';
+  paint.fillText(sponsorName, 128, 36, 244);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.3, roughness: 0.3, depthWrite: false,
+                                          polygonOffset: true, polygonOffsetFactor: -2 });
+}
 
 // One wheel: tyre, rim, and a stripe in the compound's colour. Also used for the loose wheels in a pit stop.
 export function createWheel(compound = 'medium', front = true) {
   const wheel = new THREE.Group();
   const width = front ? 0.34 : 0.42;
-  const rubber = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, width, 18), new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.85 }));
+  const treadMaterial = new THREE.MeshStandardMaterial({ color: FRESH_TREAD, roughness: TREAD_ROUGHNESS.fresh });
+  const rubber = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, width, 18), treadMaterial);
   rubber.rotation.x = Math.PI / 2;
   rubber.castShadow = true;
   const rim = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS * 0.6, WHEEL_RADIUS * 0.6, width + 0.01, 6), new THREE.MeshStandardMaterial({ color: '#b9bec7', roughness: 0.3, metalness: 0.8 }));
@@ -36,7 +87,7 @@ export function createWheel(compound = 'medium', front = true) {
   // A notch on the sidewall, so the spin reads at a glance.
   const notch = new THREE.Mesh(new THREE.BoxGeometry(WHEEL_RADIUS * 1.4, 0.07, width + 0.02), new THREE.MeshStandardMaterial({ color: '#2b2b2b' }));
   wheel.add(rubber, rim, notch);
-  wheel.userData = { stripeMaterial };
+  wheel.userData = { stripeMaterial, treadMaterial };
   return wheel;
 }
 
@@ -49,15 +100,15 @@ function accentFor(color) {
 // The race number as a decal: drawn once into a small texture.
 function numberDecal(number, color, accent) {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 64;
+  canvas.width = canvas.height = 128;
   const paint = canvas.getContext('2d');
   paint.fillStyle = color;
-  paint.fillRect(0, 0, 64, 64);
+  paint.fillRect(0, 0, 128, 128);
   paint.fillStyle = accent;
-  paint.font = '900 46px "Titillium Web", sans-serif';
+  paint.font = '900 92px "Titillium Web", sans-serif';
   paint.textAlign = 'center';
   paint.textBaseline = 'middle';
-  paint.fillText(String(number), 32, 36);
+  paint.fillText(String(number), 64, 72);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4 });
@@ -68,9 +119,10 @@ export function createCar(color, name, number = null) {
   car.name = name;
   const baseColor = new THREE.Color(color);
   const accentColor = accentFor(color);
-  const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.25 });
-  const accent = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.35, metalness: 0.2 });
-  const carbon = new THREE.MeshStandardMaterial({ color: '#1c1f24', roughness: 0.6, metalness: 0.3 });
+  // Paint under a clear coat: the colour stays satin, the coat on top catches the sky's reflections sharply.
+  const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
+  const accent = new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.45, metalness: 0.1, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
+  const carbon = new THREE.MeshStandardMaterial({ map: weave(), roughness: 0.72, metalness: 0.1 });
 
   // The body leans and pitches on its own, while the wheels stay planted.
   const body = new THREE.Group();
@@ -116,6 +168,18 @@ export function createCar(color, name, number = null) {
   body.add(cover);
   part(new THREE.BoxGeometry(1.0, 0.42, 0.55), paint, -0.5, -0.21, 0, cover);
 
+  // The sponsor's name: along the top of each sidepod, on both sides of the engine cover and on the endplates.
+  const [sponsorName] = sponsorOf(name);
+  const sponsor = sponsorDecal(sponsorName, accentColor);
+  for (const side of [-1, 1]) {
+    const onPod = part(new THREE.PlaneGeometry(0.9, 0.2), sponsor, -0.4, 0.245, side * 0.6);
+    onPod.rotation.set(-Math.PI / 2, 0, 0);
+    onPod.castShadow = false;
+    const onCover = part(new THREE.PlaneGeometry(0.8, 0.2), sponsor, -0.5, -0.2, side * 0.278, cover);
+    onCover.rotation.y = side > 0 ? 0 : Math.PI;
+    onCover.castShadow = false;
+  }
+
   // Nose and front wing: one assembly that droops with damage and comes off for repairs.
   const nose = new THREE.Group();
   nose.position.set(1.9, 0.05, 0);
@@ -139,7 +203,12 @@ export function createCar(color, name, number = null) {
   body.add(rearWing);
   const mainPlane = part(new THREE.BoxGeometry(0.5, 0.07, 1.55), carbon, 0, 0, 0, rearWing);
   const flap = part(new THREE.BoxGeometry(0.32, 0.05, 1.5), paint, -0.12, 0.17, 0, rearWing);
-  for (const side of [-1, 1]) part(new THREE.BoxGeometry(0.75, 0.6, 0.06), paint, 0.05, -0.25, side * 0.78, rearWing);
+  for (const side of [-1, 1]) {
+    part(new THREE.BoxGeometry(0.75, 0.6, 0.06), paint, 0.05, -0.25, side * 0.78, rearWing);
+    const onEndplate = part(new THREE.PlaneGeometry(0.7, 0.18), sponsor, 0.05, -0.2, side * 0.812, rearWing);
+    onEndplate.rotation.y = side > 0 ? 0 : Math.PI;
+    onEndplate.castShadow = false;
+  }
   part(new THREE.BoxGeometry(0.08, 0.5, 0.08), carbon, -1.65, 0.45, 0);          // wing pillar
 
   const brakeLight = part(new THREE.BoxGeometry(0.06, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a1a', emissiveIntensity: 0 }), -2.17, 0.32, 0);
@@ -221,10 +290,15 @@ export function poseCar(car, state, seconds, simSeconds, selected, yours, time) 
   for (const wheel of data.wheels) wheel.rotation.z = data.spin;
   for (const hub of data.steering) hub.rotation.y = state.steer * 0.32;
 
-  // Tyres: compound colour, greying as they wear.
+  // Tyres: compound colour, greying as they wear, and the tread grains from matte black to a greyer sheen.
   if (state.compound) data.compound = state.compound;
-  const stripe = new THREE.Color(COMPOUND_COLORS[data.compound] ?? COMPOUND_COLORS.medium).lerp(WORN, Math.min(1, state.tyreWear ?? 0) * 0.8);
-  for (const wheel of data.wheels) wheel.userData.stripeMaterial.color.copy(stripe);
+  const wear = Math.min(1, state.tyreWear ?? 0);
+  const stripe = new THREE.Color(COMPOUND_COLORS[data.compound] ?? COMPOUND_COLORS.medium).lerp(WORN, wear * 0.8);
+  for (const wheel of data.wheels) {
+    wheel.userData.stripeMaterial.color.copy(stripe);
+    wheel.userData.treadMaterial.color.copy(FRESH_TREAD).lerp(WORN_TREAD, wear);
+    wheel.userData.treadMaterial.roughness = TREAD_ROUGHNESS.fresh + (TREAD_ROUGHNESS.worn - TREAD_ROUGHNESS.fresh) * wear;
+  }
 
   // Brake discs glow with the race's own brake temperature: dull red past about 400°C, bright orange near 1000°C.
   const heat = Math.min(1, Math.max(0, ((state.brakeTemp ?? 0.1) - 0.3) / 0.6));

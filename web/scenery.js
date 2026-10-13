@@ -243,7 +243,7 @@ export function canvasTexture(size, draw) {
 
 // ---- Trackside, everywhere -------------------------------------------------------------------------------
 
-const SPONSORS = [
+export const SPONSORS = [
   ['SLIPSTREAM', '#e10600', '#ffffff'], ['NORTHWIND', '#0b3d91', '#ffffff'], ['APEX OIL', '#ffd23f', '#111111'],
   ['VOLTA', '#111111', '#3ddc84'], ['KESTREL', '#ffffff', '#e10600'], ['MERIDIAN', '#2a9d8f', '#ffffff'],
   ['HALCYON', '#9b5de5', '#ffffff'], ['TORQUE', '#f4a261', '#111111'],

@@ -410,12 +410,12 @@ function renderReplay(seconds, now) {
 function drawCars(frame, seconds, simRate, now, live) {
   state.cars.forEach((car, id) => {
     const pose = carState(frame.cars, id);
-    // A broadcast doesn't circle anyone, so TV mode (and a replay) drops the selection ring.
-    const ringed = live && id === state.selected && state.cameraMode !== 'tv';
+    // The chevron marks the car you follow, live on the game's own cameras; a replay and TV are the broadcast's,
+    // which doesn't point at anyone.
+    const followed = live && id === state.selected && state.cameraMode !== 'tv';
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
-    // Your car's marker is for the live race on the game's own cameras; a replay and TV are the broadcast's.
-    poseCar(car, pose, seconds, seconds * simRate, ringed, live && id === state.yours && state.cameraMode !== 'tv', now / 1000);
+    poseCar(car, pose, seconds, seconds * simRate, followed, now / 1000);
     const velocity = carVelocity(pose);
     for (const point of car.userData.justLost.splice(0)) state.effects.shed(point, velocity, state.race.cars[id].color, 3, 0.45);
     if (live && simRate > 0) state.effects.car(id, contactPatches(car), pose, velocity, seconds * Math.min(simRate, 2), frame.weather.wetness);

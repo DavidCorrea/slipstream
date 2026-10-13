@@ -247,16 +247,14 @@ export function createCar(color, name, number = null) {
   blob.position.y = 0.15;
   car.add(blob);
 
-  const marker = selectionRing(color);
-  car.add(marker);
-  // A gold chevron hovering over your racer, so you can find it in the pack.
+  // A gold chevron hovering over the car the camera follows, so you can find it in the pack.
   const chevron = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.3, 4), new THREE.MeshStandardMaterial({ color: '#ffd23f', emissive: '#ffb000', emissiveIntensity: 0.6, roughness: 0.4 }));
   chevron.rotation.x = Math.PI;
   chevron.visible = false;
   car.add(chevron);
 
   car.userData = {
-    body, wheels, hubs, steering, discs, brakeLight, headlightGlow, flame, marker, chevron, cover, nose, wingHalves, frontFlaps, rearWing, mainPlane, flap,
+    body, wheels, hubs, steering, discs, brakeLight, headlightGlow, flame, chevron, cover, nose, wingHalves, frontFlaps, rearWing, mainPlane, flap,
     // Set from outside each frame: lights on (night) and a wet track (the rear light flashes in the rain).
     lightsOn: false, raining: false,
     // Parts that come off as damage builds, in the order they go, with the damage that takes each one.
@@ -271,17 +269,9 @@ export function createCar(color, name, number = null) {
   return car;
 }
 
-function selectionRing(color) {
-  const ring = new THREE.Mesh(new THREE.RingGeometry(3.2, 3.6, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false }));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.16;
-  ring.visible = false;
-  return ring;
-}
-
 // Poses a car from interpolated sim values for this render frame. `seconds` is the real time since the last
 // render frame and `simSeconds` how much race time it covered, so wheels spin at the race's pace.
-export function poseCar(car, state, seconds, simSeconds, selected, yours, time) {
+export function poseCar(car, state, seconds, simSeconds, followed, time) {
   const data = car.userData;
   car.position.copy(toWorld(state.x, state.y));
   car.rotation.y = state.heading;
@@ -361,13 +351,11 @@ export function poseCar(car, state, seconds, simSeconds, selected, yours, time) 
     data.flame.material.color.set(engine > 0.66 ? '#ff7a1a' : engine < 0.33 ? '#7ab8ff' : '#ffb347');
   }
 
-  data.chevron.visible = yours;
-  if (yours) {
+  data.chevron.visible = followed;
+  if (followed) {
     data.chevron.position.y = 3.2 + Math.sin(time * 3) * 0.35;
     data.chevron.rotation.y = time * 1.5;
   }
-  data.marker.visible = selected;
-  if (selected) data.marker.material.opacity = 0.55 + Math.sin(time * 5) * 0.3;
 }
 
 // Hides the parts a car this damaged has lost, noting where each one came off so it can be left on the track;

@@ -22,6 +22,8 @@ const DAMAGE_WINDOW_SECONDS = 1;
 const COOLDOWN_SECONDS = 45;
 const DAMAGE_KEYS = ['damage', 'wingDamage', 'suspensionDamage'];
 const PODIUM = 3;
+// The places that change in the first seconds are the start's shuffle, not passes worth seeing again.
+const SETTLED_SECONDS = 20;
 // Which kind of replay a race moment makes, the most important first.
 const HIGHLIGHTS = [
   ['win', moment => moment.kind === 'win'],
@@ -77,7 +79,8 @@ export function createReplay() {
       if (automatic && waiting?.kind !== 'crash') {
         const cooledDown = frame.time - lastReplay >= COOLDOWN_SECONDS || waiting !== null;
         const crash = cooledDown ? seriousCrash(frame) : null;
-        const moment = crash ?? (waiting ? null : highlight(moments));
+        const settled = frame.time >= SETTLED_SECONDS;
+        const moment = crash ?? (waiting || !settled ? null : highlight(moments));
         if (moment && (cooledDown || moment.kind === 'win')) {
           waiting = moment;
           lastReplay = moment.time;

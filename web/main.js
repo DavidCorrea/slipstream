@@ -204,6 +204,7 @@ function showGrid(intro) {
   openDrawer(null);
   $('grid-menu').classList.remove('hidden');
   document.body.classList.add('on-grid');
+  setImmersive(false);
   offerVoices();
 }
 
@@ -412,8 +413,8 @@ function drawCars(frame, seconds, simRate, now, live) {
   state.cars.forEach((car, id) => {
     const pose = carState(frame.cars, id);
     // The chevron marks the car you follow, live on the game's own cameras; a replay and TV are the broadcast's,
-    // which doesn't point at anyone.
-    const followed = live && id === state.selected && state.cameraMode !== 'tv';
+    // which doesn't point at anyone, and with the interface hidden there's only the race.
+    const followed = live && id === state.selected && state.cameraMode !== 'tv' && !document.body.classList.contains('immersive');
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
     poseCar(car, pose, seconds, seconds * simRate, followed, now / 1000);
@@ -583,6 +584,7 @@ $('replay').addEventListener('click', () => startRace(true));
 $('go').addEventListener('click', lightsOut);
 $('pause').addEventListener('click', () => setPaused(!state.paused));
 $('replay-last').addEventListener('click', replayLastMoments);
+$('hide-ui').addEventListener('click', () => setImmersive(true));
 $('skip-replay').addEventListener('click', () => state.replay && endReplay());
 $('automatic-replays').checked = automaticReplays();
 $('automatic-replays').addEventListener('change', event => {
@@ -598,6 +600,7 @@ $('pitwall').addEventListener('change', () => startRace(true));
 document.querySelectorAll('#camera [data-camera]').forEach(button => button.addEventListener('click', () => setCamera(button.dataset.camera)));
 
 window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.body.classList.contains('immersive')) return setImmersive(false);
   if (event.key === 'Escape' && state.replay) return endReplay();
   if (event.key === 'Escape') return openDrawer(null);
   if (event.target.matches('input, select')) return;
@@ -610,11 +613,14 @@ window.addEventListener('keydown', event => {
   else if (event.key === 'o') setCamera('overview');
   else if (event.key === 'g') setGhost(!ghost.enabled);
   else if (event.key === 'r' || event.key === 'R') replayLastMoments();
+  else if (event.key === 'h' || event.key === 'H') setImmersive(!document.body.classList.contains('immersive'));
   else if (event.key === 'p') setStyle(stage.style === 'pixel' ? 'classic' : 'pixel');
   else if (/^[1-8]$/.test(event.key) && state.race && Number(event.key) <= state.race.cars.length) select(Number(event.key) - 1);
 });
 $('scene').addEventListener('wheel', event => { event.preventDefault(); stage.view.zoomBy(Math.exp(event.deltaY * 0.0012)); }, { passive: false });
 $('scene').addEventListener('click', event => {
+  // With the interface hidden a tap brings it back, so a phone without H or Esc isn't stuck without it.
+  if (document.body.classList.contains('immersive')) return setImmersive(false);
   const pointer = new THREE.Vector2((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, activeCamera());
   const hit = raycaster.intersectObjects(state.cars, true)[0];
@@ -627,6 +633,13 @@ $('scene').addEventListener('click', event => {
 function setGhost(enabled) {
   ghost.setEnabled(enabled);
   $('ghost').classList.toggle('active', enabled);
+}
+
+function setImmersive(immersive) {
+  document.body.classList.toggle('immersive', immersive);
+  $('hide-ui').classList.toggle('active', immersive);
+  $('immersive-hint').classList.toggle('hidden', !immersive);
+  if (immersive) openDrawer(null);
 }
 
 function setStyle(style) {

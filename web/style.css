@@ -439,3 +439,14 @@ body.replaying::before { top: 0; }
 body.replaying::after { bottom: 0; }
 /* ...and clears the screen of all but the commentary and the replay's own bar. */
 body.replaying .chrome, body.replaying #tv-tag, body.replaying #banner, body.replaying #status { opacity: 0; pointer-events: none; }
+
+/* Hiding the interface: only the race, its sound and the commentator's voice. */
+body.immersive .chrome, body.immersive #tv-tag, body.immersive #banner, body.immersive #caption, body.immersive #status,
+body.immersive #replay-tag { opacity: 0; pointer-events: none; }
+body.immersive.watching { cursor: none; }
+#immersive-hint {
+  position: fixed; bottom: var(--gutter); left: 50%; transform: translateX(-50%); z-index: 6; pointer-events: none;
+  background: var(--glass-strong); border-radius: var(--radius); padding: 7px 14px; font-size: 13px; color: var(--muted);
+  animation: immersive-hint 3s ease forwards;
+}
+@keyframes immersive-hint { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }

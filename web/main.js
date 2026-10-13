@@ -27,7 +27,6 @@ const PAUSE_ICON = '<svg viewBox="0 0 12 12"><rect x="1.5" y="1" width="3" heigh
 const PLAY_ICON = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
 // In TV mode the controls step aside after this long without the mouse moving, like a broadcast.
 const IDLE_MS = 2500;
-const STYLE_KEY = 'slipstream.style';
 const EFFECTS_KEY = 'slipstream.effects';
 const FRAME_SECONDS = 1 / 20;
 const $ = id => document.getElementById(id);
@@ -614,7 +613,6 @@ window.addEventListener('keydown', event => {
   else if (event.key === 'g') setGhost(!ghost.enabled);
   else if (event.key === 'r' || event.key === 'R') replayLastMoments();
   else if (event.key === 'h' || event.key === 'H') setImmersive(!document.body.classList.contains('immersive'));
-  else if (event.key === 'p') setStyle(stage.style === 'pixel' ? 'classic' : 'pixel');
   else if (/^[1-8]$/.test(event.key) && state.race && Number(event.key) <= state.race.cars.length) select(Number(event.key) - 1);
 });
 $('scene').addEventListener('wheel', event => { event.preventDefault(); stage.view.zoomBy(Math.exp(event.deltaY * 0.0012)); }, { passive: false });
@@ -642,12 +640,6 @@ function setImmersive(immersive) {
   if (immersive) openDrawer(null);
 }
 
-function setStyle(style) {
-  stage.setStyle(style);
-  document.querySelectorAll('[data-style]').forEach(button => button.classList.toggle('active', button.dataset.style === style));
-  try { localStorage.setItem(STYLE_KEY, style); } catch { /* blocked storage just forgets the choice */ }
-}
-
 function setEffects(enabled) {
   stage.post.setEnabled(enabled);
   document.querySelectorAll('[data-effects]').forEach(button => button.classList.toggle('active', (button.dataset.effects === 'on') === enabled));
@@ -656,10 +648,6 @@ function setEffects(enabled) {
 
 function savedEffects() {
   try { return localStorage.getItem(EFFECTS_KEY) !== 'off'; } catch { return true; }
-}
-
-function savedStyle() {
-  try { return localStorage.getItem(STYLE_KEY) === 'pixel' ? 'pixel' : 'classic'; } catch { return 'classic'; }
 }
 
 function setCommentary(mode) {
@@ -761,8 +749,6 @@ $('load-commentator').addEventListener('click', async () => {
 });
 
 $('pause').innerHTML = PAUSE_ICON;
-document.querySelectorAll('[data-style]').forEach(button => button.addEventListener('click', () => setStyle(button.dataset.style)));
-setStyle(savedStyle());
 setEffects(savedEffects());
 document.querySelectorAll('[data-effects]').forEach(button => button.addEventListener('click', () => setEffects(button.dataset.effects === 'on')));
 setSpeed(1);

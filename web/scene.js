@@ -7,7 +7,6 @@
 // The sim works on a flat x/y plane in metres. Here x stays x, the sim's y becomes -z, and up is +y, so a car
 // heading of θ is a rotation of θ about the vertical axis and left turns still look like left turns.
 import * as THREE from 'three';
-import { createPixelRenderer } from './pixel.js';
 import { createPost } from './post.js';
 
 export const toWorld = (x, y, height = 0) => new THREE.Vector3(x, height, -y);
@@ -128,10 +127,6 @@ export function createStage(canvas) {
   window.addEventListener('resize', resize);
   resize();
 
-  // 'classic' draws through the effects (see post.js), or straight to the screen with them off; 'pixel' goes
-  // through the pixel renderer (see pixel.js).
-  const pixel = createPixelRenderer(renderer);
-  let style = 'classic';
   let daylight = { sun: new THREE.Color('#fff3dc'), strength: 1, haze: new THREE.Color('#b9d6ea'), zenith: new THREE.Color('#5d9bd6'), glow: 1 };
   return {
     renderer, scene, camera, view, sun, sky: skyUniforms, post,
@@ -171,20 +166,15 @@ export function createStage(canvas) {
       scene.background.copy(horizon);
       bake(gloom);
     },
-    get style() { return style; },
-    setStyle(value) {
-      if (!['classic', 'pixel'].includes(value)) throw new Error(`Unknown style ${value}`);
-      style = value;
-    },
-    // `look` is how the effects see this frame (see post.js).
+    // Through the effects (see post.js), or straight to the screen with them off. `look` is how the effects see
+    // this frame.
     render(activeCamera, look) {
-      if (style === 'pixel') pixel.render(scene, activeCamera);
-      else if (post.enabled) post.render(activeCamera, look);
+      if (post.enabled) post.render(activeCamera, look);
       else renderer.render(scene, activeCamera);
     },
     // How many pixels tall the image being drawn is, for anything sized in pixels.
     pixelsTall() {
-      return style === 'pixel' ? pixel.height : renderer.getDrawingBufferSize(new THREE.Vector2()).y;
+      return renderer.getDrawingBufferSize(new THREE.Vector2()).y;
     },
   };
 }

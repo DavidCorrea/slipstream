@@ -75,7 +75,6 @@ On screen:
 - **Cars:** wheels that spin and steer, bodies that lean in corners and dip under braking, brake lights and a glowing exhaust.
 - **Effects:** tyre smoke, dust off the grass, sparks on a real knock, and confetti for the winner. The race leaves its history on the circuit: skid marks where cars slid, lock-up streaks where they braked hard, ruts in the grass and gravel, and debris from crashes, which stays where it fell.
 - **Damage:** a damaged car loses a front-wing endplate, then the other, then the flap, and its rear wing bends; each lost part is left on the track. A repair puts everything back.
-- **Look:** Classic, or Pixel (P): the same 3D scene drawn at a quarter resolution with a short palette, a light dither and dark outlines, like a 16-bit racer.
 - **Weather:** rain falling around the camera, a grey sky and dimmer sun, tarmac that darkens and shines as it gets wet, and spray off every car; tyres show green for intermediates and blue for full wets.
 - **HUD:** a standings tower with gaps, position changes, the weather and how wet the track is, and who holds the fastest lap; live telemetry for the selected car: speed, throttle, brake, tyres, fuel, steering, the running lap time, last and best laps, and sector times coloured like a timing screen (purple the best anyone has done, green a personal best, yellow neither).
 - **Race feed:** race control (overtakes, contact, mistakes, stops, fastest laps, rain), and team radio between drivers and their engineers. Click an entry to follow that car.

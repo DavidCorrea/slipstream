@@ -8,7 +8,6 @@
 //
 // They cost GPU time, so they adapt: the occlusion is drawn at half size, and when frames take too long the
 // costliest effects are dropped one at a time (and stay dropped for the session) until the frame rate recovers.
-// The pixel style draws without any of them.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';

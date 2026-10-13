@@ -107,6 +107,10 @@ REWARD_STYLES = {'traffic': TRAFFIC_REWARDS, 'passing': {**TRAFFIC_REWARDS, **PA
                  'clean': {**TRAFFIC_REWARDS, **CLEAN_REWARDS}, 'fair': {**TRAFFIC_REWARDS, **FAIR_REWARDS},
                  'steady': {**TRAFFIC_REWARDS, **STEADY_REWARDS}}
 STYLE_FILE = 'rewards.json'
+# Polishing a driver that already races well (--learning-rate 3e-5): at 1e-4, runs from driver-clean 84M swung from
+# snapshot to snapshot between crashing out of a field of itself (25% of its cars at driver-steady 98M) and holding
+# back (4% at 88M, but losing more battles), the steps too big to settle on what was good. The run remembers it.
+LEARNING_RATE_FILE = 'learning_rate.json'
 PASSING_FILE = 'passing.json'   # how runs started for passes before there was more than one style
 
 
@@ -124,14 +128,24 @@ def race_rewards(style=None, run=None):
     return REWARD_STYLES[style or 'traffic']
 
 
+def run_learning_rate(rate=None, run=None):
+    """The learning rate a driver by feel trains at: FEEL_SETTINGS's, unless the run was started with its own,
+    which it keeps whenever it's resumed."""
+    marker = run / LEARNING_RATE_FILE if run is not None else None
+    if rate and marker is not None:
+        marker.write_text(json.dumps({'learning_rate': rate}))
+    elif not rate and marker is not None and marker.exists():
+        rate = json.loads(marker.read_text())['learning_rate']
+    return rate or FEEL_SETTINGS['learning_rate']
+
+
 def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS, rewards=TRAFFIC_REWARDS):
     return DriverEnv(races=races, cars=cars, seed=seed, rewards=rewards, rivals=rivals)
 
 
-def resume_driver(path, env):
-    """A saved driver by feel, carrying on at today's FEEL_SETTINGS learning rate and exploration rather than the ones
-    it was saved with."""
-    rate = FEEL_SETTINGS['learning_rate']
+def resume_driver(path, env, rate=FEEL_SETTINGS['learning_rate']):
+    """A saved driver by feel, carrying on at `rate` and today's FEEL_SETTINGS exploration rather than the ones it was
+    saved with."""
     model = RecurrentPPO.load(path, env=env, device='cpu', custom_objects={
         'learning_rate': rate, 'lr_schedule': constant_fn(rate), 'ent_coef': FEEL_SETTINGS['ent_coef']})
     for group in model.policy.optimizer.param_groups:
@@ -139,11 +153,11 @@ def resume_driver(path, env):
     return model
 
 
-def copy_driver(source, env, run):
+def copy_driver(source, env, run, rate=FEEL_SETTINGS['learning_rate']):
     """A new run that carries on from a saved driver by feel: same network, same count of decisions behind it (so
     its snapshots line up with the source's), logging to its own folder. It keeps the source's personality ramp,
     so personality stays at the strength the source had reached instead of ramping up from nothing again."""
-    model = resume_driver(source, env)
+    model = resume_driver(source, env, rate)
     model.tensorboard_log = str(run / 'tensorboard')
     source_run = source.parent.parent if source.parent.name == 'checkpoints' else source.parent
     if (source_run / 'shaping.json').exists():
@@ -240,6 +254,7 @@ def main():
     parser.add_argument('--rivals', type=int, default=FEEL_RIVALS, help='with --feel, scripted cars in each race (see env.RaceVecEnv)')
     parser.add_argument('--feel', action='store_true', help='train a driver that drives by feel, with a memory (see driver_env.py)')
     parser.add_argument('--rewards', choices=sorted(REWARD_STYLES), help='with --feel, what to race for (REWARD_STYLES); the run remembers it')
+    parser.add_argument('--learning-rate', type=float, help=f"with --feel, the run's learning rate (default {FEEL_SETTINGS['learning_rate']}); the run remembers it")
     parser.add_argument('--imitate', type=int, default=0, metavar='DECISIONS',
                         help='with --feel, start a new run by copying the scripted driver over this many decisions (see driver_imitation.py)')
     arguments = parser.parse_args()
@@ -257,13 +272,14 @@ def main():
             print('Racing for passes: the car behind pays for contact, and closing in on the car ahead pays', flush=True)
         if env.rewards['hard_hit']:
             print('Racing clean: hard hits, crashing out and running off the track cost more', flush=True)
+        rate = run_learning_rate(arguments.learning_rate, run)
         if saved.exists():
-            model = resume_driver(saved, env)
-            print(f'Resuming {run} at step {model.num_timesteps:,}')
+            model = resume_driver(saved, env, rate)
+            print(f'Resuming {run} at step {model.num_timesteps:,}, learning at {rate:g}')
         elif arguments.source:
             source = source_path(arguments.source)
-            model = copy_driver(source, env, run)
-            print(f'Starting {run} as a copy of {source}, at step {model.num_timesteps:,}')
+            model = copy_driver(source, env, run, rate)
+            print(f'Starting {run} as a copy of {source}, at step {model.num_timesteps:,}, learning at {rate:g}')
         else:
             model = RecurrentPPO('MlpLstmPolicy', env, device='cpu', seed=arguments.seed, tensorboard_log=str(run / 'tensorboard'), verbose=0,
                                  **FEEL_SETTINGS)

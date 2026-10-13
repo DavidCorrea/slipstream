@@ -5,7 +5,7 @@ from stable_baselines3.common.logger import configure
 from slipstream.driver_env import RETIRE_COST
 from slipstream.env import REWARDS
 from slipstream.train import (FEEL_CARS, FEEL_RIVALS, FEEL_SETTINGS, PASSING_FILE, TRAFFIC_REWARDS, Progress, copy_driver,
-                              driver_env, race_rewards, resume_driver, source_path)
+                              driver_env, race_rewards, resume_driver, run_learning_rate, source_path)
 
 
 class TestTrainingADriverByFeel:
@@ -27,6 +27,17 @@ class TestTrainingADriverByFeel:
         resumed = resume_driver(tmp_path / 'model.zip', env)
         assert resumed.lr_schedule(1.0) == FEEL_SETTINGS['learning_rate'] < 3e-4
         assert resumed.policy.optimizer.param_groups[0]['lr'] == FEEL_SETTINGS['learning_rate']
+
+    def test_resumes_at_a_runs_own_learning_rate_when_it_has_one(self, tmp_path):
+        env = driver_env(races=1, cars=2, seed=0, rivals=0)
+        RecurrentPPO('MlpLstmPolicy', env, device='cpu', n_steps=8, batch_size=16).save(tmp_path / 'model')
+        resumed = resume_driver(tmp_path / 'model.zip', env, rate=3e-5)
+        assert resumed.lr_schedule(1.0) == resumed.policy.optimizer.param_groups[0]['lr'] == 3e-5
+
+    def test_a_run_started_with_its_own_learning_rate_keeps_it_when_resumed(self, tmp_path):
+        assert run_learning_rate(run=tmp_path) == FEEL_SETTINGS['learning_rate']
+        assert run_learning_rate(3e-5, run=tmp_path) == 3e-5
+        assert run_learning_rate(run=tmp_path) == 3e-5
 
     def test_keeps_exploring_even_when_resumed_from_a_driver_saved_without_it(self, tmp_path):
         env = driver_env(races=1, cars=2, seed=0, rivals=0)

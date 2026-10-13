@@ -297,6 +297,8 @@ const PAUSED_FRAME_MS = 1000 / 30;
 const FRAME_SLACK_MS = 2;
 // Cameras on or right behind a car, whose picture streaks at speed (see post.js), and the speed that streaks it most.
 const MOVING_SHOTS = new Set(['chase', 'onboard', 'wheel']);
+// Cameras on the car itself, which a broadcast never throws out of focus.
+const ON_THE_CAR = new Set(['onboard', 'wheel', 'lookingBack']);
 const FULL_BLUR_SPEED = 80;   // m/s
 const blurAt = speed => Math.min(1, Math.max(0, speed) / FULL_BLUR_SPEED);
 
@@ -367,9 +369,10 @@ function renderReplay(seconds, now) {
   const done = replay.parts.slice(0, replay.part).length + (replay.time - part.from) / Math.max(part.to - part.from, 1e-6);
   $('replay-progress').style.width = `${(done / replay.parts.length) * 100}%`;
   const distance = replayCamera.camera.position.distanceTo(replayCamera.focus);
-  // Slow motion streaks less than real time does; the lens focuses on the moment the replay is about.
+  // Slow motion streaks less than real time does; the lens focuses on the car the replay is about.
   const blur = MOVING_SHOTS.has(part.shot.kind) ? blurAt(frame.cars.speed[replay.cars[0]]) * Math.min(1, part.speed * 1.5) : 0;
-  state.look = { speed: blur, focus: distance, timed: true };
+  const focus = ON_THE_CAR.has(part.shot.kind) ? null : replayCamera.camera.position.distanceTo(state.cars[replay.cars[0]].position);
+  state.look = { speed: blur, focus, timed: true };
   state.effects.update(seconds * part.speed, stage.pixelsTall() / (2 * Math.tan(THREE.MathUtils.degToRad(replayCamera.camera.fov) / 2) * Math.max(distance, 1)));
   if (replay.time < part.to) return;
   // On to the next part (a cut), which may go back to show the impact again.

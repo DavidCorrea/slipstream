@@ -6,8 +6,9 @@
 //   heat haze          the air shimmers behind the exhaust of a car on the throttle, seen close up
 //   depth of field     in replays, a long lens keeps the cars sharp and lets what's near and far go soft
 //
-// They cost GPU time, so they adapt: the occlusion is drawn at half size, and when frames take too long the
-// costliest effects are dropped one at a time (and stay dropped for the session) until the frame rate recovers.
+// They cost GPU time, so they adapt: the occlusion is drawn at half size, and when frames take too long the picture
+// is first drawn a little smaller (scaled up to the screen, hardly visible), and only then are the costliest effects
+// dropped one at a time. Either stays for the session.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -31,6 +32,8 @@ const HITCH_MS = 250;
 const MEASURE_SECONDS = 4;
 // Most costly first: the occlusion renders the whole scene a second time, the lens a third time in replays.
 const DROP_ORDER = ['occlusion', 'lens', 'glow', 'heat'];
+// The share of the screen's resolution the picture is drawn at, step by step, before any effect is dropped.
+const RESOLUTION_STEPS = [1, 0.85, 0.75];
 
 const speedBlurShader = {
   uniforms: { tDiffuse: { value: null }, strength: { value: 0 } },
@@ -101,8 +104,16 @@ export function createPost(renderer, scene, camera) {
   for (const pass of [scenePass, occlusion, heat, glow, speedBlur, lens, new OutputPass()]) composer.addPass(pass);
 
   const dropped = new Set();
-  let enabled = true, measuredMs = 0, measuredFrames = 0, lastFrame = null;
+  let enabled = true, measuredMs = 0, measuredFrames = 0, lastFrame = null, resolutionStep = 0;
+  const fullPixelRatio = renderer.getPixelRatio();
 
+  function setResolution(step) {
+    resolutionStep = step;
+    renderer.setPixelRatio(fullPixelRatio * RESOLUTION_STEPS[step]);
+    const size = renderer.getSize(new THREE.Vector2());
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(size.x, size.y);
+  }
 
   // Frames that take too long drop the costliest effect still on.
   function measure(now) {
@@ -115,6 +126,7 @@ export function createPost(renderer, scene, camera) {
     const average = measuredMs / measuredFrames;
     measuredMs = measuredFrames = 0;
     if (average <= SLOW_FRAME_MS) return;
+    if (resolutionStep + 1 < RESOLUTION_STEPS.length) return setResolution(resolutionStep + 1);
     const next = DROP_ORDER.find(effect => !dropped.has(effect));
     if (next) dropped.add(next);
   }
@@ -122,8 +134,9 @@ export function createPost(renderer, scene, camera) {
   return {
     get enabled() { return enabled; },
     setEnabled(value) { enabled = value; lastFrame = null; measuredMs = measuredFrames = 0; },
-    // Which effects were dropped to keep the frame rate up.
+    // Which effects were dropped to keep the frame rate up, and the share of the resolution the picture is drawn at.
     get dropped() { return [...dropped]; },
+    get resolution() { return RESOLUTION_STEPS[resolutionStep]; },
 
     resize(width, height) {
       composer.setPixelRatio(renderer.getPixelRatio());

@@ -192,6 +192,7 @@ function setUpRace(intro) {
   const first = intro.grid[state.selected];
   stage.view.focus.copy(toWorld(first.x, first.y));
   stage.view.setMode(state.cameraMode, state.circuit);
+  stage.warmUp([stage.camera, director.camera, replayCamera.camera]);
   showGrid(intro);
 }
 

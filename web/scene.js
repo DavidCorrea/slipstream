@@ -175,6 +175,31 @@ export function createStage(canvas) {
       if (post.enabled) post.render(activeCamera, look);
       else renderer.render(scene, activeCamera);
     },
+    // Draws everything the race can show once, off screen, while the cars wait on the grid: a shader is compiled
+    // the first time something using it is drawn, which mid-race (the first exhaust flame, the first car far enough
+    // to be drawn simply, the first rain, the first chase shot's speed blur) held a frame for 40-60 ms. Everything
+    // hidden is shown for it, on every layer and wherever it is (the sun's shadow only draws what's near), then put
+    // back; and the effects are drawn once each.
+    warmUp(cameras) {
+      const hidden = [], culled = [];
+      scene.traverse(object => {
+        if (!object.visible) { hidden.push(object); object.visible = true; }
+        if (object.frustumCulled) { culled.push(object); object.frustumCulled = false; }
+      });
+      const target = new THREE.WebGLRenderTarget(64, 64);
+      renderer.setRenderTarget(target);
+      for (const camera of cameras) {
+        const layers = camera.layers.mask;
+        camera.layers.enableAll();
+        renderer.render(scene, camera);
+        camera.layers.mask = layers;
+      }
+      renderer.setRenderTarget(null);
+      target.dispose();
+      for (const object of hidden) object.visible = false;
+      for (const object of culled) object.frustumCulled = true;
+      if (post.enabled) post.warmUp(cameras);
+    },
     // How many pixels tall the image being drawn is, for anything sized in pixels.
     pixelsTall() {
       return renderer.getDrawingBufferSize(new THREE.Vector2()).y;

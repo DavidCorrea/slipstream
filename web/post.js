@@ -143,6 +143,14 @@ export function createPost(renderer, scene, camera) {
       composer.setSize(width, height);
     },
 
+    // Draws once with every effect on, from each camera (the occlusion is the isometric camera's, the lens the
+    // others'), so their shaders are compiled before the race rather than on the first frame that needs them; then
+    // once plainly, which is what stays on screen until the next frame.
+    warmUp(cameras) {
+      for (const camera of cameras) this.render(camera, { speed: 1, focus: 10, heat: [[0.5, 0.5, 0.05]], timed: false });
+      this.render(cameras[0], { timed: false });
+    },
+
     // `look`: `speed` (0-1) streaks the edges, `focus` (metres from the camera) puts the lens on, `heat` lists the
     // exhausts that shimmer as [x, y, size] on the screen (0-1, size a share of its height), and `timed` says
     // whether this frame counts towards the frame rate (not while paused).

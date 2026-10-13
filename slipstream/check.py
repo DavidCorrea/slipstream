@@ -7,17 +7,20 @@ snapshots on the same circuits favours the lucky ones: on 2026-10-09 a snapshot 
 being beaten by every run that followed it, and only fresh circuits showed one of those runs was level with it
 and driving more cleanly. This scores each snapshot once on CHECK_SEEDS, in its own process so training doesn't
 wait, and appends a line to the run's check.jsonl.
+
+It also races each snapshot against itself across a whole field among the scenery (benchmark.field_race), the race
+the viewer watches: beating scripted rivals says nothing about whether a field of the driver wrecks itself.
 """
 import argparse
 import json
 import time
 from pathlib import Path
 
-from .benchmark import benchmark
+from .benchmark import benchmark, field_race
 from .brains import load_network
 
 CHECK_SEEDS = tuple(range(2001, 2025))
-CHECKED_SCORES = ('pace', 'place', 'damage', 'off_track', 'finished')
+CHECKED_SCORES = ('pace', 'place', 'damage', 'off_track', 'finished', 'field_out', 'field_off_track', 'field_hits')
 WAIT_SECONDS = 60
 # Place moves by about 0.05 from one snapshot to the next with no real change, so a run is judged by the average of
 # its latest few rather than by its single best, which is as much luck as driving.
@@ -39,10 +42,16 @@ def record(run, checkpoint, scores):
 
 
 def recent_average(run, count=AVERAGED):
-    """Each score averaged over the run's latest `count` checked snapshots."""
+    """Each score averaged over the run's latest `count` checked snapshots that have it (snapshots checked before
+    the field race was scored don't)."""
     lines = [json.loads(line) for line in (run / 'check.jsonl').read_text().splitlines()]
     latest = sorted(lines, key=lambda entry: entry['step'])[-count:]
-    return {name: sum(entry[name] for entry in latest) / len(latest) for name in CHECKED_SCORES}
+    averages = {}
+    for name in CHECKED_SCORES:
+        values = [entry[name] for entry in latest if name in entry]
+        if values:
+            averages[name] = sum(values) / len(values)
+    return averages
 
 
 def main():
@@ -58,12 +67,15 @@ def main():
         for path in unchecked(run) if (run / 'checkpoints').is_dir() else []:
             if int(path.stem.split('-')[1]) < arguments.since:
                 continue
-            entry = record(run, path.stem, benchmark(load_network(path), seeds=CHECK_SEEDS))
+            network = load_network(path)
+            entry = record(run, path.stem, benchmark(network, seeds=CHECK_SEEDS) | field_race(network))
             print(f"checked {entry['step']:,}: pace {entry['pace']:.3f}x script, place vs script {entry['place']:.2f}, "
                   f"damage {entry['damage']:.2f}, off track {entry['off_track']:.1%}", flush=True)
+            print(f"  in a field of itself: out {entry['field_out']:.1%}, off track {entry['field_off_track']:.1%}, "
+                  f"hard hits {entry['field_hits']:.1f} a car", flush=True)
             average = recent_average(run)
             print(f"  latest {AVERAGED} on average: pace {average['pace']:.3f}x, place {average['place']:.2f}, "
-                  f"damage {average['damage']:.2f}", flush=True)
+                  f"damage {average['damage']:.2f}, field out {average['field_out']:.1%}", flush=True)
         time.sleep(WAIT_SECONDS)
 
 

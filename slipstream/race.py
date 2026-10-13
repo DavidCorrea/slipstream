@@ -34,6 +34,8 @@ AFTER_WINNER = 45.0        # seconds the rest of the field gets to finish once t
 # Where a hit lands decides what breaks: a hit to the front takes the front wing, to the side the suspension.
 # Part damage builds faster than the general damage every hit also does.
 PART_HARM = 1.5
+# An impulse (m/s) that's a real hit rather than the rubbing of a fight.
+HARD_HIT = 4.0
 # A hard enough hit leaves bits on the track; running over one can puncture a tyre.
 DEBRIS = {'impulse': 3.5, 'per_impulse': 0.5, 'most': 6, 'spread': 3.0, 'reach': 1.1, 'puncture': 0.03}
 # A hot engine can fail: the chance per second grows from nothing at `from` to `rate` at the hottest.

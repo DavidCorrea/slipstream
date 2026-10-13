@@ -13,6 +13,11 @@
   else neutral. `risk_pace` is the cautious driver's time over the risky one's, so above 1 means risk makes it
   faster. `conservation_saving` is the pusher's tyre wear plus fuel used over the saver's, so above 1 means the
   saver really saves. Both sit at 1 for a network that ignores personality.
+- Field race (only from check.py, as it's slow): every car the trained driver, on a circuit with its scenery, the
+  race the viewer watches. `field_out` is the share of cars out of the race, `field_off_track` the share of time
+  spent off the tarmac and `field_hits` the hard hits per car. A driver can beat scripted rivals by racing wildly
+  and still wreck a field of itself: on 2026-10-12 driver-pass 90M led every other score, while in a field of
+  itself a third of its cars crashed out, four times as many as driver-race 82M.
 """
 import numpy as np
 
@@ -22,7 +27,8 @@ from .car import CarSpecs, FUEL_CAPACITY
 from .field import field_controls, makes_pit_calls
 from .human import Driving
 from .observe import OBSERVATION_NAMES
-from .race import Race
+from .race import HARD_HIT, Race
+from .scenery import location_for, place
 from .track import generate_track
 from .weather import Weather
 
@@ -35,6 +41,9 @@ LONG_SEEDS = (1002,)
 WET_SEEDS = (1001, 1003, 1005, 1007, 1009, 1011)
 LONG_LAPS = 8
 STALLED_SECONDS = 15.0
+FIELD_SEEDS = tuple(range(2001, 2009))
+FIELD_CARS = 12
+FIELD_LAPS = 3
 
 
 def benchmark_race(track, cars, laps, weather=None):
@@ -134,3 +143,25 @@ def trait_effects(model, seeds=TRAIT_SEEDS):
         pusher, saver = solo_with(model, track, conservation=0.0), solo_with(model, track, conservation=1.0)
         savings.append(used(pusher) / max(used(saver), 1e-6))
     return {'risk_pace': float(np.mean(paces)) if paces else 0.0, 'conservation_saving': float(np.mean(savings))}
+
+
+def field_race(model, seeds=FIELD_SEEDS, cars=FIELD_CARS, laps=FIELD_LAPS):
+    """Every car driven by `model` (the script when it's None), racing among the scenery the viewer sees."""
+    out, off_track, hits = [], [], []
+    for seed in seeds:
+        track = generate_track(seed)
+        race = benchmark_race(track, cars, laps)
+        race.place_props(place(track, race.pit, seed, location_for(seed)))
+        driver = NetworkDriver(model, cars) if model is not None else None
+        everyone, hard_hits, racing_ticks, off_ticks = np.ones(cars, dtype=bool), 0, 0, 0
+        while not race.done:
+            # Only while racing: a car out of the race sits wherever it stopped, often on the grass.
+            racing = ~race.finished & ~race.retired
+            events = race.step(*field_controls(race, driver, everyone))
+            hard_hits += sum(contact.impulse >= HARD_HIT for contact in events.contacts)
+            racing_ticks += racing.sum()
+            off_ticks += (racing & ~race.on_track).sum()
+        out.append(race.retired.mean())
+        off_track.append(off_ticks / max(racing_ticks, 1))
+        hits.append(hard_hits / cars)
+    return {'field_out': float(np.mean(out)), 'field_off_track': float(np.mean(off_track)), 'field_hits': float(np.mean(hits))}

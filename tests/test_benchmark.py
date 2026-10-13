@@ -1,6 +1,6 @@
 import numpy as np
 
-from slipstream.benchmark import STALLED_SECONDS, run_race
+from slipstream.benchmark import STALLED_SECONDS, field_race, run_race
 from slipstream.car import CarSpecs
 from slipstream.race import Race
 from slipstream.track import generate_track
@@ -14,3 +14,10 @@ class TestABenchmarkRace:
         race = Race(generate_track(1), CarSpecs.uniform(1), laps=2)
         run_race(race, None, np.array([True]))
         assert race.time < STALLED_SECONDS + 5
+
+
+class TestAFieldRace:
+    def test_scores_how_a_whole_field_of_one_driver_races_among_the_scenery(self):
+        scores = field_race(None, seeds=(2001,), cars=4, laps=1)
+        assert set(scores) == {'field_out', 'field_off_track', 'field_hits'}
+        assert 0 <= scores['field_out'] < 0.5 and 0 <= scores['field_off_track'] < 0.2 and scores['field_hits'] >= 0

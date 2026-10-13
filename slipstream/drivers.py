@@ -18,6 +18,11 @@ REACTION = 0.3            # seconds ahead it aims its speed at, so the pedals ac
 # Off the tarmac it crawls back: on the grass, and above all on wet grass, full throttle would use up all the grip
 # there is and leave none for turning back towards the track.
 RECOVERY_SPEED = 9.0      # m/s
+# Something in the way: a scripted driver always wants to go, so standing still this long means it's blocked (nosed
+# into a wall, a car, a tree, or facing the wrong way after a spin). It backs up, swinging its nose round towards
+# where it's going, for up to BACK_UP seconds or until it's pointing well enough, then drives on.
+BLOCKED_SECONDS = 1.5
+BACK_UP = {'longest': 2.0, 'shortest': 0.8, 'aligned': 0.6}   # seconds, seconds, radians off the way ahead
 
 
 def scripted_controls(race):
@@ -50,7 +55,21 @@ def scripted_controls(race):
     cornering = speed ** 2 * curvature[:, 0]
     spare = np.sqrt(np.maximum(full_grip ** 2 - cornering ** 2, 0.0))
     brake = np.minimum(np.clip((speed - target_speed) / 0.5, 0, 1), spare / braking)
-    return np.clip(steer, -1, 1), throttle, brake
+    return _backing_up(cars, angle, np.clip(steer, -1, 1), throttle, brake)
+
+
+def _backing_up(cars, angle, steer, throttle, brake):
+    """Overrides the controls of blocked cars: both pedals to select reverse, then the throttle with the steering
+    turned the opposite way (reverse turns the nose the other way), then the brake to stop and go back to first."""
+    blocked = ~cars.reversing & (cars.stopped_for > BLOCKED_SECONDS)
+    backed_enough = (cars.reversed_for > BACK_UP['longest']) | \
+        ((cars.reversed_for > BACK_UP['shortest']) & (np.abs(angle) < BACK_UP['aligned']))
+    backing = cars.reversing & ~backed_enough
+    finishing = cars.reversing & backed_enough
+    steer = np.where(backing, -np.sign(angle), steer)
+    throttle = np.where(blocked | backing, 1.0, np.where(finishing, 0.0, throttle))
+    brake = np.where(blocked | finishing, 1.0, np.where(backing, 0.0, brake))
+    return steer, throttle, brake
 
 
 def _speed_profile(corner_speed, curvature, grip, braking):

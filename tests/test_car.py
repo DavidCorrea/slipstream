@@ -146,3 +146,42 @@ class TestSlidingToAStop:
         state.velocity[0] = state.left[0] * 5.0
         drive(state, specs, 5, on_track=False)
         assert np.linalg.norm(state.velocity[0]) < 0.1
+
+
+class TestReverseGear:
+    def select_reverse(self, state, specs):
+        drive(state, specs, 0.6, throttle=1, brake=1)
+        assert state.reversing[0]
+
+    def test_holding_both_pedals_at_a_standstill_selects_reverse_and_the_throttle_backs_up_slowly(self):
+        state, specs = one_car()
+        self.select_reverse(state, specs)
+        drive(state, specs, 5, throttle=1)
+        assert -4.0 <= state.speed[0] < -2.0 and state.position[0, 0] < -5.0
+
+    def test_braking_alone_to_a_stop_never_selects_reverse(self):
+        state, specs = one_car(speed=30.0)
+        drive(state, specs, 10, brake=1)
+        drive(state, specs, 3, throttle=1)
+        assert not state.reversing[0] and state.speed[0] > 0
+
+    def test_steering_works_backwards_in_reverse(self):
+        state, specs = one_car()
+        self.select_reverse(state, specs)
+        drive(state, specs, 3, throttle=1, steer=1)
+        # Steering left while backing up swings the nose to the right.
+        assert state.heading[0] < -0.05
+
+    def test_braking_to_a_stop_in_reverse_puts_it_back_in_first(self):
+        state, specs = one_car()
+        self.select_reverse(state, specs)
+        drive(state, specs, 2, throttle=1)
+        drive(state, specs, 2, brake=1)
+        drive(state, specs, 3, throttle=1)
+        assert not state.reversing[0] and state.speed[0] > 3.0
+
+    def test_a_car_that_cant_reverse_stays_in_first(self):
+        state, specs = one_car()
+        for _ in range(20):
+            step_cars(state, specs, np.zeros(1), np.ones(1), np.ones(1), np.ones(1, dtype=bool), can_reverse=np.zeros(1, dtype=bool))
+        assert not state.reversing[0]

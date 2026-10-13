@@ -294,6 +294,7 @@ class RaceSession:
                 'x': rounded(cars.position[:, 0]), 'y': rounded(cars.position[:, 1]), 'heading': rounded(cars.heading, 4),
                 'speed': rounded(cars.speed), 'steer': rounded(steer), 'throttle': rounded(throttle), 'brake': rounded(brake),
                 'sliding': cars.sliding.astype(int).tolist(), 'offTrack': (~race.on_track).astype(int).tolist(),
+                'reversing': cars.reversing.astype(int).tolist(),
                 'tyreWear': rounded(cars.tyre_wear, 3), 'fuel': rounded(cars.fuel / FUEL_CAPACITY, 3),
                 'lap': race.lap_of().tolist(), 'progress': rounded(race.progress, 1),
                 'finishTime': [None if np.isnan(time) else round(float(time), 2) for time in race.finish_time],

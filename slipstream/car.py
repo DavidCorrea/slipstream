@@ -13,6 +13,9 @@ What a car can do also depends on its setup and condition, all of which a pit st
 - damage from contact: less grip, top speed and acceleration until repaired.
 - brake wear: worn pads stop the car less hard.
 - fuel: a full tank is heavy, slowing both speeding up and stopping; an empty one stops the car.
+- reverse gear: selected by holding both pedals with the car stopped (there's no gear lever among a driver's
+  controls). In reverse the throttle backs the car up at walking pace and the steering works backwards; braking
+  to a stop puts it back in first.
 
 And what a race does to it:
 - temperatures: tyres grip best inside their compound's window, cold out of the pits and overheating when slid
@@ -38,6 +41,8 @@ STEER_FADE_SPEED = 35.0 # m/s at which the available steering lock has halved
 EMPTY_MASS = 750.0      # kg, car and driver
 FUEL_CAPACITY = 60.0    # kg: about five laps at racing pace, so long races need a stop or a lot of saving
 ROLLING_DRAG = 0.4      # m/s^2
+# Reverse: how still the car must be and for how long both pedals are held to select it, and how it drives.
+REVERSE = {'still': 0.5, 'select': 0.5, 'power': 3.0, 'top_speed': 4.0}   # m/s; seconds; m/s^2; m/s
 OFF_TRACK = {'grip': 0.55, 'drag': 5.0}
 # Tyre wear per second at full cornering load, and extra while sliding: mediums go off after four or five laps,
 # so one stop clearly pays from about seven laps on (at a gentler rate it only broke even around nine).
@@ -175,6 +180,10 @@ class CarState:
     longitudinal_g: np.ndarray = field(default=None)
     lateral_g: np.ndarray = field(default=None)
     wheelspin: np.ndarray = field(default=None)
+    reversing: np.ndarray = field(default=None)       # (K,) bool, in reverse gear
+    selecting: np.ndarray = field(default=None)       # (K,) seconds both pedals have been held at a standstill
+    reversed_for: np.ndarray = field(default=None)    # (K,) seconds in reverse since selecting it
+    stopped_for: np.ndarray = field(default=None)     # (K,) seconds the car has stood still
 
     @classmethod
     def at(cls, positions, headings, fuel=FUEL_CAPACITY):
@@ -188,7 +197,9 @@ class CarState:
                    punctured=np.zeros(count, dtype=bool), wing_damage=np.zeros(count), suspension_damage=np.zeros(count),
                    pull_side=np.where(np.arange(count) % 2 == 0, 1.0, -1.0), yaw_rate=np.zeros(count),
                    longitudinal_g=np.zeros(count), lateral_g=np.zeros(count), wheelspin=np.zeros(count),
-                   sliding=np.zeros(count, dtype=bool), lateral_load=np.zeros(count))
+                   sliding=np.zeros(count, dtype=bool), lateral_load=np.zeros(count),
+                   reversing=np.zeros(count, dtype=bool), selecting=np.zeros(count), reversed_for=np.zeros(count),
+                   stopped_for=np.zeros(count))
 
     @property
     def forward(self):
@@ -275,9 +286,11 @@ def fuel_burn_rate(engine):
     return FUEL_BURN * (low + (high - low) * np.asarray(engine, dtype=float))
 
 
-def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track, conditions: Conditions | None = None):
+def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track, conditions: Conditions | None = None,
+              can_reverse=None):
     """Advances every car one tick. steer in [-1, 1] (positive turns left), throttle and brake in [0, 1]. Without
-    `conditions`, the track is dry, clean and the air clear."""
+    `conditions`, the track is dry, clean and the air clear. Only cars `can_reverse` marks (all, if not given) can
+    select reverse."""
     conditions = conditions if conditions is not None else Conditions.uniform(len(state.heading))
     wetness = conditions.wetness
     # Bent suspension pulls the car to one side whatever the driver does.
@@ -287,7 +300,12 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     brake = np.clip(brake, 0, 1)
     forward = state.forward
     along = np.einsum('ck,ck->c', state.velocity, forward)
-    speed = np.maximum(along, 0.0)
+    _select_gear(state, throttle, brake, can_reverse)
+    reversing = state.reversing
+    # In reverse the throttle drives the car backwards; everything else below sees it as driving forwards with
+    # its speed and steering flipped round, and the result is turned back at the end.
+    backing = np.where(reversing, -1.0, 1.0)
+    speed = np.maximum(along * backing, 0.0)
 
     surface_grip = np.where(on_track, 1.0, OFF_TRACK['grip'])
     grip = effective_grip(state, specs, wetness, conditions.surface_grip, conditions.dirty_air) * GRAVITY * surface_grip
@@ -297,6 +315,8 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     braking = specs.braking * (1 - BRAKE_WEAR['loss'] * state.brake_wear) * brake_fade(state.brake_temp)
 
     # Engine force fades toward top speed; brakes, the grass and a flat tyre slow the car whatever the engine does.
+    top_speed = np.where(reversing, REVERSE['top_speed'], top_speed)
+    power = np.where(reversing, REVERSE['power'], power)
     drive = throttle * power * heaviness * np.clip(1 - (speed / top_speed) ** 2, 0, 1)
     stopping = brake * braking * heaviness + ROLLING_DRAG + np.where(on_track, 0.0, OFF_TRACK['drag']) \
         + np.where(state.punctured, PUNCTURE['drag'], 0.0)
@@ -307,7 +327,8 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
 
     # Whatever grip the pedals leave over is all there is for turning.
     cornering_grip = np.sqrt(np.maximum(grip ** 2 - longitudinal ** 2, 0.0))
-    lock = MAX_STEER / (1 + speed / STEER_FADE_SPEED) * steer
+    # Backing up, the same lock turns the car the other way.
+    lock = MAX_STEER / (1 + speed / STEER_FADE_SPEED) * steer * backing
     wanted_turn = speed * np.tan(lock) / WHEELBASE
     # At the limit the balance decides: an oversteering car rotates past what its grip can follow, an
     # understeering one gives up turning sooner.
@@ -322,11 +343,11 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     new_left = np.stack([-np.sin(heading), np.cos(heading)], axis=1)
     # The car turned under its velocity: what was straight ahead is now partly sideways. Tyres pull that back
     # into line up to the grip left over; the rest is a slide.
-    along = np.einsum('ck,ck->c', state.velocity, new_forward)
+    along = np.einsum('ck,ck->c', state.velocity, new_forward) * backing
     sideways = np.einsum('ck,ck->c', state.velocity, new_left)
     correction = np.clip(-sideways, -cornering_grip * DT, cornering_grip * DT)
     sideways = sideways + correction
-    along = np.maximum(along + longitudinal * DT, 0.0)
+    along = np.maximum(along + longitudinal * DT, 0.0) * backing
 
     previous_velocity = state.velocity
     state.heading = (heading + np.pi) % (2 * np.pi) - np.pi
@@ -337,7 +358,7 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     acceleration = (state.velocity - previous_velocity) / DT
     state.yaw_rate = turn
     state.longitudinal_g = np.einsum('ck,ck->c', acceleration, new_forward) / GRAVITY
-    state.lateral_g = np.einsum('ck,ck->c', acceleration, new_left) / GRAVITY + speed * turn / GRAVITY
+    state.lateral_g = np.einsum('ck,ck->c', acceleration, new_left) / GRAVITY + along * turn / GRAVITY
     state.wheelspin = np.where(asked > grip, np.clip((asked - grip) / np.maximum(asked, 1e-6), 0, 1), 0.0)
 
     overheating = 1 + TYRE_TEMPERATURE['overheat_wear'] * np.maximum(state.tyre_temp - TYRE_WINDOW[state.compound] - TYRE_WINDOW_HALF, 0.0) / 0.2
@@ -348,6 +369,20 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     state.fuel = np.maximum(0.0, state.fuel - DT * fuel_burn_rate(state.engine) * throttle)
     _heat(state, speed, brake, throttle, conditions)
     return state
+
+
+def _select_gear(state, throttle, brake, can_reverse):
+    """Both pedals held with the car stopped select reverse; braking to a stop in reverse goes back to first."""
+    # Stopped, not just going nowhere along its length: a car spinning sideways is moving.
+    still = np.linalg.norm(state.velocity, axis=1) < REVERSE['still']
+    holding_both = still & (throttle > 0.5) & (brake > 0.5) & ~state.reversing
+    state.selecting = np.where(holding_both, state.selecting + DT, 0.0)
+    state.reversing = state.reversing | (state.selecting >= REVERSE['select'])
+    state.reversing &= ~(still & (brake > 0.5) & (throttle < 0.1))
+    if can_reverse is not None:
+        state.reversing &= np.asarray(can_reverse, dtype=bool)
+    state.reversed_for = np.where(state.reversing, state.reversed_for + DT, 0.0)
+    state.stopped_for = np.where(still, state.stopped_for + DT, 0.0)
 
 
 def _heat(state, speed, brake, throttle, conditions):

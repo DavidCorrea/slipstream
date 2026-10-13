@@ -45,17 +45,17 @@ ENGINE_FAILURE = {'from': 0.85, 'rate': 0.002}
 # along a wall costs a little, a real impact a lot. A soft one (a tyre wall) gives more and harms less; a breakable
 # one breaks, taking a share of the car's speed and a light knock. At first the speed along went at a flat 10% a
 # tick of contact, and a 20-car field rubbing along the armco and pit wall lost whole laps. A hit harder than CRASH_OUT (about 100 km/h head on) ends the race,
-# and so does getting less than STUCK_METRES further in STUCK_SECONDS, there being no reverse gear: a car creeping
-# along a wall on the grass at walking pace got a metre further every few seconds and stayed in the race for ever.
+# and so does getting less than STUCK_METRES further in STUCK_SECONDS: a car creeping along a wall on the grass at
+# walking pace got a metre further every few seconds and stayed in the race for ever.
 PROPS = {'scrape': 0.015, 'scrape_most': 0.5, 'soft_restitution': 0.05, 'soft_absorbs': 0.03, 'soft_harm': 0.35,
          'breaks_speed': 0.15, 'breaks_knock': 0.2}
 CRASH_OUT = 35.0
 STUCK_SECONDS = 20.0
 STUCK_METRES = 25.0
 # A car up against something at walking pace backs off it and swings its nose round to the way the track goes (or,
-# off the track, towards the track ahead), as a driver would in reverse: cars have no reverse gear and can't steer
-# standing still, and one nosed into the pit wall otherwise pushed against it until it retired, with the cars
-# behind piling up on it.
+# off the track, towards the track ahead): before cars had a reverse gear (car.REVERSE), one nosed into the pit wall
+# pushed against it until it retired, with the cars behind piling up on it, and drivers trained since still count
+# on it rather than reversing themselves.
 RECOVERY = {'below': 3.0, 'turn': 0.9, 'back': 1.2, 'rejoin': 15.0}   # m/s; radians a second; m/s off the prop; m ahead
 PRESSURE_GAP = 20.0        # metres to the car ahead or behind at which a driver starts to feel the pressure
 
@@ -233,7 +233,7 @@ class Race:
         brake = np.where(stopping, 0.3, np.where(driven, brake, 0.0))
         steer = np.where(driven & ~self.retired, steer, 0.0)
         fuel, wear = self.cars.fuel.copy(), self.cars.tyre_wear.copy()
-        step_cars(self.cars, self.specs, steer, throttle, brake, self.on_track, self.conditions())
+        step_cars(self.cars, self.specs, steer, throttle, brake, self.on_track, self.conditions(), can_reverse=driven & ~stopping)
         self.weather.step(DT)
         self.fuel_used += fuel - self.cars.fuel
         shed = np.maximum(self.cars.tyre_wear - wear, 0.0)

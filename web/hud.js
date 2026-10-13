@@ -99,7 +99,8 @@ export function createHud({ onSelect }) {
       $('tele-swatch').style.background = car.color;
       $('tele-name').textContent = car.name;
       $('tele-position').textContent = `P${order.indexOf(selected) + 1}`;
-      $('tele-speed').textContent = Math.round(Math.max(0, cars.speed[selected]) * 3.6);
+      // Backing up shows its speed too; the Reverse flag says which way.
+      $('tele-speed').textContent = Math.round(Math.abs(cars.speed[selected]) * 3.6);
       $('tele-throttle').style.height = `${cars.throttle[selected] * 100}%`;
       $('tele-brake').style.height = `${cars.brake[selected] * 100}%`;
       $('tele-tyres').style.width = `${(1 - cars.tyreWear[selected]) * 100}%`;
@@ -115,6 +116,7 @@ export function createHud({ onSelect }) {
       showTemperature('temp-engine', cars.engineTemp?.[selected], [0.35, 0.8], 70, 130);
       $('tele-steer').style.left = `${50 + cars.steer[selected] * -46}%`;
       const flags = [];
+      if (cars.reversing?.[selected]) flags.push('<span class="slide">Reverse</span>');
       if (cars.sliding[selected]) flags.push('<span class="slide">Sliding</span>');
       if (cars.offTrack[selected] && !cars.pit[selected]) flags.push('<span class="grass">On the grass</span>');
       if (cars.pit[selected] === 1) flags.push('<span class="done">Pitting this lap</span>');

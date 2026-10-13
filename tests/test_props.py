@@ -115,3 +115,40 @@ class TestClearRacing:
         race = Race(generate_track(3), CarSpecs.uniform(2), laps=1)
         events = race.step(*scripted_controls(race))
         assert race.props is None and events.prop_hits == [] and events.crashed == []
+
+
+class TestBackingOut:
+    def stopped_car(self):
+        race = Race(generate_track(3), CarSpecs.uniform(1), laps=3)
+        race.cars.stopped_for[0] = 2.0
+        return race
+
+    def test_a_scripted_driver_stopped_for_a_while_selects_reverse(self):
+        race = self.stopped_car()
+        _, throttle, brake = scripted_controls(race)
+        assert throttle[0] == 1.0 and brake[0] == 1.0
+
+    def test_in_reverse_it_backs_up_steering_the_other_way_then_brakes_to_go_forward_again(self):
+        race = self.stopped_car()
+        steer_forward, _, _ = scripted_controls(race)
+        race.cars.heading[0] += 1.2                      # pointing well off the way ahead
+        race.cars.reversing[0], race.cars.reversed_for[0] = True, 0.5
+        steer, throttle, brake = scripted_controls(race)
+        assert throttle[0] == 1.0 and brake[0] == 0.0 and steer[0] == 1.0   # nose wants right: reverse steers left
+        race.cars.reversed_for[0] = 2.5
+        _, throttle, brake = scripted_controls(race)
+        assert throttle[0] == 0.0 and brake[0] == 1.0
+
+    def test_a_blocked_scripted_car_really_drives_backwards(self):
+        race = self.stopped_car()
+        for _ in range(int(3.0 / 0.05)):
+            race.step(*scripted_controls(race))
+            if race.cars.reversing[0] and race.cars.speed[0] < -1.0:
+                return
+        raise AssertionError('never backed up')
+
+    def test_a_scripted_driver_with_the_road_clear_never_reverses(self):
+        race = Race(generate_track(5), CarSpecs.uniform(1), laps=1)
+        while not race.done:
+            race.step(*scripted_controls(race))
+            assert not race.cars.reversing[0]

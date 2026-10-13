@@ -199,11 +199,13 @@ export function createBroadcaster({ onStatus, speech }) {
     wantsModel: () => loadSetting('ai', false),
     setMode, reset, notice, update, loadModel,
     setYours(car) { yours = car; },
-    // Opens a replay with a line about the cars in it, ahead of anything waiting to be said about the race.
-    replay(names) {
+    // Opens a replay with a line about the cars in it and what it shows (a `kind` of replay.js), ahead of anything
+    // waiting to be said about the race.
+    replay(names, kind) {
       if (mode === 'off' || !race) return;
       pending = null;
-      show(pickFresh(REPLAY_LINES[names.length > 1 ? 'two' : 'one'], { car: names[0], other: names[1] }));
+      const lines = REPLAY_LINES[kind] ?? REPLAY_LINES[names.length > 1 ? 'two' : 'one'];
+      show(pickFresh(lines, { car: names[0], other: names[1] }));
     },
   };
 

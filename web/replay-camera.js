@@ -46,8 +46,9 @@ export function createReplayCamera({ aspect }) {
     resize(newAspect) { camera.aspect = newAspect; camera.updateProjectionMatrix(); },
 
     // Plans a replay of `frames` around `impact` (race seconds), watching `cars` (the first one most). A `crash`
-    // stays where it happened, so the cameras at the spot stay there; a replay you asked for has no spot, and they
-    // go along with the car instead. Returns the parts in order: { from, to, speed, shot } in race seconds.
+    // stays where it happened, so the cameras at the spot stay there; anything else (a pass, a car going off, the win,
+    // a replay you asked for) has no spot, and they go along with the car instead. Returns the parts in order:
+    // { from, to, speed, shot } in race seconds.
     plan(frames, impact, cars, impactFrame, { isCrash = true } = {}) {
       crash = isCrash;
       const start = frames[0].time, end = frames[frames.length - 1].time;

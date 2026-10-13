@@ -1,11 +1,16 @@
-// Action replays. The viewer keeps the last few seconds of frames; when a serious crash happens it lets the race
-// run on a moment for the aftermath, then plays the crash again in slow motion, close on the cars involved.
+// Action replays. The viewer keeps the last few seconds of frames; when a serious crash or another big moment of the
+// race happens it lets the race run on a moment for the aftermath, then plays it again in slow motion, close on the
+// cars involved.
 //
 // Serious means a hit far harder than the rubbing of a fight (HARD_HIT, about the top 0.5% of contacts), against
 // another car or a prop, a car losing a big piece of itself at once (DAMAGE_JUMP of wing, suspension or body damage
 // within a second), or a car crashing out. With at
 // most one replay every COOLDOWN_SECONDS of racing, that's one or two an 8-lap race, and nine races in ten have
 // one (measured over ten races with driver-rivals; a harder bar left four in ten without).
+//
+// The other big moments (HIGHLIGHTS) are the ones a broadcast would show again: a pass for the lead or a podium
+// place, a podium car going off, and the win. They share the crashes' cooldown, except the win, which always gets
+// its replay; a crash waiting for its replay matters more than any of them.
 const KEEP_SECONDS = 15;
 const MANUAL_SECONDS = 10;
 const MANUAL_IMPACT_BEFORE_END = 3;
@@ -16,11 +21,17 @@ const DAMAGE_JUMP = 0.2;
 const DAMAGE_WINDOW_SECONDS = 1;
 const COOLDOWN_SECONDS = 45;
 const DAMAGE_KEYS = ['damage', 'wingDamage', 'suspensionDamage'];
+const PODIUM = 3;
+const HIGHLIGHTS = {
+  overtake: moment => moment.place <= PODIUM,
+  offTrack: moment => moment.place <= PODIUM,
+  win: () => true,
+};
 // What blends smoothly between two frames; everything else is taken from the later one.
 export const NUMERIC = ['x', 'y', 'speed', 'steer', 'throttle', 'brake'];
 
 export function createReplay() {
-  let frames = [], lastCrash = -Infinity, waiting = null;
+  let frames = [], lastReplay = -Infinity, waiting = null;
 
   // The worst of each car's damage, the moment it's this frame.
   const worstDamage = frame => frame.cars.x.map((_, car) => Math.max(...DAMAGE_KEYS.map(key => frame.cars[key]?.[car] ?? 0)));
@@ -37,38 +48,50 @@ export function createReplay() {
     // The cars to watch: those that broke, else the two nearest the hardest hit.
     const involved = broken.flatMap((isBroken, car) => (isBroken ? [car] : []));
     const cars = involved.length ? involved : nearest(frame, hardest[0], hardest[1], 2);
-    return { time: frame.time, cars };
+    return { time: frame.time, cars, kind: 'crash' };
+  }
+
+  // The biggest of this frame's race moments worth a replay, if any.
+  function highlight(moments) {
+    const worthy = moments.filter(moment => HIGHLIGHTS[moment.kind]?.(moment));
+    if (!worthy.length) return null;
+    const moment = worthy.reduce((best, candidate) => (candidate.priority > best.priority ? candidate : best));
+    const cars = moment.other === undefined ? [moment.car] : [moment.car, moment.other];
+    return { time: moment.time, cars, kind: moment.kind };
   }
 
   return {
     reset() {
       frames = [];
-      lastCrash = -Infinity;
+      lastReplay = -Infinity;
       waiting = null;
     },
 
-    // Keeps the frame, and returns a crash once its aftermath has played out and it's time for its replay.
-    record(frame, automatic) {
+    // Keeps the frame, and returns a crash or a highlight among this frame's race `moments` (see race-events.js)
+    // once its aftermath has played out and it's time for its replay.
+    record(frame, automatic, moments = []) {
       frames.push(frame);
       while (frames.length && frames[0].time < frame.time - KEEP_SECONDS) frames.shift();
-      if (automatic && !waiting && frame.time - lastCrash >= COOLDOWN_SECONDS) {
-        const crash = seriousCrash(frame);
-        if (crash) {
-          waiting = crash;
-          lastCrash = crash.time;
+      if (automatic && waiting?.kind !== 'crash') {
+        const cooledDown = frame.time - lastReplay >= COOLDOWN_SECONDS || waiting !== null;
+        const crash = cooledDown ? seriousCrash(frame) : null;
+        const moment = crash ?? (waiting ? null : highlight(moments));
+        if (moment && (cooledDown || moment.kind === 'win')) {
+          waiting = moment;
+          lastReplay = moment.time;
         }
       }
       if (!waiting || frame.time < waiting.time + AFTERMATH_SECONDS) return null;
-      const crash = waiting;
+      const moment = waiting;
       waiting = null;
-      return { ...crash, frames: frames.filter(old => old.time >= crash.time - BEFORE_SECONDS) };
+      return { ...moment, frames: frames.filter(old => old.time >= moment.time - BEFORE_SECONDS) };
     },
 
     // The last few seconds, for a replay asked for, watching `car`.
     lastMoments(car) {
       const end = frames[frames.length - 1]?.time ?? 0;
       // No crash to centre on: the last few seconds play as the slow part.
-      return { time: end - MANUAL_IMPACT_BEFORE_END, cars: [car], frames: frames.filter(old => old.time >= end - MANUAL_SECONDS), asked: true };
+      return { time: end - MANUAL_IMPACT_BEFORE_END, cars: [car], frames: frames.filter(old => old.time >= end - MANUAL_SECONDS), kind: 'asked' };
     },
   };
 }

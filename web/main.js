@@ -217,8 +217,9 @@ function lightsOut() {
 
 function receiveFrame(frame) {
   if (!state.race) return;
-  const crash = replays.record(frame, automaticReplays() && !state.replay);
-  if (crash) startReplay(crash);
+  const moments = raceEvents.read(frame);
+  const replay = replays.record(frame, automaticReplays() && !state.replay, moments);
+  if (replay) startReplay(replay);
   state.previous = interpolated(performance.now());
   state.current = frame;
   state.arrived = performance.now();
@@ -249,7 +250,6 @@ function receiveFrame(frame) {
   hud.timing(frame.events.timing);
   const fastest = frame.events.fastestLap;
   if (fastest) ghost.setTrace(fastest, state.race.cars[fastest.car].color);
-  const moments = raceEvents.read(frame);
   feed.add(moments);
   director.notice(moments, frame, performance.now());
   broadcaster.notice(moments);
@@ -396,7 +396,7 @@ function automaticReplays() {
 // Holds the live race while the replay plays, so nothing is missed, and puts the camera back afterwards.
 function startReplay(moment) {
   if (state.replay || moment.frames.length < 2) return;
-  const parts = replayCamera.plan(moment.frames, moment.time, moment.cars, replayAt(moment.frames, moment.time, moment.time).frame, { isCrash: !moment.asked });
+  const parts = replayCamera.plan(moment.frames, moment.time, moment.cars, replayAt(moment.frames, moment.time, moment.time).frame, { isCrash: moment.kind === 'crash' });
   if (!parts.length) return;
   state.replay = { frames: moment.frames, cars: moment.cars, parts, part: 0, time: parts[0].from, shown: parts[0].from };
   send({ type: 'pause', value: true });
@@ -404,7 +404,7 @@ function startReplay(moment) {
   $('tv-tag').classList.add('hidden');
   $('replay-tag').classList.remove('hidden');
   document.body.classList.add('replaying');
-  broadcaster.replay(moment.cars.map(car => state.race.cars[car].name));
+  broadcaster.replay(moment.cars.map(car => state.race.cars[car].name), moment.kind);
 }
 
 // The last ten seconds, watching the selected car: R, or the dock's Replay button.

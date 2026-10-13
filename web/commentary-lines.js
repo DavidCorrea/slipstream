@@ -226,9 +226,15 @@ export const TEMPLATES = {
   ],
 };
 
-// To open a replay: of one car (a replay asked for), or of a crash between two.
+// To open a replay: of one car (a replay asked for), of a crash between two, or of a big moment of the race.
 export const REPLAY_LINES = {
   one: ["Let's see that again, here's {car}.", 'Have a look at this again, {car}.', 'Here it is once more, watch {car}.', 'Another look at {car} there.', 'Let us run that back, {car}.'],
   two: ["Let's see that again. {car} and {other}, look at this!", "Here's the replay, {car} and {other} come together.", 'Watch this again, {car} and {other}, a big moment.',
         'The replay shows it all, {car} and {other}.', 'Look at this, {car} and {other}, from another angle.'],
+  overtake: ["Let's see that move again, {car} on {other}.", 'Here it is again, watch {car} get past {other}.', 'The replay, and look how {car} sets up {other}.',
+             'Another look at that pass, {car} through on {other}.', 'Watch {car} here, {other} could not hold on.'],
+  offTrack: ["Let's see that again, {car} off the road.", 'Here is the moment {car} ran wide.', 'Another look, {car} gets it wrong there.',
+             'Watch {car} here, a costly trip off the track.'],
+  win: ['One more look at the winner, {car}!', 'Here it is again, {car} takes the flag!', 'The moment {car} won it, once more.',
+        'Savour this one, {car} crossing the line to win.'],
 };

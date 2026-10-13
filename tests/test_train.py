@@ -109,3 +109,11 @@ class TestRacingFair:
         env = driver_env(races=1, seed=0, rewards=race_rewards('fair'))
         assert env.rewards['hard_hit'] > 0 and env.crash_cost == RETIRE_COST
         assert env.rewards['off_track'] == TRAFFIC_REWARDS.get('off_track', REWARDS['off_track'])
+
+
+class TestRacingSteady:
+    def test_a_steady_run_pays_for_crashing_and_running_off_between_fair_and_clean(self):
+        fair, steady, clean = (driver_env(races=1, seed=0, rewards=race_rewards(style)) for style in ('fair', 'steady', 'clean'))
+        assert steady.rewards['hard_hit'] == fair.rewards['hard_hit']
+        assert fair.crash_cost < steady.crash_cost < clean.crash_cost
+        assert fair.rewards['off_track'] < steady.rewards['off_track'] < clean.rewards['off_track']

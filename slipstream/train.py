@@ -99,8 +99,13 @@ CLEAN_REWARDS = {'hard_hit': 0.5, 'retire': 5.0, 'off_track': 0.015}
 # costly grass taught it to back off rather than to drive well. Here only the hard hits cost; crashing out and
 # running off cost what they do when racing in traffic.
 FAIR_REWARDS = {'hard_hit': CLEAN_REWARDS['hard_hit']}
+# Racing steady (--rewards steady): racing fair kept 82M's pace, but over 9M decisions crashed out of a field of
+# itself as often as 82M or more (12-27% of cars against 93M's 6%): the hard-hit charge alone doesn't keep cars on
+# the road. Here crashing out and running off cost about halfway between racing fair and racing clean.
+STEADY_REWARDS = {**FAIR_REWARDS, 'retire': 3.5, 'off_track': 0.01}
 REWARD_STYLES = {'traffic': TRAFFIC_REWARDS, 'passing': {**TRAFFIC_REWARDS, **PASSING_REWARDS},
-                 'clean': {**TRAFFIC_REWARDS, **CLEAN_REWARDS}, 'fair': {**TRAFFIC_REWARDS, **FAIR_REWARDS}}
+                 'clean': {**TRAFFIC_REWARDS, **CLEAN_REWARDS}, 'fair': {**TRAFFIC_REWARDS, **FAIR_REWARDS},
+                 'steady': {**TRAFFIC_REWARDS, **STEADY_REWARDS}}
 STYLE_FILE = 'rewards.json'
 PASSING_FILE = 'passing.json'   # how runs started for passes before there was more than one style
 

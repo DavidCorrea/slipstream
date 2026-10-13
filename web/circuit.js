@@ -11,6 +11,23 @@ const CUTAWAY_COSINE = Math.cos(THREE.MathUtils.degToRad(70));   // backdrop wit
 const MOUTH_LENGTH = 20;            // metres over which the pit lane widens out of the track edge
 // Heights of the flat layers, far enough apart that the depth buffer never mixes them up at a distance.
 const LAYER = { verge: 0.03, gravel: 0.06, tarmac: 0.09, surface: 0.1, lines: 0.12, curbs: 0.14, paint: 0.13 };
+const CURB_RISE = 0.12;             // metres the outer edge of a curb stands above its inner edge
+const CURB_STRIPE = 3;              // metres of each colour
+// Tarmac is laid in sections, each a little lighter or darker than the next where it was resurfaced.
+const TARMAC_SECTION = { shortest: 25, longest: 90, shade: 0.09 };   // in samples (2 m each), and ± brightness
+// Big soft patches of lighter and darker ground, grass verge and tarmac, so no stretch looks stamped out: how
+// wide a patch is (metres) and how much it changes the colour.
+const PATCHES = { ground: [70, 0.12], verge: [35, 0.1], tarmac: [22, 0.05] };
+const PATCH_NOISE = `
+  varying vec2 patchPosition;
+  float patchHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float patchValue(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(patchHash(i), patchHash(i + vec2(1.0, 0.0)), f.x), mix(patchHash(i + vec2(0.0, 1.0)), patchHash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float patchNoise(vec2 p) { return patchValue(p) * 0.65 + patchValue(p * 2.7 + 17.0) * 0.35; }
+`;
 
 // `locationName` picks the look and `props` is everything around the track, placed by the sim (see scenery.js).
 export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationName, props) {
@@ -26,10 +43,11 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
   const radius = Math.max(...points.map(([x, y]) => toWorld(x, y).distanceTo(centre)));
 
   group.add(ground(centre, location.ground));
-  group.add(ribbon(points, normals, -half - 7, half + 7, LAYER.verge, material(location.verge, 0.95)));
+  group.add(ribbon(points, normals, -half - 7, half + 7, LAYER.verge, patchy(material(location.verge, 0.95), ...PATCHES.verge)));
   const clearOfLane = pitLaneClearance(track, pitLane);
   if (!location.walled) group.add(gravelTraps(points, normals, curvature, half, clearOfLane));
-  const tarmac = ribbon(points, normals, -half, half, LAYER.tarmac, new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.92 }), 18);
+  const tarmac = ribbon(points, normals, -half, half, LAYER.tarmac,
+    patchy(new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.92, vertexColors: true }), ...PATCHES.tarmac), 18, tarmacSections(points.length, random));
   tarmac.receiveShadow = true;
   group.add(tarmac);
   const surface = trackSurface(points, normals, half, track.length);
@@ -99,19 +117,48 @@ function material(color, roughness = 0.8, extra = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness, ...extra });
 }
 
-// A strip that follows the loop between two lateral offsets (left of the centre line is positive).
-// `colors`, if given, is a function of the sample index returning a THREE.Color for that stretch.
+// Varies `surface`'s colour in soft patches about `metres` across, by up to `amount` either way, by where on the
+// ground each point is.
+function patchy(surface, metres, amount) {
+  surface.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 patchPosition;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\npatchPosition = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${PATCH_NOISE}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.rgb *= 1.0 + ${amount.toFixed(3)} * (patchNoise(patchPosition / ${metres.toFixed(1)}) - 0.5) * 2.0;`);
+  };
+  return surface;
+}
+
+// The shade of each sample's tarmac: sections of different ages, with a seam between each.
+function tarmacSections(count, random) {
+  const shades = new Array(count);
+  let index = 0;
+  while (index < count) {
+    const length = TARMAC_SECTION.shortest + Math.floor(random() * (TARMAC_SECTION.longest - TARMAC_SECTION.shortest));
+    const shade = new THREE.Color().setScalar(1 + (random() * 2 - 1) * TARMAC_SECTION.shade);
+    for (let step = 0; step < length && index < count; step++) shades[index++] = shade;
+  }
+  return index => shades[index];
+}
+
+// A strip that follows the loop between two lateral offsets (left of the centre line is positive), at `height`, or
+// sloping from one height at `from` to another at `to` when it's a pair. `colors`, if given, is a function of the
+// sample index returning a THREE.Color for that stretch.
 function ribbon(points, normals, from, to, height, surface, uvLength = 0, colors = null, only = null) {
+  const [heightFrom, heightTo] = Array.isArray(height) ? height : [height, height];
   const positions = [], uvs = [], vertexColors = [], indices = [];
   const count = points.length;
   let along = 0;
   for (let index = 0; index <= count; index++) {
     const [x, y] = points[index % count], [nx, ny] = normals[index % count];
     if (index > 0) along += Math.hypot(x - points[index - 1][0], y - points[index - 1][1]);
-    for (const offset of [from, to]) {
-      const point = toWorld(x + nx * offset, y + ny * offset, height);
+    for (const [offset, level] of [[from, heightFrom], [to, heightTo]]) {
+      const point = toWorld(x + nx * offset, y + ny * offset, level);
       positions.push(point.x, point.y, point.z);
-      uvs.push(offset === from ? 0 : 1, uvLength ? along / uvLength : 0);
+      uvs.push(level === heightFrom && offset === from ? 0 : 1, uvLength ? along / uvLength : 0);
       if (colors) { const color = colors(index % count); vertexColors.push(color.r, color.g, color.b); }
     }
   }
@@ -146,7 +193,7 @@ function trackSurface(points, normals, half, length) {
       const rubber = decode(map.rubber), marbles = decode(map.marbles), dryness = decode(map.dryness);
       const cells = map.rows * map.lanes, pixels = new Uint8Array(cells * 4);
       const layers = [
-        [rubber, [14, 14, 16], 0.4],
+        [rubber, [12, 12, 14], 0.55],
         [marbles, [74, 64, 52], 0.6],
         [dryness, [128, 128, 134], 0.55 * Math.min(1, wetness * 2)],
       ];
@@ -194,7 +241,7 @@ function ground(centre, [base, stripes, [dark, light]]) {
     }
   });
   texture.repeat.set(90, 90);
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3600, 3600), new THREE.MeshStandardMaterial({ map: texture, roughness: 1 }));
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3600, 3600), patchy(new THREE.MeshStandardMaterial({ map: texture, roughness: 1 }), ...PATCHES.ground));
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(centre.x, 0, centre.z);
   mesh.receiveShadow = true;
@@ -210,13 +257,6 @@ function asphaltTexture() {
       context.fillStyle = `rgba(${shade}, ${shade}, ${shade + 4}, 0.5)`;
       context.fillRect(Math.random() * size, Math.random() * size, 1.5, 1.5);
     }
-    // A darker racing line down the middle, where the rubber goes down.
-    const line = context.createLinearGradient(0, 0, size, 0);
-    line.addColorStop(0.3, 'rgba(0, 0, 0, 0)');
-    line.addColorStop(0.5, 'rgba(0, 0, 0, 0.12)');
-    line.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
-    context.fillStyle = line;
-    context.fillRect(0, 0, size, size);
   });
 }
 
@@ -232,13 +272,26 @@ function cornerStretch(curvature, limit, sign = 0, before = 6, after = 12) {
 }
 
 function curbs(points, normals, curvature, half, clearOfLane) {
-  const red = new THREE.Color('#d7263d'), white = new THREE.Color('#f5f5f5');
   const cornering = cornerStretch(curvature, CURB_CURVATURE, 0, 3, 3);
-  const colors = index => (Math.floor(index / 1.5) % 2 ? red : white);
-  const surface = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 });
+  // Painted stripes, sharp-edged: one red and one white block every CURB_STRIPE * 2 metres.
+  const stripes = canvasTexture(64, (context, size) => {
+    context.fillStyle = '#f5f5f5';
+    context.fillRect(0, 0, size, size);
+    context.fillStyle = '#d7263d';
+    context.fillRect(0, 0, size, size / 2);
+  });
+  const surface = new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.55 });
   const group = new THREE.Group();
-  group.add(ribbon(points, normals, half, half + 1.4, LAYER.curbs, surface, 0, colors, index => cornering[index] && clearOfLane(index, 1)));
-  group.add(ribbon(points, normals, -half - 1.4, -half, LAYER.curbs, surface, 0, colors, index => cornering[index] && clearOfLane(index, -1)));
+  const top = LAYER.curbs + CURB_RISE;
+  // Each side: the curb's top, rising away from the track, and the step down at its outer edge. A ribbon faces up
+  // when it runs from the lower offset to the higher, so the right-hand side runs from its outer edge in, and a
+  // wall faces the way its top-to-bottom direction, turned a quarter, points.
+  const left = index => cornering[index] && clearOfLane(index, 1), right = index => cornering[index] && clearOfLane(index, -1);
+  const stripe = CURB_STRIPE * 2;
+  group.add(ribbon(points, normals, half, half + 1.4, [LAYER.curbs, top], surface, stripe, null, left));
+  group.add(ribbon(points, normals, half + 1.4, half + 1.4, [top, LAYER.verge], surface, stripe, null, left));
+  group.add(ribbon(points, normals, -half - 1.4, -half, [top, LAYER.curbs], surface, stripe, null, right));
+  group.add(ribbon(points, normals, -half - 1.4, -half - 1.4, [LAYER.verge, top], surface, stripe, null, right));
   return group;
 }
 

@@ -28,6 +28,7 @@ const PLAY_ICON = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
 // In TV mode the controls step aside after this long without the mouse moving, like a broadcast.
 const IDLE_MS = 2500;
 const STYLE_KEY = 'slipstream.style';
+const EFFECTS_KEY = 'slipstream.effects';
 const FRAME_SECONDS = 1 / 20;
 const $ = id => document.getElementById(id);
 
@@ -294,6 +295,10 @@ const RACING_FRAME_MS = 1000 / 60;
 const PAUSED_FRAME_MS = 1000 / 30;
 // requestAnimationFrame timing jitters by a millisecond or two; without slack a 60 Hz display would skip frames.
 const FRAME_SLACK_MS = 2;
+// Cameras on or right behind a car, whose picture streaks at speed (see post.js), and the speed that streaks it most.
+const MOVING_SHOTS = new Set(['chase', 'onboard', 'wheel']);
+const FULL_BLUR_SPEED = 80;   // m/s
+const blurAt = speed => Math.min(1, Math.max(0, speed) / FULL_BLUR_SPEED);
 
 let lastRender = performance.now();
 function render(now) {
@@ -302,6 +307,8 @@ function render(now) {
   if (now - lastRender < frameMs - FRAME_SLACK_MS) return;
   const seconds = Math.min(0.1, (now - lastRender) / 1000);
   lastRender = now;
+  // How the effects see this frame (see post.js); renderLive and renderReplay fill it in.
+  state.look = { timed: false };
   if (state.replay) {
     renderReplay(seconds, now);
   } else {
@@ -309,7 +316,7 @@ function render(now) {
     if (frame) renderLive(frame, seconds, now);
   }
   state.circuit?.cutAway(activeCamera().position, stage.view.focus);
-  stage.render(activeCamera());
+  stage.render(activeCamera(), state.look);
 }
 
 function renderLive(frame, seconds, now) {
@@ -329,6 +336,8 @@ function renderLive(frame, seconds, now) {
     aimCamera(frame, seconds);
   }
   showShot(state.shot, frame);
+  const moving = state.shot && MOVING_SHOTS.has(state.shot.kind);
+  state.look = { speed: moving ? blurAt(frame.cars.speed[state.shot.car]) : 0, timed: !state.paused };
   weather.update(frame.weather.wetness, frame.weather.rain, state.shot ? state.shot.focus : stage.view.focus, seconds, now / 1000, frame.weather.wind);
   const lapStart = frame.cars.lapStart[state.selected];
   ghost.update(lapStart === null || frame.cars.finishTime[state.selected] !== null ? null : frame.time - lapStart);
@@ -358,6 +367,9 @@ function renderReplay(seconds, now) {
   const done = replay.parts.slice(0, replay.part).length + (replay.time - part.from) / Math.max(part.to - part.from, 1e-6);
   $('replay-progress').style.width = `${(done / replay.parts.length) * 100}%`;
   const distance = replayCamera.camera.position.distanceTo(replayCamera.focus);
+  // Slow motion streaks less than real time does; the lens focuses on the moment the replay is about.
+  const blur = MOVING_SHOTS.has(part.shot.kind) ? blurAt(frame.cars.speed[replay.cars[0]]) * Math.min(1, part.speed * 1.5) : 0;
+  state.look = { speed: blur, focus: distance, timed: true };
   state.effects.update(seconds * part.speed, stage.pixelsTall() / (2 * Math.tan(THREE.MathUtils.degToRad(replayCamera.camera.fov) / 2) * Math.max(distance, 1)));
   if (replay.time < part.to) return;
   // On to the next part (a cut), which may go back to show the impact again.
@@ -595,6 +607,16 @@ function setStyle(style) {
   try { localStorage.setItem(STYLE_KEY, style); } catch { /* blocked storage just forgets the choice */ }
 }
 
+function setEffects(enabled) {
+  stage.post.setEnabled(enabled);
+  document.querySelectorAll('[data-effects]').forEach(button => button.classList.toggle('active', (button.dataset.effects === 'on') === enabled));
+  try { localStorage.setItem(EFFECTS_KEY, enabled ? 'on' : 'off'); } catch { /* blocked storage just forgets the choice */ }
+}
+
+function savedEffects() {
+  try { return localStorage.getItem(EFFECTS_KEY) !== 'off'; } catch { return true; }
+}
+
 function savedStyle() {
   try { return localStorage.getItem(STYLE_KEY) === 'pixel' ? 'pixel' : 'classic'; } catch { return 'classic'; }
 }
@@ -700,6 +722,8 @@ $('load-commentator').addEventListener('click', async () => {
 $('pause').innerHTML = PAUSE_ICON;
 document.querySelectorAll('[data-style]').forEach(button => button.addEventListener('click', () => setStyle(button.dataset.style)));
 setStyle(savedStyle());
+setEffects(savedEffects());
+document.querySelectorAll('[data-effects]').forEach(button => button.addEventListener('click', () => setEffects(button.dataset.effects === 'on')));
 setSpeed(1);
 setCamera('follow');
 setGhost(false);

@@ -8,6 +8,7 @@
 // heading of θ is a rotation of θ about the vertical axis and left turns still look like left turns.
 import * as THREE from 'three';
 import { createPixelRenderer } from './pixel.js';
+import { createPost } from './post.js';
 
 export const toWorld = (x, y, height = 0) => new THREE.Vector3(x, height, -y);
 
@@ -118,19 +119,22 @@ export function createStage(canvas) {
   const sunDirection = new THREE.Vector3(-0.45, 0.8, 0.3).normalize();
   const view = new CameraRig(camera, sun, sunDirection);
 
+  const post = createPost(renderer, scene, camera);
   const resize = () => {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
+    post.resize(window.innerWidth, window.innerHeight);
     view.resize(window.innerWidth / window.innerHeight);
   };
   window.addEventListener('resize', resize);
   resize();
 
-  // 'classic' draws straight to the screen; 'pixel' goes through the pixel renderer (see pixel.js).
+  // 'classic' draws through the effects (see post.js), or straight to the screen with them off; 'pixel' goes
+  // through the pixel renderer (see pixel.js).
   const pixel = createPixelRenderer(renderer);
   let style = 'classic';
   let daylight = { sun: new THREE.Color('#fff3dc'), strength: 1, haze: new THREE.Color('#b9d6ea'), zenith: new THREE.Color('#5d9bd6'), glow: 1 };
   return {
-    renderer, scene, camera, view, sun, sky: skyUniforms,
+    renderer, scene, camera, view, sun, sky: skyUniforms, post,
     // The location's light (see scenery.js) at the race's time of day (see timeOfDay): sky and ambient colours and
     // the sun. The weather greys it from there (see setSky).
     setLocation(location, time = TIMES_OF_DAY[0]) {
@@ -172,8 +176,10 @@ export function createStage(canvas) {
       if (!['classic', 'pixel'].includes(value)) throw new Error(`Unknown style ${value}`);
       style = value;
     },
-    render(activeCamera) {
+    // `look` is how the effects see this frame (see post.js).
+    render(activeCamera, look) {
       if (style === 'pixel') pixel.render(scene, activeCamera);
+      else if (post.enabled) post.render(activeCamera, look);
       else renderer.render(scene, activeCamera);
     },
     // How many pixels tall the image being drawn is, for anything sized in pixels.

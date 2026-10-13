@@ -367,7 +367,8 @@ function renderLive(frame, seconds, now) {
   weather.update(frame.weather.wetness, frame.weather.rain, state.shot ? state.shot.focus : stage.view.focus, seconds, now / 1000, frame.weather.wind);
   const lapStart = frame.cars.lapStart[state.selected];
   ghost.update(lapStart === null || frame.cars.finishTime[state.selected] !== null ? null : frame.time - lapStart);
-  hud.update(frame, state.selected, state.yours, now);
+  // On TV the telemetry is the car on screen's, as a broadcast's caption would be.
+  hud.update(frame, state.shot?.car ?? state.selected, state.yours, now);
   broadcaster.update(commentaryContext(frame));
   state.effects.update(seconds * Math.max(simRate, 0.25), pixelsPerMetre);
 }

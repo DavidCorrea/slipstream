@@ -41,7 +41,9 @@ LONG_SEEDS = (1002,)
 WET_SEEDS = (1001, 1003, 1005, 1007, 1009, 1011)
 LONG_LAPS = 8
 STALLED_SECONDS = 15.0
-FIELD_SEEDS = tuple(range(2001, 2009))
+# Twenty-four races: over eight, driver-steady 87M had 10% of its cars crash out and 88M 3%; over 32 others, 7% and
+# 4%. Luck that size is as much as one reward style differed from another.
+FIELD_SEEDS = tuple(range(2001, 2025))
 FIELD_CARS = 12
 FIELD_LAPS = 3
 

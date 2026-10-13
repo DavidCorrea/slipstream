@@ -20,15 +20,17 @@ const QUIET_MS = 14000;                  // silence this long gets filled
 const PAUSE_BETWEEN_MS = 600;
 
 const SYSTEM_PROMPT = `You are the lead commentator on a TV broadcast of a motor race.
-Turn the fact you are given into one line of live commentary: at most 18 words, excited British broadcast style, present tense.
+Turn the fact you are given into one line of live commentary: one sentence of at most 14 words, excited British
+broadcast style, present tense.
 Use only the names and numbers in the fact. Do not add positions, gaps, laps or events that are not in it.
-Refer to drivers by name or as "they", never as he or she.
-
-Fact: Okafor has just overtaken Sato and is now P3.
-Line: Okafor dives down the inside and Sato can do nothing about it, up into P3 goes Okafor!
-
-Fact: Nothing dramatic is happening. Vega leads Lindqvist by 3.1 seconds on lap 4 of 8.
-Line: Vega looking very comfortable out front, 3.1 seconds clear of Lindqvist.`;
+Refer to drivers by name or as "they", never as he or she.`;
+// The examples the model is shown before each fact: lines for the same kind of moment, written about these
+// drivers, so it sees the shape of a good line for exactly this moment.
+const EXAMPLE_FACTS = {
+  car: 'Okafor', other: 'Sato', place: 3, compound: 'medium', standing: '2.4', lapTime: formatLap(92.418),
+  lap: 4, laps: 8, lapsToGo: 5, leader: 'Vega', second: 'Lindqvist', leadGap: '3.1',
+};
+const EXAMPLES_SHOWN = 2;
 // A small model copies names from its examples, and drivers can be renamed, so these count as drivers to check
 // for in every line, racing or not.
 const EXAMPLE_NAMES = ['Okafor', 'Sato', 'Vega', 'Lindqvist'];
@@ -97,8 +99,8 @@ export function createBroadcaster({ onStatus, speech }) {
   async function writeLine(moment, facts) {
     const fact = narrate(moment, facts);
     const reply = engine.chat.completions.create({
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: `Fact: ${fact}\nLine:` }],
-      max_tokens: 40, temperature: 0.6,
+      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...examples(moment.kind), { role: 'user', content: `Fact: ${fact}` }],
+      max_tokens: 32, temperature: 0.7,
     });
     const timeout = new Promise(resolve => setTimeout(() => resolve(null), MODEL_WAIT_MS));
     try {
@@ -108,9 +110,10 @@ export function createBroadcaster({ onStatus, speech }) {
         return null;
       }
       const choice = answer.choices[0];
-      // A line cut off at the token limit is a run-on; better the template than half a sentence.
-      if (!choice || choice.finish_reason === 'length') return null;
-      const line = tidy(choice.message?.content ?? '');
+      if (!choice) return null;
+      // A line cut off at the token limit ran on; its first sentence is often a good line on its own.
+      const text = choice.message?.content ?? '';
+      const line = choice.finish_reason === 'length' ? firstSentence(tidy(text)) : tidy(text);
       const drivers = [...new Set([...race.cars.map(car => car.name), ...EXAMPLE_NAMES])];
       return line && sticksToFacts(line, fact, facts.car, drivers) ? line : null;
     } catch (error) {
@@ -215,7 +218,8 @@ export function createBroadcaster({ onStatus, speech }) {
     return {
       car: name(moment.car), other: name(moment.other), place: moment.place ?? '', compound: moment.compound ?? '',
       standing: moment.standing?.toFixed(1) ?? '', lapTime: moment.lapTime ? formatLap(moment.lapTime) : '',
-      laps: context.laps, lap: context.lap, lapsToGo: Math.max(context.laps - context.lap + 1, 1), leader: context.leader, second: context.second, leadGap: context.leadGap,
+      laps: context.laps, lap: context.lap, lapsToGo: Math.max(context.laps - context.lap + 1, 1),
+      leader: context.leader, second: context.second, leadGap: context.leadGap,
     };
   }
 }
@@ -223,7 +227,7 @@ export function createBroadcaster({ onStatus, speech }) {
 // The moment in plain words, for the model.
 function narrate(moment, facts) {
   switch (moment.kind) {
-    case 'start': return 'The race has just started.';
+    case 'start': return facts.car ? `The race has just started, and ${facts.car} leads into the first corner.` : 'The race has just started.';
     case 'overtake': return `${facts.car} has just overtaken ${facts.other} and is now P${facts.place}.`;
     case 'battle': return `${facts.car} is less than a second behind ${facts.other}, fighting for P${facts.place}.`;
     case 'contact': return `${facts.car} and ${facts.other} have just made contact.`;
@@ -246,7 +250,7 @@ function narrate(moment, facts) {
     case 'rainStops': return 'The rain has just stopped and the track will start to dry.';
     case 'win': return `${facts.car} has just won the race.`;
     case 'finish': return `${facts.car} has finished in P${facts.place}.`;
-    default: return `Nothing dramatic is happening. ${facts.leader} leads ${facts.second} by ${facts.leadGap} seconds on lap ${facts.lap} of ${facts.laps}.`;
+    default: return `Nothing dramatic is happening. ${facts.leader} leads ${facts.second} by ${facts.leadGap} seconds on lap ${facts.lap} of ${facts.laps}, ${facts.lapsToGo} laps to go.`;
   }
 }
 
@@ -259,13 +263,28 @@ function sticksToFacts(line, fact, subject, drivers) {
   // The drivers are AIs with no stated gender, so the commentator shouldn't guess one.
   if (/\b(he|she|him|her|his|hers|himself|herself)\b/i.test(line)) return false;
   const numbers = line.match(/\d+(\.\d+)?/g) ?? [];
-  return numbers.every(number => fact.includes(number));
+  if (!numbers.every(number => fact.includes(number))) return false;
+  // Positions said in words, and who leads, are claims too.
+  if (ORDINALS.test(line) && !ORDINALS.test(fact)) return false;
+  return !LEADING.test(line) || LEADING.test(fact) || /\bP1\b/.test(fact);
 }
+const ORDINALS = /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|last)\b/i;
+const LEADING = /\b(lead|leads|leader|leading|led|front|win|wins|won|winner|victory)\b/i;
 
 // Whether `text` names `name` as a whole word: a driver called Al isn't mentioned by "all", nor Sato by "Satoshi".
 function mentions(text, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?<![\\p{L}])${escaped}(?![\\p{L}])`, 'u').test(text);
+}
+
+// Example turns for this kind of moment: template lines about the example drivers, only those that stick to the
+// example fact themselves, so the examples never show the model adding something.
+function examples(kind) {
+  const fact = narrate({ kind }, EXAMPLE_FACTS);
+  const fitting = (TEMPLATES[kind] ?? TEMPLATES.quiet).map(template => fill(template, EXAMPLE_FACTS))
+    .filter(line => sticksToFacts(line, fact, EXAMPLE_FACTS.car, EXAMPLE_NAMES));
+  const chosen = [...fitting].sort(() => Math.random() - 0.5).slice(0, EXAMPLES_SHOWN);
+  return chosen.flatMap(line => [{ role: 'user', content: `Fact: ${fact}` }, { role: 'assistant', content: line }]);
 }
 
 function fill(template, facts) {
@@ -277,4 +296,10 @@ function tidy(text) {
   const line = text.split('\n').map(part => part.trim()).find(Boolean) ?? '';
   const cleaned = line.replace(/^(commentary( line)?|commentator)\s*:\s*/i, '').replace(/^["'“”]+|["'“”]+$/g, '').trim();
   return cleaned.length >= 8 ? cleaned : null;
+}
+
+// The first whole sentence of `line`, or nothing if it never finishes one. A full stop inside a number (3.1) doesn't end it.
+function firstSentence(line) {
+  const sentence = line?.match(/^.*?[.!?](?=\s|$)/)?.[0];
+  return sentence && sentence.length >= 8 ? sentence : null;
 }

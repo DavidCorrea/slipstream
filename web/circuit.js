@@ -435,8 +435,8 @@ function grandstands(points, normals, half, outside, distance, random) {
     group.add(stand);
   }
   group.updateMatrixWorld(true);
+  // The fans are too small to make out in the sun's shadow map, and under the stand's roof anyway: no shadows.
   const crowd = new THREE.InstancedMesh(new THREE.BoxGeometry(0.55, 0.9, 0.45), new THREE.MeshStandardMaterial({ roughness: 0.8 }), fans.length);
-  crowd.castShadow = true;
   const matrix = new THREE.Matrix4(), local = new THREE.Vector3();
   fans.forEach((fan, index) => crowd.setColorAt(index, fan.color));
   group.add(crowd);

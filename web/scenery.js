@@ -194,7 +194,10 @@ function city(context) {
   const lamps = ofKind(props, 'lamp').map(prop => ({ spot: spot(prop), angle: prop.angle, id: prop.id }));
   group.add(instances(new THREE.CylinderGeometry(0.1, 0.14, 8, 6).translate(0, 4, 0), material('#4a4e57', 0.5, { metalness: 0.5 }), lamps, null, context.breakable));
   const glow = new THREE.MeshStandardMaterial({ color: '#fff6d8', emissive: '#ffe9b0', emissiveIntensity: night ? 3 : 0.2 });
-  group.add(instances(new THREE.BoxGeometry(1.2, 0.25, 0.5).translate(0.5, 8, 0), glow, lamps, null, context.breakable));
+  // The lamp head is too small to make out in the sun's shadow map, so it casts none.
+  const heads = instances(new THREE.BoxGeometry(1.2, 0.25, 0.5).translate(0.5, 8, 0), glow, lamps, null, context.breakable);
+  heads.castShadow = false;
+  group.add(heads);
   if (night) group.add(lightPools(lamps, context.breakable));
   return group;
 }
@@ -314,7 +317,8 @@ export function trackside({ props, walled, breakable }) {
     post.rotation.y = prop.angle;
     group.add(post);
     flags.push({ flag, phase: prop.phase });
-    for (const part of [hut, marshal]) part.castShadow = true;
+    // The marshal is too small to make out in the sun's shadow map; the hut casts the post's shadow.
+    hut.castShadow = true;
   }
 
   for (const prop of ofKind(props, 'camera')) {

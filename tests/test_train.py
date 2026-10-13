@@ -102,3 +102,10 @@ class TestRacingClean:
     def test_a_clean_run_keeps_racing_clean_when_resumed(self, tmp_path):
         race_rewards('clean', run=tmp_path)
         assert race_rewards(run=tmp_path) == race_rewards('clean')
+
+
+class TestRacingFair:
+    def test_a_fair_run_pays_for_hard_hits_only(self):
+        env = driver_env(races=1, seed=0, rewards=race_rewards('fair'))
+        assert env.rewards['hard_hit'] > 0 and env.crash_cost == RETIRE_COST
+        assert env.rewards['off_track'] == TRAFFIC_REWARDS.get('off_track', REWARDS['off_track'])

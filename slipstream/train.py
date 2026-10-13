@@ -94,8 +94,13 @@ PASSING_REWARDS = {'contact_ahead': 0.2, 'closing': 0.008}
 # a place's worth at the most, crashing out costs what a stuck car's retirement would at 2.5 times, and time off
 # the tarmac three times as much.
 CLEAN_REWARDS = {'hard_hit': 0.5, 'retire': 5.0, 'off_track': 0.015}
+# Racing fair (--rewards fair): racing clean from 82M halved the crashes in a field of itself by 92M, then kept
+# going until it lapped no quicker than the scripted driver and lost two thirds of its battles: a costly crash and
+# costly grass taught it to back off rather than to drive well. Here only the hard hits cost; crashing out and
+# running off cost what they do when racing in traffic.
+FAIR_REWARDS = {'hard_hit': CLEAN_REWARDS['hard_hit']}
 REWARD_STYLES = {'traffic': TRAFFIC_REWARDS, 'passing': {**TRAFFIC_REWARDS, **PASSING_REWARDS},
-                 'clean': {**TRAFFIC_REWARDS, **CLEAN_REWARDS}}
+                 'clean': {**TRAFFIC_REWARDS, **CLEAN_REWARDS}, 'fair': {**TRAFFIC_REWARDS, **FAIR_REWARDS}}
 STYLE_FILE = 'rewards.json'
 PASSING_FILE = 'passing.json'   # how runs started for passes before there was more than one style
 

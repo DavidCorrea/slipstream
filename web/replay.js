@@ -8,8 +8,8 @@
 // most one replay every COOLDOWN_SECONDS of racing, that's one or two an 8-lap race, and nine races in ten have
 // one (measured over ten races with driver-rivals; a harder bar left four in ten without).
 //
-// The other big moments (HIGHLIGHTS) are the ones a broadcast would show again: a pass for the lead or a podium
-// place, a podium car going off, and the win. They share the crashes' cooldown, except the win, which always gets
+// The other big moments (HIGHLIGHTS) are the ones a broadcast would show again: a rough pass (one forced with a hard
+// hit, anywhere in the field), a pass for the lead or a podium place, a podium car going off, and the win. They share the crashes' cooldown, except the win, which always gets
 // its replay; a crash waiting for its replay matters more than any of them.
 const KEEP_SECONDS = 15;
 const MANUAL_SECONDS = 10;
@@ -22,11 +22,13 @@ const DAMAGE_WINDOW_SECONDS = 1;
 const COOLDOWN_SECONDS = 45;
 const DAMAGE_KEYS = ['damage', 'wingDamage', 'suspensionDamage'];
 const PODIUM = 3;
-const HIGHLIGHTS = {
-  overtake: moment => moment.place <= PODIUM,
-  offTrack: moment => moment.place <= PODIUM,
-  win: () => true,
-};
+// Which kind of replay a race moment makes, the most important first.
+const HIGHLIGHTS = [
+  ['win', moment => moment.kind === 'win'],
+  ['roughPass', moment => moment.kind === 'overtake' && moment.rough],
+  ['overtake', moment => moment.kind === 'overtake' && moment.place <= PODIUM],
+  ['offTrack', moment => moment.kind === 'offTrack' && moment.place <= PODIUM],
+];
 // What blends smoothly between two frames; everything else is taken from the later one.
 export const NUMERIC = ['x', 'y', 'speed', 'steer', 'throttle', 'brake'];
 
@@ -53,11 +55,11 @@ export function createReplay() {
 
   // The biggest of this frame's race moments worth a replay, if any.
   function highlight(moments) {
-    const worthy = moments.filter(moment => HIGHLIGHTS[moment.kind]?.(moment));
-    if (!worthy.length) return null;
-    const moment = worthy.reduce((best, candidate) => (candidate.priority > best.priority ? candidate : best));
-    const cars = moment.other === undefined ? [moment.car] : [moment.car, moment.other];
-    return { time: moment.time, cars, kind: moment.kind };
+    for (const [kind, isWorthy] of HIGHLIGHTS) {
+      const moment = moments.find(isWorthy);
+      if (moment) return { time: moment.time, cars: moment.other === undefined ? [moment.car] : [moment.car, moment.other], kind };
+    }
+    return null;
   }
 
   return {

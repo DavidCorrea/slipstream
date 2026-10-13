@@ -48,16 +48,16 @@ export function createReplayCamera({ aspect }) {
     // Plans a replay of `frames` around `impact` (race seconds), watching `cars` (the first one most). A `crash`
     // stays where it happened, so the cameras at the spot stay there; anything else (a pass, a car going off, the win,
     // a replay you asked for) has no spot, and they go along with the car instead. Returns the parts in order:
-    // { from, to, speed, shot } in race seconds.
-    plan(frames, impact, cars, impactFrame, { isCrash = true } = {}) {
+    // { from, to, speed, shot } in race seconds. When the cars are `touching` (a crash, a rough pass), no camera rides
+    // on the side of one, where it would sit inside the other.
+    plan(frames, impact, cars, impactFrame, { isCrash = true, touching = isCrash } = {}) {
       crash = isCrash;
       const start = frames[0].time, end = frames[frames.length - 1].time;
       const at = time => Math.min(end, Math.max(start, time));
       const points = cars.map(car => toWorld(impactFrame.cars.x[car], impactFrame.cars.y[car]));
       impactPoint = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(points.length);
       const used = [];
-      // In a crash the cars are touching, and a camera on the side of one sits inside the other.
-      const unsuitable = crash ? ['wheel'] : [];
+      const unsuitable = touching ? ['wheel'] : [];
       const pick = part => {
         const kind = choose(part.shots.filter(kind => !unsuitable.includes(kind)), used);
         used.push(kind);

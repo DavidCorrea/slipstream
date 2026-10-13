@@ -19,19 +19,23 @@ const LIGHTS_OUT = 1.9;              // when the start gantry goes green (see ci
 const TOW = 0.6;                     // how deep in another car's slipstream counts as a tow
 const TOW_REPEAT_SECONDS = 40;
 const MISTAKE_REPEAT_SECONDS = 20;
-const BARRIER_HIT = 8;   // m/s of speed lost against a prop that's worth a word, short of putting the car out
+const BARRIER_HIT = 8;
+const HARD_CONTACT = 4;              // an impulse that's a real hit rather than rubbing
+// A pass with a hard hit between the two cars this soon before it was forced, not clean: about one pass in twelve
+// (measured over six races with driver-pass 90M).
+const ROUGH_PASS_SECONDS = 2;   // m/s of speed lost against a prop that's worth a word, short of putting the car out
 
 export function createRaceEvents() {
   let race = null, previous = null;
   let started = false, finalLapCalled = false, winnerCalled = false;
-  const lastPass = new Map(), lastBattle = new Map(), lastOffTrack = new Map(), offSince = new Map(), lastTow = new Map(), lastMistake = new Map(), lastBarrier = new Map();
+  const lastPass = new Map(), lastHardContact = new Map(), lastBattle = new Map(), lastOffTrack = new Map(), offSince = new Map(), lastTow = new Map(), lastMistake = new Map(), lastBarrier = new Map();
   const warned = { tyres: new Set(), fuel: new Set(), damage: new Set() };
 
   function reset(intro) {
     race = intro;
     previous = null;
     started = finalLapCalled = winnerCalled = false;
-    lastPass.clear(); lastBattle.clear(); lastOffTrack.clear(); offSince.clear(); lastTow.clear(); lastMistake.clear();
+    lastPass.clear(); lastHardContact.clear(); lastBattle.clear(); lastOffTrack.clear(); offSince.clear(); lastTow.clear(); lastMistake.clear();
     Object.values(warned).forEach(cars => cars.clear());
   }
 
@@ -41,6 +45,12 @@ export function createRaceEvents() {
     if (place <= 0) return Infinity;
     const ahead = frame.order[place - 1];
     return (frame.cars.progress[ahead] - frame.cars.progress[car]) / Math.max(frame.cars.speed[car], 15);
+  }
+
+  // The two cars nearest to a contact at (x, y): the ones that touched.
+  function touching(cars, x, y) {
+    const nearest = cars.x.map((carX, id) => [Math.hypot(carX - x, cars.y[id] - y), id]).sort((a, b) => a[0] - b[0]);
+    return [nearest[0][1], nearest[1]?.[1]];
   }
 
   function read(frame) {
@@ -66,6 +76,10 @@ export function createRaceEvents() {
       add({ kind: 'start', priority: 5, car: frame.order[0] });
     }
 
+    for (const [x, y, impulse] of frame.events.contacts) {
+      if (impulse >= HARD_CONTACT) lastHardContact.set(touching(cars, x, y).sort().join('-'), time);
+    }
+
     if (previous && started) {
       // Overtakes: everyone a car was behind last frame and is ahead of now, on track, not through the pits.
       frame.order.forEach((car, place) => {
@@ -77,7 +91,8 @@ export function createRaceEvents() {
           const recent = time - (lastPass.get(pair) ?? -Infinity) < PASS_REPEAT_SECONDS;
           lastPass.set(pair, time);
           if (recent) continue;
-          add({ kind: 'overtake', priority: place === 0 ? 5 : place < 3 ? 4 : 3, car, other, place: place + 1 });
+          const rough = time - (lastHardContact.get(pair) ?? -Infinity) <= ROUGH_PASS_SECONDS;
+          add({ kind: 'overtake', priority: place === 0 || rough ? 5 : place < 3 ? 4 : 3, car, other, place: place + 1, rough });
         }
       });
     }
@@ -97,9 +112,8 @@ export function createRaceEvents() {
     // Contact: the two cars nearest to where it happened.
     for (const [x, y, impulse] of frame.events.contacts) {
       if (impulse < 1.5) continue;
-      const nearest = cars.x.map((carX, id) => [Math.hypot(carX - x, cars.y[id] - y), id]).sort((a, b) => a[0] - b[0]);
-      const [car, other] = [nearest[0][1], nearest[1]?.[1]];
-      add({ kind: 'contact', priority: impulse > 4 ? 5 : 3, car, other, impulse });
+      const [car, other] = touching(cars, x, y);
+      add({ kind: 'contact', priority: impulse > HARD_CONTACT ? 5 : 3, car, other, impulse });
     }
 
     for (let car = 0; car < cars.x.length; car++) {

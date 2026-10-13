@@ -396,7 +396,9 @@ function automaticReplays() {
 // Holds the live race while the replay plays, so nothing is missed, and puts the camera back afterwards.
 function startReplay(moment) {
   if (state.replay || moment.frames.length < 2) return;
-  const parts = replayCamera.plan(moment.frames, moment.time, moment.cars, replayAt(moment.frames, moment.time, moment.time).frame, { isCrash: moment.kind === 'crash' });
+  const parts = replayCamera.plan(moment.frames, moment.time, moment.cars, replayAt(moment.frames, moment.time, moment.time).frame, {
+    isCrash: moment.kind === 'crash', touching: ['crash', 'roughPass'].includes(moment.kind),
+  });
   if (!parts.length) return;
   state.replay = { frames: moment.frames, cars: moment.cars, parts, part: 0, time: parts[0].from, shown: parts[0].from };
   send({ type: 'pause', value: true });

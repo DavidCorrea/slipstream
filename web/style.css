@@ -437,4 +437,5 @@ body.loading .chrome, body.loading #grid-menu { display: none !important; }
 body.replaying::before, body.replaying::after { content: ''; position: fixed; left: 0; right: 0; height: 56px; background: #000; z-index: 1; pointer-events: none; }
 body.replaying::before { top: 0; }
 body.replaying::after { bottom: 0; }
-body.replaying #dock, body.replaying #telemetry { opacity: 0.35; }
+/* ...and clears the screen of all but the commentary and the replay's own bar. */
+body.replaying .chrome, body.replaying #tv-tag, body.replaying #banner, body.replaying #status { opacity: 0; pointer-events: none; }

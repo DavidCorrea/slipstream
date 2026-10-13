@@ -132,7 +132,6 @@ function receive(message) {
 // ---- Race set-up and frames ----------------------------------------------------------------------------
 
 function setUpRace(intro) {
-  loading.hide();
   if (state.replay) endReplay();
   replays.reset();
   state.circuit?.dispose();
@@ -192,7 +191,9 @@ function setUpRace(intro) {
   const first = intro.grid[state.selected];
   stage.view.focus.copy(toWorld(first.x, first.y));
   stage.view.setMode(state.cameraMode, state.circuit);
+  // The first race's shaders are compiled while the loading screen is still up, so the game opens ready to race.
   stage.warmUp([stage.camera, director.camera, replayCamera.camera]);
+  loading.hide();
   showGrid(intro);
 }
 

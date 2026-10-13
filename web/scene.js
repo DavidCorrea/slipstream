@@ -111,7 +111,7 @@ export function createStage(canvas) {
   sun.shadow.camera.top = 90; sun.shadow.camera.bottom = -90;
   sun.shadow.camera.near = 10; sun.shadow.camera.far = 400;
   sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.6;
+  sun.shadow.normalBias = 0.1;
   scene.add(sun, sun.target);
 
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2400);

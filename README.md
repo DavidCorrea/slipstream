@@ -34,7 +34,7 @@ The site at https://davidcorrea.github.io/slipstream/ is this repository served 
 - **Which brains are published** is up to you: training runs (`runs/`) stay private, and only the snapshots you publish go into `brains/`:
 
   ```sh
-  .venv/bin/python -m slipstream.publish driver-pass/step-000090025984 pitwall-feel/step-000000251904
+  .venv/bin/python -m slipstream.publish driver-race/step-000082038784 pitwall-feel/step-000000251904
   .venv/bin/python -m slipstream.publish     # after changing the simulation: refreshes web/engine-files.json
   ```
 

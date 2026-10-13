@@ -18,13 +18,14 @@
 //   exhaust     a flame on full throttle, bigger and hotter in the more powerful engine modes
 // The crew can lift the car on jacks, take the rear wing off, open the engine cover and swap the nose.
 //
-// Twenty cars are drawn every frame, twice (the picture and the sun's shadow), so each car is cheap to draw: the
-// parts that move together are merged into one mesh per material, every car shares the same geometry, only the
-// big parts cast shadows, and a car too small on screen to show its details is drawn as a simple two-mesh car
-// instead (setCarDetail).
+// Twenty cars are drawn every frame, three times over (the picture, the sun's shadow and the shading where things
+// meet), so each car is cheap to draw: the parts that move together are merged into one mesh per material, every
+// car shares the same geometry, a car too small on screen to show its details is drawn as a simple two-mesh car
+// instead (setCarDetail), and that simple car is also what casts the detailed one's shadow: at the shadow map's
+// resolution the two look the same.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { toWorld } from './scene.js';
+import { SHADOW_ONLY, toWorld } from './scene.js';
 import { SPONSORS } from './scenery.js';
 
 const WHEEL_RADIUS = 0.36;
@@ -114,7 +115,7 @@ function placed(geometry, [x, y, z], rotation = [0, 0, 0], scale = [1, 1, 1]) {
 // Several placed pieces as one geometry, so they draw as one.
 function merged(pieces) {
   const geometry = mergeGeometries(pieces.map(piece => {
-    for (const name of Object.keys(piece.attributes)) if (!['position', 'normal', 'uv'].includes(name)) piece.deleteAttribute(name);
+    for (const name of Object.keys(piece.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(name)) piece.deleteAttribute(name);
     return piece;
   }));
   if (!geometry) throw new Error('Car pieces could not be merged: their attributes differ');
@@ -189,7 +190,6 @@ function carShapes() {
     brakeLight: new THREE.BoxGeometry(0.06, 0.1, 0.22),
     headlights: merged(sides.map(side => box([0.05, 0.06, 0.1], [2.62, 0.05, side * 0.13]))),
     flame: new THREE.ConeGeometry(0.12, 0.7, 8),
-    disc: new THREE.CylinderGeometry(WHEEL_RADIUS * 0.5, WHEEL_RADIUS * 0.5, 0.05, 14).rotateX(Math.PI / 2),
     // Upper and lower wishbones from the body to each hub, in the car's frame (they don't lean with the body).
     wishbones: merged([WHEELBASE / 2 + 0.05, -WHEELBASE / 2 + 0.05].flatMap(x => sides.flatMap(side => [[-0.1, 0], [0.1, 0.17]].flatMap(([atHub, atBody]) => {
       const hub = new THREE.Vector3(x, WHEEL_RADIUS + atHub, side * (TRACK_WIDTH / 2 - 0.2));
@@ -197,9 +197,9 @@ function carShapes() {
     })))),
     // The driver: shoulders and arms reaching to the wheel, and a helmet with a visor and a stripe.
     suit: merged([box([0.22, 0.12, 0.44], [0.2, 0.33, 0]), ...sides.map(side => rod(new THREE.Vector3(0.24, 0.36, side * 0.19), new THREE.Vector3(0.6, 0.42, side * 0.11), 0.035))]),
-    helmet: new THREE.SphereGeometry(0.16, 12, 9).scale(1.12, 1, 1),
-    visor: new THREE.SphereGeometry(0.163, 10, 4, Math.PI - 0.95, 1.9, 1.15, 0.38).scale(1.12, 1, 1),
-    helmetStripe: new THREE.SphereGeometry(0.163, 12, 2, 0, Math.PI * 2, 0.55, 0.18).scale(1.12, 1, 1),
+    helmet: new THREE.SphereGeometry(0.16, 12, 9).scale(1.12, 1, 1).translate(0, 0.1, 0).toNonIndexed(),
+    visor: new THREE.SphereGeometry(0.163, 10, 4, Math.PI - 0.95, 1.9, 1.15, 0.38).scale(1.12, 1, 1).translate(0, 0.1, 0).toNonIndexed(),
+    helmetStripe: new THREE.SphereGeometry(0.163, 12, 2, 0, Math.PI * 2, 0.55, 0.18).scale(1.12, 1, 1).translate(0, 0.1, 0).toNonIndexed(),
     steeringWheel: merged([box([0.03, 0.1, 0.26], [0, 0, 0]), ...sides.map(side => box([0.04, 0.12, 0.04], [0, 0, side * 0.13]))]),
     // The simple car, far away: one mesh in the paint and one for everything dark.
     simplePaint: merged([loft(TUB), loft(NOSE), loft(COVER), loft(SIDEPODS),
@@ -211,27 +211,41 @@ function carShapes() {
   return shapes;
 }
 
-// The tyre's section: flat across the tread with rounded shoulders, revolved round its axle.
+// A wheel in two meshes, the rubber and the metal, each piece told apart by where it reads its texture (`u`) and,
+// for the metal, its colour per vertex: one draw call each instead of five.
+function tinted(geometry, u, color = null) {
+  const count = geometry.attributes.position.count;
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(count * 2).map((_, index) => index % 2 ? 0.5 : u), 2));
+  const rgb = new THREE.Color(color ?? '#ffffff');
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(count * 3).map((_, index) => [rgb.r, rgb.g, rgb.b][index % 3]), 3));
+  return geometry;
+}
+
+// The tyre's section is flat across the tread with rounded shoulders, revolved round its axle. `side` is which side
+// of the car the wheel is on, so the brake disc sits inboard.
 let wheelShapes = null;
-function wheelShape(front) {
+function wheelShape(front, side) {
   wheelShapes ??= {};
-  const key = front ? 'front' : 'rear';
+  const key = `${front ? 'front' : 'rear'}${side}`;
   if (wheelShapes[key]) return wheelShapes[key];
   const width = front ? 0.34 : 0.42, half = width / 2, shoulder = 0.06;
   const profile = [[0.22, -half], [0.31, -half], [WHEEL_RADIUS - 0.015, -half + 0.02], [WHEEL_RADIUS, -half + shoulder],
                    [WHEEL_RADIUS, half - shoulder], [WHEEL_RADIUS - 0.015, half - 0.02], [0.31, half], [0.22, half]]
     .map(([radius, along]) => new THREE.Vector2(radius, along));
-  const sides = [-1, 1];
+  const faces = [-1, 1];
+  const spokes = faces.flatMap(face => [0, 1, 2, 3, 4].map(spoke =>
+    placed(new THREE.BoxGeometry(0.2, 0.035, 0.02), [0, 0, face * (half - 0.01)], [0, 0, spoke * Math.PI * 2 / 5]).translate(
+      Math.cos(spoke * Math.PI * 2 / 5) * 0.1, Math.sin(spoke * Math.PI * 2 / 5) * 0.1, 0)));
   wheelShapes[key] = {
-    tyre: new THREE.LatheGeometry(profile, 20).rotateX(Math.PI / 2),
-    // The compound's stripe round each sidewall.
-    stripes: merged(sides.map(side => placed(new THREE.TorusGeometry(WHEEL_RADIUS * 0.8, 0.03, 5, 24), [0, 0, side * (half + 0.003)]))),
-    // The rim, with five spokes on each face and the wheel nut, so the spin reads at a glance.
-    rim: merged([placed(new THREE.CylinderGeometry(0.225, 0.225, width - 0.02, 12), [0, 0, 0], [Math.PI / 2, 0, 0]),
-                 ...sides.map(side => placed(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 6), [0, 0, side * half], [Math.PI / 2, 0, 0]))]),
-    spokes: merged(sides.flatMap(side => [0, 1, 2, 3, 4].map(spoke =>
-      placed(new THREE.BoxGeometry(0.2, 0.035, 0.02), [0, 0, side * (half - 0.01)], [0, 0, spoke * Math.PI * 2 / 5]).translate(
-        Math.cos(spoke * Math.PI * 2 / 5) * 0.1, Math.sin(spoke * Math.PI * 2 / 5) * 0.1, 0)))),
+    // The tread reads the left of the tyre texture, the compound's stripe round each sidewall the right.
+    rubber: merged([tinted(new THREE.LatheGeometry(profile, 20).rotateX(Math.PI / 2).toNonIndexed(), 0.25),
+                    ...faces.map(face => tinted(placed(new THREE.TorusGeometry(WHEEL_RADIUS * 0.8, 0.03, 5, 24), [0, 0, face * (half + 0.003)]), 0.75))]),
+    // The rim and its nuts, five dark spokes on each face so the spin reads at a glance, and the brake disc inboard,
+    // the only part that glows (round, it looks the same spinning with the wheel).
+    metal: merged([tinted(placed(new THREE.CylinderGeometry(0.225, 0.225, width - 0.02, 12), [0, 0, 0], [Math.PI / 2, 0, 0]), 0.25, '#b9bec7'),
+                   ...faces.map(face => tinted(placed(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 6), [0, 0, face * half], [Math.PI / 2, 0, 0]), 0.25, '#b9bec7')),
+                   ...spokes.map(spoke => tinted(spoke, 0.25, '#2b2b2b')),
+                   tinted(placed(new THREE.CylinderGeometry(WHEEL_RADIUS * 0.5, WHEEL_RADIUS * 0.5, 0.05, 14), [0, 0, -side * 0.24], [Math.PI / 2, 0, 0]), 0.75, '#555555')]),
   };
   return wheelShapes[key];
 }
@@ -257,15 +271,25 @@ function weave() {
   return carbonWeave;
 }
 
+// A texture of a row of flat colours, one per texel, for parts told apart by where they read it.
+function pixels(colors) {
+  const texture = new THREE.DataTexture(new Uint8Array(colors.flatMap(rgb => [...rgb, 255])), colors.length, 1);
+  texture.magFilter = texture.minFilter = THREE.NearestFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 // What every car has in common, made once.
 let common = null;
 function commonSurfaces() {
   common ??= {
     carbon: new THREE.MeshStandardMaterial({ map: weave(), roughness: 0.72, metalness: 0.1 }),
-    interior: new THREE.MeshStandardMaterial({ color: '#0d0e11', roughness: 0.9 }),
-    visor: new THREE.MeshPhysicalMaterial({ color: '#0b0c10', roughness: 0.08, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.05 }),
-    rim: new THREE.MeshStandardMaterial({ color: '#b9bec7', roughness: 0.3, metalness: 0.8 }),
-    spokes: new THREE.MeshStandardMaterial({ color: '#2b2b2b', roughness: 0.5, metalness: 0.4 }),
+    // The cockpit's dark and the driver's suit, coloured per vertex: matte.
+    cockpit: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
+    // The helmet in the team's colour, its stripe and its visor, coloured per vertex under a gloss coat.
+    helmet: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06 }),
+    // Black on the left, white on the right: only the brake disc, on the right, glows.
+    glowMask: pixels([[0, 0, 0], [255, 255, 255]]),
     dark: new THREE.MeshStandardMaterial({ color: '#1a1c20', roughness: 0.7 }),
     footprint: new THREE.MeshBasicMaterial({ map: footprintTexture(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }),
   };
@@ -306,16 +330,26 @@ function sponsorOf(name) {
   return SPONSORS[hash % SPONSORS.length];
 }
 
-// The sponsor's name as a decal in the livery's accent colour, on a clear background so the paint shows round it.
-function sponsorDecal(sponsorName, ink) {
+// A car's decals in one texture, so they share a material: the sponsor's name in the livery's accent colour along
+// the top half, on a clear background so the paint shows round it, and the race number in a square of the paint's
+// colour below. LIVERY says where each is, as [u from, v from, u to, v to].
+const LIVERY = { sponsor: [0, 0.5, 1, 1], number: [0, 0, 0.25, 0.5] };
+function livery(sponsorName, number, color, accent) {
   const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 64;
+  canvas.width = 256; canvas.height = 128;
   const paint = canvas.getContext('2d');
-  paint.fillStyle = ink;
+  paint.fillStyle = accent;
   paint.font = '900 44px "Titillium Web", sans-serif';
   paint.textAlign = 'center';
   paint.textBaseline = 'middle';
   paint.fillText(sponsorName, 128, 36, 244);
+  if (number !== null) {
+    paint.fillStyle = color;
+    paint.fillRect(0, 64, 64, 64);
+    paint.fillStyle = accent;
+    paint.font = '900 46px "Titillium Web", sans-serif';
+    paint.fillText(String(number), 32, 100);
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
@@ -323,27 +357,17 @@ function sponsorDecal(sponsorName, ink) {
                                           polygonOffset: true, polygonOffsetFactor: -2 });
 }
 
+// A decal plane reading its part of the livery texture.
+function inRegion(geometry, [uFrom, vFrom, uTo, vTo]) {
+  const uv = geometry.attributes.uv;
+  for (let vertex = 0; vertex < uv.count; vertex++) uv.setXY(vertex, uFrom + uv.getX(vertex) * (uTo - uFrom), vFrom + uv.getY(vertex) * (vTo - vFrom));
+  return geometry;
+}
+
 // The livery's second colour: white on dark paint, near-black on light, so the stripes always read.
 function accentFor(color) {
   const { l } = new THREE.Color(color).getHSL({});
   return l < 0.5 ? '#f4f4f2' : '#16181d';
-}
-
-// The race number as a decal: drawn once into a small texture.
-function numberDecal(number, color, accent) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 128;
-  const paint = canvas.getContext('2d');
-  paint.fillStyle = color;
-  paint.fillRect(0, 0, 128, 128);
-  paint.fillStyle = accent;
-  paint.font = '900 92px "Titillium Web", sans-serif';
-  paint.textAlign = 'center';
-  paint.textBaseline = 'middle';
-  paint.fillText(String(number), 64, 72);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -2 });
 }
 
 // ---- Building ------------------------------------------------------------------------------------------------
@@ -356,20 +380,37 @@ function mesh(geometry, material, parent, { shadow = false, at = null } = {}) {
   return part;
 }
 
-// One wheel: tyre, rim and spokes, and a stripe in the compound's colour. Also used for the loose wheels in a pit
-// stop. A car's four wheels share their tyre and stripe materials, passed in as `surfaces`.
-export function createWheel(compound = 'medium', front = true, surfaces = null) {
+// One wheel: the rubber (tread and the compound's stripe) and the metal (rim, spokes and brake disc). Also used for
+// the loose wheels in a pit stop. A car's four wheels share their two materials, passed in as `surfaces`.
+export function createWheel(compound = 'medium', front = true, surfaces = null, side = 1) {
   const wheel = new THREE.Group();
-  const shape = wheelShape(front);
-  const { rim, spokes } = commonSurfaces();
-  const treadMaterial = surfaces?.treadMaterial ?? new THREE.MeshStandardMaterial({ color: FRESH_TREAD, roughness: TREAD_ROUGHNESS.fresh });
-  const stripeMaterial = surfaces?.stripeMaterial ?? new THREE.MeshStandardMaterial({ color: COMPOUND_COLORS[compound] ?? COMPOUND_COLORS.medium, roughness: 0.5 });
-  mesh(shape.tyre, treadMaterial, wheel, { shadow: true });
-  mesh(shape.stripes, stripeMaterial, wheel);
-  mesh(shape.rim, rim, wheel);
-  mesh(shape.spokes, spokes, wheel);
-  wheel.userData = { stripeMaterial, treadMaterial };
+  const shape = wheelShape(front, side);
+  const { rubber, metal } = surfaces ?? wheelSurfaces();
+  if (!surfaces) paintTyres(rubber.map, compound, 0);
+  mesh(shape.rubber, rubber, wheel, { shadow: !surfaces });
+  mesh(shape.metal, metal, wheel);
   return wheel;
+}
+
+// A car's wheel materials. The tyre's colours (tread, stripe) are a two-texel texture, repainted as the tyres wear
+// or change compound; the metal's brake disc glows through the glow mask.
+function wheelSurfaces() {
+  const tyreColours = pixels([[0, 0, 0], [0, 0, 0]]);
+  tyreColours.colorSpace = THREE.SRGBColorSpace;
+  return {
+    rubber: new THREE.MeshStandardMaterial({ map: tyreColours, roughness: TREAD_ROUGHNESS.fresh }),
+    metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.7, emissive: '#ff5a00', emissiveMap: commonSurfaces().glowMask, emissiveIntensity: 0 }),
+  };
+}
+
+// The tread goes from black to a greyer grain as it wears, and the stripe greys from the compound's colour.
+function paintTyres(texture, compound, wear) {
+  const tread = FRESH_TREAD.clone().lerp(WORN_TREAD, wear), stripe = new THREE.Color(COMPOUND_COLORS[compound] ?? COMPOUND_COLORS.medium).lerp(WORN, wear * 0.8);
+  [tread, stripe].forEach((color, index) => {
+    const { r, g, b } = color.getRGB({}, THREE.SRGBColorSpace);
+    texture.image.data.set([r, g, b].map(value => Math.round(value * 255)).concat(255), index * 4);
+  });
+  texture.needsUpdate = true;
 }
 
 export function createCar(color, name, number = null) {
@@ -381,10 +422,6 @@ export function createCar(color, name, number = null) {
   const accentColor = accentFor(color);
   // Paint under a clear coat: the colour stays satin, the coat on top catches the sky's reflections sharply.
   const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.15, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
-  const accent = new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.45, metalness: 0.1, clearcoat: 0.7, clearcoatRoughness: 0.1, envMapIntensity: 0.7 });
-  // The driver wears the team's colour: the suit matte, the helmet glossy, neither darkening with the car's damage.
-  const suit = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-  const helmetShell = new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08 });
 
   // The detailed car: the body leans and pitches on its own, while the wheels stay planted.
   const detailed = new THREE.Group();
@@ -392,38 +429,36 @@ export function createCar(color, name, number = null) {
   const body = new THREE.Group();
   body.position.y = RIDE_HEIGHT;
   detailed.add(body);
-  mesh(shape.bodyPaint, paint, body, { shadow: true });
-  mesh(shape.bodyCarbon, surfaces.carbon, body, { shadow: true });
-  mesh(shape.bodyInterior, surfaces.interior, body);
-
-  // The driver, sitting in the cockpit: the head turns and leans on its neck, the steering wheel on its column.
-  mesh(shape.suit, suit, body);
+  mesh(shape.bodyPaint, paint, body);
+  mesh(shape.bodyCarbon, surfaces.carbon, body);
+  // The driver, sitting in the cockpit, wears the team's colour (which doesn't darken with the car's damage): the
+  // head turns and leans on its neck, the steering wheel on its column.
+  mesh(merged([tinted(shape.bodyInterior.clone(), 0.5, '#0d0e11'), tinted(shape.suit.clone(), 0.5, color)]), surfaces.cockpit, body);
   const head = new THREE.Group();
   head.position.set(0.3, 0.47, 0);
   body.add(head);
-  for (const [geometry, material] of [[shape.helmet, helmetShell], [shape.visor, surfaces.visor], [shape.helmetStripe, accent]]) {
-    mesh(geometry, material, head, { at: new THREE.Vector3(0, 0.1, 0) });
-  }
+  mesh(merged([tinted(shape.helmet.clone(), 0.5, color), tinted(shape.visor.clone(), 0.5, '#0b0c10'), tinted(shape.helmetStripe.clone(), 0.5, accentColor)]),
+       surfaces.helmet, head);
   const steeringWheel = mesh(shape.steeringWheel, surfaces.carbon, body, { at: new THREE.Vector3(0.64, 0.44, 0) });
 
   // Engine cover, hinged at its front so the crew can open it.
   const cover = new THREE.Group();
   cover.position.copy(COVER_HINGE);
   body.add(cover);
-  mesh(shape.cover, paint, cover, { shadow: true });
+  mesh(shape.cover, paint, cover);
   mesh(shape.coverFin, paint, cover);
 
   // Nose and front wing: one assembly that droops with damage and comes off for repairs.
   const nose = new THREE.Group();
   nose.position.copy(NOSE_MOUNT);
   body.add(nose);
-  mesh(shape.nose, paint, nose, { shadow: true });
+  mesh(shape.nose, paint, nose);
   // The front wing is two halves (plane, flap and endplate each), so a hit can break one off and leave the other.
   const wingHalves = [-1, 1].map((side, index) => {
     const half = new THREE.Group();
     half.position.set(0.65, -0.17, side * 0.52);
     nose.add(half);
-    mesh(shape.wingHalf[index], paint, half, { shadow: true });
+    mesh(shape.wingHalf[index], paint, half);
     return half;
   });
   const frontFlaps = wingHalves.map(half => mesh(shape.frontFlap, surfaces.carbon, half, { at: new THREE.Vector3(-0.2, 0.07, 0) }));
@@ -433,22 +468,21 @@ export function createCar(color, name, number = null) {
   const rearWing = new THREE.Group();
   rearWing.position.copy(REAR_WING_MOUNT);
   body.add(rearWing);
-  const mainPlane = mesh(shape.mainPlane, surfaces.carbon, rearWing, { shadow: true });
+  const mainPlane = mesh(shape.mainPlane, surfaces.carbon, rearWing);
   const flap = mesh(shape.rearFlap, paint, rearWing, { at: new THREE.Vector3(-0.12, 0.17, 0) });
-  mesh(shape.endplates, paint, rearWing, { shadow: true });
+  mesh(shape.endplates, paint, rearWing);
 
-  // Livery: the number on the nose and both sidepods, the sponsor along the sidepods, the cover and the endplates.
+  // Livery, from one texture per car (see livery): the number on the nose and both sidepods, the sponsor along the
+  // sidepods, the cover and the endplates.
   const [sponsorName] = sponsorOf(name);
-  const sponsor = sponsorDecal(sponsorName, accentColor);
+  const decals = livery(sponsorName, number, color, accentColor);
   const sides = [-1, 1];
-  mesh(merged(sides.map(side => onTop(SIDEPODS, -0.2, side * 0.5, [0.7, 0.17]))), sponsor, body);
-  mesh(merged(sides.map(side => onSide(COVER, -0.55, side, [0.75, 0.18]).translate(-COVER_HINGE.x, -COVER_HINGE.y, 0))), sponsor, cover);
-  mesh(merged(sides.map(side => placed(new THREE.PlaneGeometry(0.7, 0.18), [0.05, -0.2, side * 0.81], [0, side > 0 ? 0 : Math.PI, 0]))), sponsor, rearWing);
-  if (number !== null) {
-    const decal = numberDecal(number, color, accentColor);
-    mesh(onTop(NOSE, 1.75, 0, [0.3, 0.3], true).translate(-NOSE_MOUNT.x, -NOSE_MOUNT.y, 0), decal, nose);
-    mesh(merged(sides.map(side => onSide(SIDEPODS, -0.15, side, [0.2, 0.2]))), decal, body);
-  }
+  const sponsor = geometry => inRegion(geometry, LIVERY.sponsor), raceNumber = geometry => inRegion(geometry, LIVERY.number);
+  mesh(merged([...sides.map(side => sponsor(onTop(SIDEPODS, -0.2, side * 0.5, [0.7, 0.17]))),
+               ...(number === null ? [] : sides.map(side => raceNumber(onSide(SIDEPODS, -0.15, side, [0.2, 0.2]))))]), decals, body);
+  mesh(merged(sides.map(side => sponsor(onSide(COVER, -0.55, side, [0.75, 0.18]).translate(-COVER_HINGE.x, -COVER_HINGE.y, 0)))), decals, cover);
+  mesh(merged(sides.map(side => sponsor(placed(new THREE.PlaneGeometry(0.7, 0.18), [0.05, -0.2, side * 0.81], [0, side > 0 ? 0 : Math.PI, 0])))), decals, rearWing);
+  if (number !== null) mesh(raceNumber(onTop(NOSE, 1.75, 0, [0.3, 0.3], true).translate(-NOSE_MOUNT.x, -NOSE_MOUNT.y, 0)), decals, nose);
 
   const brakeLight = mesh(shape.brakeLight, new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a1a', emissiveIntensity: 0 }), body,
                           { at: new THREE.Vector3(-2.07, 0.05, 0) });
@@ -465,34 +499,25 @@ export function createCar(color, name, number = null) {
   detailed.add(chassis);
   mesh(shape.wishbones, surfaces.carbon, chassis);
 
-  const wheelSurfaces = {
-    treadMaterial: new THREE.MeshStandardMaterial({ color: FRESH_TREAD, roughness: TREAD_ROUGHNESS.fresh }),
-    stripeMaterial: new THREE.MeshStandardMaterial({ color: COMPOUND_COLORS.medium, roughness: 0.5 }),
-  };
-  const discMaterial = new THREE.MeshStandardMaterial({ color: '#555', emissive: '#ff5a00', emissiveIntensity: 0, roughness: 0.4, metalness: 0.7 });
-  const wheels = [], hubs = [], steering = [], discs = [];
+  const wheelParts = wheelSurfaces();
+  const wheels = [], hubs = [], steering = [];
   for (const [x, front] of [[WHEELBASE / 2 + 0.05, true], [-WHEELBASE / 2 + 0.05, false]]) {
     for (const side of sides) {
       const hub = new THREE.Group();
       hub.position.set(x, WHEEL_RADIUS, side * TRACK_WIDTH / 2);
-      const wheel = createWheel('medium', front, wheelSurfaces);
+      const wheel = createWheel('medium', front, wheelParts, side);
       hub.add(wheel);
-      // The brake disc sits inside the wheel on the hub, so it glows without spinning with the spokes.
-      const disc = mesh(shape.disc, discMaterial, hub, { at: new THREE.Vector3(0, 0, -side * 0.24) });
       detailed.add(hub);
       wheels.push(wheel);
       hubs.push(hub);
-      discs.push(disc);
       if (front) steering.push(hub);
     }
   }
 
-  // The simple car, for when it's too small on screen for any of that to show.
+  // The simple car, for when it's too small on screen for any of that to show, and always for the car's shadow.
   const simple = new THREE.Group();
-  simple.visible = false;
   car.add(simple);
-  mesh(shape.simplePaint, paint, simple, { shadow: true });
-  mesh(shape.simpleDark, surfaces.dark, simple, { shadow: true });
+  const simpleParts = [mesh(shape.simplePaint, paint, simple, { shadow: true }), mesh(shape.simpleDark, surfaces.dark, simple, { shadow: true })];
 
   // The shade under the car, so it sits on the ground whatever the sun's shadow does.
   const footprint = mesh(new THREE.PlaneGeometry(6, 3).rotateX(-Math.PI / 2), surfaces.footprint, car, { at: new THREE.Vector3(0, 0.035, 0) });
@@ -504,7 +529,7 @@ export function createCar(color, name, number = null) {
   chevron.visible = false;
 
   car.userData = {
-    detailed, simple, body, chassis, head, steeringWheel, wheels, hubs, steering, discs, discMaterial, wheelSurfaces, brakeLight, headlightGlow, flame,
+    detailed, simpleParts, body, chassis, head, steeringWheel, wheels, hubs, steering, wheelParts, tyresPainted: null, brakeLight, headlightGlow, flame,
     chevron, cover, nose, wingHalves, frontFlaps, rearWing, mainPlane, flap,
     // Set from outside each frame: lights on (night) and a wet track (the rear light flashes in the rain).
     lightsOn: false, raining: false,
@@ -517,13 +542,15 @@ export function createCar(color, name, number = null) {
     // Set by the pit crew while it works on the car.
     lift: 0, rearWingLift: 0, coverOpen: 0, noseOff: 0,
   };
+  setCarDetail(car, true);
   return car;
 }
 
-// Draws a car in full, or as the simple car when it's too small on screen for its details to show.
+// Draws a car in full, or as the simple car when it's too small on screen for its details to show. Either way the
+// simple car casts the shadow; drawn in full, it's only in the shadow.
 export function setCarDetail(car, detailed) {
   car.userData.detailed.visible = detailed;
-  car.userData.simple.visible = !detailed;
+  for (const part of car.userData.simpleParts) part.layers.set(detailed ? SHADOW_ONLY : 0);
 }
 
 // Poses a car from interpolated sim values for this render frame. `seconds` is the real time since the last
@@ -551,14 +578,18 @@ export function poseCar(car, state, seconds, simSeconds, followed, time) {
   // Tyres: compound colour, greying as they wear, and the tread grains from matte black to a greyer sheen.
   if (state.compound) data.compound = state.compound;
   const wear = Math.min(1, state.tyreWear ?? 0);
-  data.wheelSurfaces.stripeMaterial.color.set(COMPOUND_COLORS[data.compound] ?? COMPOUND_COLORS.medium).lerp(WORN, wear * 0.8);
-  data.wheelSurfaces.treadMaterial.color.copy(FRESH_TREAD).lerp(WORN_TREAD, wear);
-  data.wheelSurfaces.treadMaterial.roughness = TREAD_ROUGHNESS.fresh + (TREAD_ROUGHNESS.worn - TREAD_ROUGHNESS.fresh) * wear;
+  // Repainted only when they've changed enough to see.
+  const tyres = `${data.compound}|${wear.toFixed(2)}`;
+  if (tyres !== data.tyresPainted) {
+    paintTyres(data.wheelParts.rubber.map, data.compound, wear);
+    data.wheelParts.rubber.roughness = TREAD_ROUGHNESS.fresh + (TREAD_ROUGHNESS.worn - TREAD_ROUGHNESS.fresh) * wear;
+    data.tyresPainted = tyres;
+  }
 
   // Brake discs glow with the race's own brake temperature: dull red past about 400°C, bright orange near 1000°C.
   const heat = Math.min(1, Math.max(0, ((state.brakeTemp ?? 0.1) - 0.3) / 0.6));
   data.brakeHeat += (heat - data.brakeHeat) * (1 - Math.exp(-seconds * 6));
-  data.discMaterial.emissiveIntensity = data.brakeHeat * 3;
+  data.wheelParts.metal.emissiveIntensity = data.brakeHeat * 3;
   // A puncture: the rear tyre sags flat on its rim.
   data.wheels[3].scale.y = state.punctured ? 0.55 : 1;
 

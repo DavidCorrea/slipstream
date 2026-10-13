@@ -10,6 +10,8 @@ import * as THREE from 'three';
 import { createPost } from './post.js';
 
 export const toWorld = (x, y, height = 0) => new THREE.Vector3(x, height, -y);
+// A layer only the sun's shadow sees: what's on it casts a shadow without being drawn (see cars.js).
+export const SHADOW_ONLY = 1;
 
 // Times of day a race can be run at: the sun's height above the horizon (radians), its colour and strength
 // relative to the location's own, and how warm the horizon haze gets.
@@ -112,6 +114,7 @@ export function createStage(canvas) {
   sun.shadow.camera.near = 10; sun.shadow.camera.far = 400;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.1;
+  sun.shadow.camera.layers.enable(SHADOW_ONLY);
   scene.add(sun, sun.target);
 
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2400);

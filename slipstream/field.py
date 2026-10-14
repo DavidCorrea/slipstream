@@ -12,7 +12,7 @@ from .drivers import scripted_controls
 from .observe import for_network
 from .pit import PitPlan
 from .pitwall import pitwall_decisions, pitwall_observe
-from .strategy import DRIVING_ONLY, decode, scripted_strategy
+from .strategy import DRIVING_ONLY, decode, decode_racer, scripted_strategy
 
 
 def makes_pit_calls(model):
@@ -20,25 +20,30 @@ def makes_pit_calls(model):
 
 
 def field_controls(race, driver: NetworkDriver | None, networked, personality=None, pitwall=None):
-    """Steer, throttle, brake, pit calls and stop plans for every car. `driver` is the network at the wheel of
-    the cars `networked` marks (scripted drivers take the rest); `personality` is one row of traits per car
-    (neutral if not given)."""
+    """Steer, throttle, brake, pit calls, stop plans, and the limiter, reverse and engine mode buttons (NaN for cars
+    whose drivers have none) for every car: everything race.step takes, in its order. `driver` is the network at
+    the wheel of the cars `networked` marks (scripted drivers take the rest); `personality` is one row of traits
+    per car (neutral if not given)."""
     steer, throttle, brake = scripted_controls(race)
     call, plan = scripted_strategy(race)
+    limiter, reverse, engine = (np.full(race.count, np.nan) for _ in range(3))
     cars = np.flatnonzero(networked)
     if driver is not None and len(cars):
         # Every car is asked, so a recurrent driver's memory follows every car the same way.
         actions = driver.act(race, personality)[cars]
-        network_steer, network_throttle, network_brake, network_call, network_plan = decode(actions, len(cars))
-        steer[cars], throttle[cars], brake[cars] = network_steer, network_throttle, network_brake
-        if makes_pit_calls(driver.model):
-            _take_strategy(call, plan, cars, network_call, network_plan)
+        if driver.races:
+            steer[cars], throttle[cars], brake[cars], limiter[cars], reverse[cars], engine[cars] = decode_racer(actions, len(cars))
+        else:
+            network_steer, network_throttle, network_brake, network_call, network_plan = decode(actions, len(cars))
+            steer[cars], throttle[cars], brake[cars] = network_steer, network_throttle, network_brake
+            if makes_pit_calls(driver.model):
+                _take_strategy(call, plan, cars, network_call, network_plan)
     # The pit wall calls the stops for the networked cars, or for every car when nobody else is a network.
     if pitwall is not None:
         strategised = cars if driver is not None else np.arange(race.count)
         wall_actions, _ = pitwall.predict(for_network(pitwall_observe(race, personality), pitwall)[strategised], deterministic=True)
         _take_strategy(call, plan, strategised, *pitwall_decisions(wall_actions))
-    return steer, throttle, brake, call, plan
+    return steer, throttle, brake, call, plan, limiter, reverse, engine
 
 
 def _take_strategy(call, plan, cars, new_call, new_plan):

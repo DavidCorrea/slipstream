@@ -19,7 +19,7 @@ from . import personality as traits
 from .car import BALANCE_RANGE, COMPOUNDS, DT, FUEL_CAPACITY, SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
 from .drivers import DECISION_TICKS
 from .field import field_controls, makes_pit_calls
-from .strategy import scripted_strategy
+from .strategy import scripted_radio, scripted_strategy
 from .observe import OBSERVATION_NAMES
 from .race import Race
 from .scenery import location_for, place
@@ -105,14 +105,15 @@ class RaceSession:
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
         self.seed = int(np.random.default_rng().integers(2 ** 31)) if seed is None else seed
         track = generate_track(self.seed)
-        # The networks published so far learned with the lane driven for them and without lights or flags; the scripted
-        # driver drives the lane itself, waits for the lights and minds the flags.
+        # Drivers by feel learned with the lane driven for them and without lights or flags; the scripted driver and
+        # racing drivers drive the lane themselves, wait for the lights and mind the flags.
+        self.driver = NetworkDriver(self.policy, cars) if self.policy is not None else None
+        races = self.driver is None or self.driver.races
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
-                         stewards=True, assisted=self.policy is not None, flags=self.policy is None)
+                         stewards=True, assisted=not races, flags=races)
         self.location = location_for(self.seed) if location is None else location
         self.race.place_props(place(track, self.race.pit, self.seed, self.location))
         self.timing = Timing(self.race.track.length, cars)
-        self.driver = NetworkDriver(self.policy, cars) if self.policy is not None else None
         # Drivers trained with human hands and feet (see human.py) race with them here too.
         if self.driver is not None and self.driver.feels:
             self.race.driving = Driving(cars, np.random.default_rng(self.seed + 1))
@@ -269,7 +270,10 @@ class RaceSession:
         return self._frame(happened)
 
     def _decide(self):
-        steer, throttle, brake, call, plan = field_controls(self.race, self.driver, np.ones(self.race.count, dtype=bool), self.personality, pitwall=self.pitwall)
+        # The pit wall's radio for drivers that listen (strategy.RADIO_CALLS).
+        self.race.radio = scripted_radio(self.race)
+        steer, throttle, brake, call, plan, limiter, reverse, engine = field_controls(
+            self.race, self.driver, np.ones(self.race.count, dtype=bool), self.personality, pitwall=self.pitwall)
         if self.pitwall_id == SCRIPTED_STRATEGIST:
             call, plan = scripted_strategy(self.race)
         if self.strategy == 'mine':
@@ -279,7 +283,7 @@ class RaceSession:
             plan.fuel[car] = mine['fuel'] * FUEL_CAPACITY
             plan.wing[car], plan.engine[car] = mine['wing'], mine['engine']
             plan.repair[car], plan.brakes[car] = mine['repair'], mine['brakes']
-        return steer, throttle, brake, call, plan
+        return steer, throttle, brake, call, plan, limiter, reverse, engine
 
     frames = 0
 

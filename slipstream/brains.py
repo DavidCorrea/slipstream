@@ -13,7 +13,8 @@ import numpy as np
 
 from .numpy_network import NumpyNetwork
 from .observe import for_network, observe
-from .senses import SENSE_NAMES, senses
+from .senses import RACER_SENSE_NAMES, SENSE_NAMES, racer_senses, senses
+from .strategy import RACER_ACTIONS
 
 
 def is_recurrent(path: Path):
@@ -40,14 +41,22 @@ class NetworkDriver:
     def __init__(self, model, count):
         self.model = model
         self.recurrent = model.has_memory if isinstance(model, NumpyNetwork) else hasattr(model.policy, 'lstm_actor')
-        # Drivers by feel sense (senses.py) and only steer and press a pedal.
-        self.feels = model.observation_space.shape[0] == len(SENSE_NAMES) and model.action_space.shape[0] == 2
+        # Drivers by feel sense (senses.py) and only steer and press a pedal; racing drivers know more, and have
+        # buttons on the wheel too.
+        inputs, outputs = model.observation_space.shape[0], model.action_space.shape[0]
+        self.races = inputs == len(RACER_SENSE_NAMES) and outputs == len(RACER_ACTIONS)
+        self.feels = self.races or (inputs == len(SENSE_NAMES) and outputs == 2)
         self.memory = None
         self.starting = np.ones(count, dtype=bool)
 
     def act(self, race, personality):
         """The network's outputs for every car in the race, carrying its memory on to the next call."""
-        observations = senses(race, personality) if self.feels else for_network(observe(race, personality), self.model)
+        if self.races:
+            observations = racer_senses(race, personality)
+        elif self.feels:
+            observations = senses(race, personality)
+        else:
+            observations = for_network(observe(race, personality), self.model)
         if not self.recurrent:
             actions, _ = self.model.predict(observations, deterministic=True)
             return actions

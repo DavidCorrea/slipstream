@@ -161,6 +161,9 @@ class Race:
         self.lane_called = np.zeros(count, dtype=bool)
         self.lane_speeding = np.zeros(count, dtype=bool)
         self.on_lane = np.zeros(count, dtype=bool)
+        self.limiter = np.zeros(count, dtype=bool)   # whose pit limiter is on
+        # What each car's pit wall last said on the radio (strategy.RADIO_CALLS), for drivers that listen.
+        self.radio = np.zeros(count, dtype=int)
 
     @property
     def time(self):
@@ -237,10 +240,13 @@ class Race:
         key = np.where(self.finished, -1e9 + np.nan_to_num(self.race_times()), np.where(self.retired, 1e9, 0) - self.progress)
         return np.argsort(key, kind='stable')
 
-    def step(self, steer, throttle, brake, pit_call=None, plan: PitPlan | None = None, limiter=None) -> TickEvents:
+    def step(self, steer, throttle, brake, pit_call=None, plan: PitPlan | None = None, limiter=None, reverse=None,
+             engine=None) -> TickEvents:
         """One tick. `pit_call` says which cars want to come in; it only counts once a lap, when a car first
         reaches the decision point before the pit entry (see pit.py). `plan` is what the crew does at each stop.
-        `limiter` marks the cars with their pit limiter on."""
+        The rest are the buttons drivers that race (see senses.RACER_SENSE_NAMES) have on their wheel, NaN for cars
+        whose drivers don't: `limiter` (the pit limiter), `reverse` (the reverse gear) and `engine` (the engine
+        mode, 0 saving fuel to 1 pushing, which they change as they go rather than at a stop)."""
         events = TickEvents()
         if self.done:
             return events
@@ -261,10 +267,16 @@ class Race:
         brake = np.where(stopping, 0.3, np.where(driven, brake, 0.0))
         steer = np.where(driven & ~self.retired, steer, 0.0)
         fuel, wear = self.cars.fuel.copy(), self.cars.tyre_wear.copy()
-        speed_cap = None if limiter is None else np.where(np.asarray(limiter, dtype=bool), pit.SPEED_LIMIT, np.inf)
+        speed_cap = None
+        if limiter is not None:
+            self.limiter = np.nan_to_num(np.asarray(limiter, dtype=float)) > 0
+            speed_cap = np.where(self.limiter, pit.SPEED_LIMIT, np.inf)
+        if engine is not None:
+            engine = np.asarray(engine, dtype=float)
+            self.cars.engine = np.where(np.isnan(engine), self.cars.engine, np.clip(engine, 0, 1))
         # Nobody reverses in the pit lane: the crew pushes a car back.
         step_cars(self.cars, self.specs, steer, throttle, brake, self.on_track, self.conditions(),
-                  can_reverse=driven & ~stopping & ~self.in_lane, speed_cap=speed_cap)
+                  can_reverse=driven & ~stopping & ~self.in_lane, speed_cap=speed_cap, reverse=reverse)
         self.weather.step(DT)
         self.fuel_used += fuel - self.cars.fuel
         shed = np.maximum(self.cars.tyre_wear - wear, 0.0)

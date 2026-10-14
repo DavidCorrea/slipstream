@@ -13,9 +13,10 @@ What a car can do also depends on its setup and condition, all of which a pit st
 - damage from contact: less grip, top speed and acceleration until repaired.
 - brake wear: worn pads stop the car less hard.
 - fuel: a full tank is heavy, slowing both speeding up and stopping; an empty one stops the car.
-- reverse gear: selected by holding both pedals with the car stopped (there's no gear lever among a driver's
-  controls). In reverse the throttle backs the car up at walking pace and the steering works backwards; braking
-  to a stop puts it back in first.
+- reverse gear: selected by holding both pedals with the car stopped, for drivers with no gear lever among their
+  controls, or with a reverse button for those that have one (it only engages with the car stopped). In reverse
+  the throttle backs the car up at walking pace and the steering works backwards; braking to a stop (or letting go
+  of the button, stopped) puts it back in first.
 
 And what a race does to it:
 - temperatures: tyres grip best inside their compound's window, cold out of the pits and overheating when slid
@@ -287,11 +288,12 @@ def fuel_burn_rate(engine):
 
 
 def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track, conditions: Conditions | None = None,
-              can_reverse=None, speed_cap=None):
+              can_reverse=None, speed_cap=None, reverse=None):
     """Advances every car one tick. steer in [-1, 1] (positive turns left), throttle and brake in [0, 1]. Without
     `conditions`, the track is dry, clean and the air clear. Only cars `can_reverse` marks (all, if not given) can
     select reverse. `speed_cap` is the most each car's engine will drive it to (a pit limiter): full power up to it,
-    nothing above it, so a car going faster coasts down to it rather than braking."""
+    nothing above it, so a car going faster coasts down to it rather than braking. `reverse` is each car's reverse
+    button, where it has one (NaN where it selects reverse with the pedals)."""
     conditions = conditions if conditions is not None else Conditions.uniform(len(state.heading))
     wetness = conditions.wetness
     # Bent suspension pulls the car to one side whatever the driver does.
@@ -301,7 +303,7 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     brake = np.clip(brake, 0, 1)
     forward = state.forward
     along = np.einsum('ck,ck->c', state.velocity, forward)
-    _select_gear(state, throttle, brake, can_reverse)
+    _select_gear(state, throttle, brake, can_reverse, reverse)
     reversing = state.reversing
     # In reverse the throttle drives the car backwards; everything else below sees it as driving forwards with
     # its speed and steering flipped round, and the result is turned back at the end.
@@ -374,14 +376,20 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     return state
 
 
-def _select_gear(state, throttle, brake, can_reverse):
-    """Both pedals held with the car stopped select reverse; braking to a stop in reverse goes back to first."""
+def _select_gear(state, throttle, brake, can_reverse, reverse=None):
+    """Both pedals held with the car stopped select reverse; braking to a stop in reverse goes back to first. A car
+    with a reverse button goes into reverse when it's pressed with the car stopped, and back to first when it's let
+    go with the car stopped."""
     # Stopped, not just going nowhere along its length: a car spinning sideways is moving.
     still = np.linalg.norm(state.velocity, axis=1) < REVERSE['still']
     holding_both = still & (throttle > 0.5) & (brake > 0.5) & ~state.reversing
     state.selecting = np.where(holding_both, state.selecting + DT, 0.0)
     state.reversing = state.reversing | (state.selecting >= REVERSE['select'])
     state.reversing &= ~(still & (brake > 0.5) & (throttle < 0.1))
+    if reverse is not None:
+        button = ~np.isnan(np.asarray(reverse, dtype=float))
+        pressed = np.nan_to_num(np.asarray(reverse, dtype=float)) > 0
+        state.reversing = np.where(button & still, pressed, state.reversing)
     if can_reverse is not None:
         state.reversing &= np.asarray(can_reverse, dtype=bool)
     state.reversed_for = np.where(state.reversing, state.reversed_for + DT, 0.0)

@@ -19,6 +19,15 @@ from .pit import CALLED, PitPlan
 ACTION_NAMES = ('steer', 'pedal', 'pit', 'compound', 'fuel', 'wing', 'engine', 'repair', 'brakes', 'weather_tyres')
 WEATHER_TYRES = ('slick', 'intermediate', 'wet')
 DRIVING_ONLY = 2          # networks trained before pit stops existed only steer and press the pedal
+# Drivers that race (senses.RACER_SENSE_NAMES) have buttons on the wheel as well as the wheel and the pedal, and
+# leave the stops to the pit wall: the limiter, reverse, and the engine mode from saving fuel (-1) to pushing (1).
+RACER_ACTIONS = ('steer', 'pedal', 'limiter', 'reverse', 'engine')
+# What the pit wall says to its driver on the radio, besides "box": nothing, push (a car to attack or to keep
+# behind), or save (fuel or tyres won't last as they're going).
+RADIO_CALLS = ('nothing', 'push', 'save')
+PUSH_GAP = 1.0            # seconds to a car ahead or behind that makes a fight worth pushing for
+SAVE_WEAR = 0.6           # tyre wear that has the pit wall asking for care, with SAVE_LAPS or more to go
+SAVE_LAPS = 3.0
 CALL_THRESHOLD = 0.0      # above this, the lap's pit decision (see pit.py) is "come in"
 
 RACING_SPEED = 30.0       # m/s, a rough average lap speed, used to estimate fuel use
@@ -51,6 +60,28 @@ def decode(actions, count):
         repair=actions[:, 7] > 0, brakes=actions[:, 8] > 0,
     )
     return steer, throttle, brake, actions[:, 2] > CALL_THRESHOLD, plan
+
+
+def decode_racer(actions, count):
+    """Steer, throttle, brake, limiter, reverse and engine mode (0 to 1) from a racing driver's outputs."""
+    actions = np.asarray(actions, dtype=float).reshape(count, len(RACER_ACTIONS))
+    pedal = actions[:, 1]
+    return (actions[:, 0], np.clip(pedal, 0, 1), np.clip(-pedal, 0, 1), actions[:, 2] > 0, actions[:, 3] > 0,
+            (np.clip(actions[:, 4], -1, 1) + 1) / 2)
+
+
+def scripted_radio(race):
+    """What a simple pit wall tells each driver (an index into RADIO_CALLS): save when the fuel won't reach the flag
+    or the tyres are going off with laps to go, otherwise push when there's a car within PUSH_GAP ahead or behind."""
+    cars, laps = race.cars, laps_left(race)
+    save = (cars.fuel < fuel_to_finish(race)) | ((cars.tyre_wear > SAVE_WEAR) & (laps > SAVE_LAPS))
+    order = race.standings()
+    gaps = np.full(race.count, np.inf)
+    between = (race.progress[order[:-1]] - race.progress[order[1:]]) / np.maximum(cars.speed[order[1:]], 10.0)
+    gaps[order[1:]] = np.minimum(gaps[order[1:]], between)
+    gaps[order[:-1]] = np.minimum(gaps[order[:-1]], between)
+    push = gaps < PUSH_GAP
+    return np.select([save, push], [RADIO_CALLS.index('save'), RADIO_CALLS.index('push')], RADIO_CALLS.index('nothing'))
 
 
 def _tyre_choice(actions):

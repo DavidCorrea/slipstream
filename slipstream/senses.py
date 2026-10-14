@@ -9,14 +9,21 @@ as they go, which is why these drivers have a memory (see driver_env.py).
 What a driver can see is limited, too. Mirrors cover the car behind but leave a blind spot to each side, where a
 car alongside can only be sensed once it's right there. Spray off a wet track, and the smoke of a damaged car, hide
 the cars further up the road.
+
+Drivers that race (RACER_SENSE_NAMES, from the second generation of drivers by feel) know everything a racing
+driver knows on top: what the dash and the engineer say about the car (tyre wear and temperature, brakes,
+engine, damage, a puncture, the gear, the limiter), the rain now and on the radar, where the track ahead is
+wetter or drier, the debris they can see, where the pit lane and their box are, the lights and the marshals'
+flags, their penalties and warnings, and what the pit wall says on the radio.
 """
 import numpy as np
 
 from . import pit
 from .car import COMPOUNDS, FUEL_CAPACITY, centred
+from .flags import LIGHTS
 from .observe import CURVATURE_AHEAD, LINE_AHEAD, SCALE, to_car_frame
 from .personality import TRAITS, neutral
-from .strategy import laps_left
+from .strategy import RADIO_CALLS, laps_left
 from .track import MIN_RADIUS, SPACING
 
 NEARBY = 4
@@ -39,6 +46,19 @@ SENSE_NAMES = (
     + [f'personality.{name}' for name in TRAITS]
     + [f'compound.{name}' for name in COMPOUNDS]
     + ['fuel', 'wing', 'engine', 'pit_called', 'in_pit_lane', 'laps_left']
+)
+DEBRIS_SEEN = 2               # pieces of debris a driver keeps an eye on
+LOOKING_OUT = 300.0           # metres ahead the radar, the pit board and the marshals are read up to
+RADAR = 300.0                 # seconds ahead the engineer can see rain coming
+WET_AHEAD = 40.0              # metres ahead a driver reads the track's wet and dry patches
+RACER_SENSE_NAMES = SENSE_NAMES + (
+    ['tyre_wear', 'tyre_temp', 'brake_wear', 'brake_temp', 'engine_temp', 'damage', 'wing_damage', 'suspension_damage',
+     'punctured', 'reversing', 'limiter', 'wetness_here', 'rain', 'rain_in', 'rain_coming']
+    + [f'wetness_ahead.{side}' for side in ('left', 'middle', 'right')]
+    + [f'debris.{slot}.{feature}' for slot in range(DEBRIS_SEEN) for feature in ('present', 'x', 'y')]
+    + ['pit_entry_in', 'in_box', 'speed_zone', 'box_along', 'box_across', 'lights', 'started', 'yellow_ahead',
+       'in_yellow', 'blue_flag', 'penalties', 'strikes']
+    + [f'radio.{call}' for call in RADIO_CALLS[1:]]
 )
 
 
@@ -130,3 +150,81 @@ def _situation(race):
 def _remaining(race):
     total = race.laps * race.track.length
     return np.clip((total - race.progress) / total, 0, 1)
+
+
+def racer_senses(race, personality=None):
+    """Every racing driver's senses, one row per car, in the order of RACER_SENSE_NAMES: everything a driver by feel
+    senses, then everything a racing driver knows on top (see the module notes)."""
+    cars, track, count = race.cars, race.track, race.count
+    distance = race.progress % track.length
+    half = track.width / 2
+    surface, weather = race.surface, race.weather
+    rain_in, rain_coming = _rain_on_the_radar(weather)
+    across = np.array([-half / 2, 0.0, half / 2])
+    ahead = np.repeat((distance + WET_AHEAD)[:, None], 3, axis=1)
+    car = np.stack([
+        cars.tyre_wear, cars.tyre_temp, cars.brake_wear, cars.brake_temp, cars.engine_temp, cars.damage,
+        cars.wing_damage, cars.suspension_damage, cars.punctured.astype(float), cars.reversing.astype(float),
+        race.limiter.astype(float), surface.wetness(distance, race.lateral, weather.wetness), np.full(count, weather.rain),
+        np.full(count, rain_in), np.full(count, rain_coming),
+    ], axis=1)
+    wet_ahead = surface.wetness(ahead.ravel(), np.tile(across, count), weather.wetness).reshape(count, 3)
+    return np.concatenate([senses(race, personality), car, wet_ahead, _debris_ahead(race), _pit_and_flags(race, distance),
+                           np.eye(len(RADIO_CALLS))[race.radio][:, 1:]], axis=1).astype(np.float32)
+
+
+def _rain_on_the_radar(weather):
+    """How soon the next rain arrives (0 raining now, 1 none within RADAR seconds) and how hard it will fall."""
+    if weather.rain > 0:
+        return 0.0, float(weather.rain)
+    coming = [(start - weather.time, intensity) for start, _, intensity in weather.showers if 0 <= start - weather.time < RADAR]
+    if not coming:
+        return 1.0, 0.0
+    seconds, intensity = min(coming)
+    return seconds / RADAR, float(intensity)
+
+
+def _debris_ahead(race):
+    """The DEBRIS_SEEN nearest pieces of debris ahead of each driver within sight: present, and where in its own
+    frame."""
+    cars, count = race.cars, race.count
+    result = np.zeros((count, DEBRIS_SEEN, 3))
+    if not len(race.debris):
+        return result.reshape(count, -1)
+    offset = to_car_frame(race.debris[None, :, :] - cars.position[:, None, :], cars.heading[:, None])
+    reach = np.where((offset[..., 0] > 0), np.hypot(offset[..., 0], offset[..., 1]), np.inf)
+    reach = np.where(reach < LOOKING_AHEAD, reach, np.inf)
+    nearest = np.argsort(reach, axis=1)[:, :DEBRIS_SEEN]
+    for slot in range(min(DEBRIS_SEEN, reach.shape[1])):
+        piece = nearest[:, slot]
+        present = np.isfinite(reach[np.arange(count), piece])
+        result[:, slot, 0] = present
+        result[:, slot, 1:] = np.where(present[:, None], offset[np.arange(count), piece] / SCALE['gap'], 0.0)
+    return result.reshape(count, -1)
+
+
+def _pit_and_flags(race, distance):
+    """Where the pit lane and each car's box are, the start lights, the flags, and the stewards' tally."""
+    lane, count = race.pit, race.count
+    along = lane.along(distance)
+    entry_in = np.clip((-along % race.track.length) / LOOKING_OUT, 0, 1)
+    speed_zone = race.in_lane & (along >= pit.RAMP) & (along <= lane.length - pit.RAMP)
+    box_along = np.clip((lane.boxes[:count] - along) / LOOKING_OUT, -1, 1)
+    box_across = np.where(race.in_lane, np.clip(lane.side * (lane.working_lane - race.lateral) / (2 * pit.LANES_APART), -1, 1), 0.0)
+    lights = np.zeros(count)
+    started = np.ones(count)
+    yellow_ahead, in_yellow, blue = np.ones(count), np.zeros(count), np.zeros(count)
+    marshals = race.marshals
+    if marshals is not None:
+        lights[:] = marshals.lights(race.time) / LIGHTS['count']
+        started[:] = float(marshals.started(race.time))
+        in_yellow = marshals.under_yellow(distance, race.track.length).astype(float)
+        for start, _, _ in marshals.zones:
+            yellow_ahead = np.minimum(yellow_ahead, ((start - distance) % race.track.length) / LOOKING_OUT)
+        blue = marshals.blue.astype(float)
+    penalties, strikes = np.zeros(count), np.zeros(count)
+    if race.stewards is not None:
+        penalties = np.clip(race.stewards.seconds / 20.0, 0, 1)
+        strikes = np.clip(race.stewards.strikes / 4.0, 0, 1)
+    return np.stack([entry_in, (race.pit_state == pit.STOPPED).astype(float), speed_zone.astype(float), box_along, box_across,
+                     lights, started, np.clip(yellow_ahead, 0, 1), in_yellow, blue, penalties, strikes], axis=1)

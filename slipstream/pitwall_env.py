@@ -282,7 +282,7 @@ def benchmark(pitwall, driver):
                         rng=np.random.default_rng(seed), driving=Driving(1, np.random.default_rng(seed + 1)))
             at_the_wheel = NetworkDriver(driver, 1)
             while not race.done:
-                steer, throttle, brake, call, plan = field_controls(race, at_the_wheel, np.array([True]), pitwall=pitwall if label == 'pitwall' else None)
+                steer, throttle, brake, call, plan, *_ = field_controls(race, at_the_wheel, np.array([True]), pitwall=pitwall if label == 'pitwall' else None)
                 if label == 'scripted':
                     call, plan = scripted_strategy(race)
                 elif label == 'none':
@@ -309,7 +309,7 @@ def benchmark(pitwall, driver):
         at_the_wheel = NetworkDriver(driver, 6)
         while not race.done:
             # One call, so the driver's memory moves on once a tick; the pit wall's calls go to every other car.
-            steer, throttle, brake, wall_call, wall_plan = field_controls(race, at_the_wheel, np.ones(6, dtype=bool), pitwall=pitwall)
+            steer, throttle, brake, wall_call, wall_plan, *_ = field_controls(race, at_the_wheel, np.ones(6, dtype=bool), pitwall=pitwall)
             call = np.where(walled, wall_call, scripted_strategy(race)[0])
             plan = scripted_strategy(race)[1]
             for name in pit.PitPlan.__dataclass_fields__:

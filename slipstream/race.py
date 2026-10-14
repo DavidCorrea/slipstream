@@ -53,6 +53,10 @@ ENGINE_FAILURE = {'from': 0.85, 'rate': 0.002}
 PROPS = {'scrape': 0.015, 'scrape_most': 0.5, 'soft_restitution': 0.05, 'soft_absorbs': 0.03, 'soft_harm': 0.35,
          'breaks_speed': 0.15, 'breaks_knock': 0.2}
 CRASH_OUT = 35.0
+# Why cars retire: into a barrier on their own, into one within CONTACT_BEFORE seconds of touching another car,
+# stuck where they stopped, or with a failed engine.
+RETIREMENTS = ('barrier', 'barrier after contact', 'stuck', 'engine')
+CONTACT_BEFORE = 3.0
 STUCK_SECONDS = 20.0
 STUCK_METRES = 25.0
 # A car up against something at walking pace backs off it and swings its nose round to the way the track goes (or,
@@ -136,6 +140,10 @@ class Race:
         self.finish_time = np.full(count, np.nan)
         self.retired = np.zeros(count, dtype=bool)   # out of the race without finishing (an engine failure, a crash)
         self.stewards = Stewards(count) if stewards else None
+        # Why each retired car is out (RETIREMENTS), and when each car last touched another, to tell a crash on its
+        # own from one that came out of a fight.
+        self.retired_by = np.full(count, '', dtype=object)
+        self.touched_at = np.full(count, -np.inf)
         self.props = None                             # what stands around the track, once placed (place_props)
         # Running totals per car, for summaries: ticks spent off the tarmac and ticks spent touching another car.
         self.off_track_ticks = np.zeros(count, dtype=int)
@@ -356,7 +364,7 @@ class Race:
                 if self.assisted and np.linalg.norm(cars.velocity[car]) < RECOVERY['below']:
                     self._back_off(car, away)
                 if impulse >= CRASH_OUT and not self.retired[car]:
-                    self.retired[car] = True
+                    self.retire(car, 'barrier after contact' if self.time - self.touched_at[car] < CONTACT_BEFORE else 'barrier')
                     events.crashed.append(int(car))
 
     def _back_off(self, car, away):
@@ -398,8 +406,14 @@ class Race:
         self.furthest = np.where(gaining, self.progress, self.furthest)
         self.gained_at = np.where(gaining | self.in_lane, self.time, self.gained_at)
         stuck = ~self.finished & ~self.retired & (self.time - self.gained_at > STUCK_SECONDS)
-        self.retired |= stuck
+        for car in np.flatnonzero(stuck):
+            self.retire(car, 'stuck')
         events.crashed += [int(car) for car in np.flatnonzero(stuck)]
+
+    def retire(self, car, why):
+        """Takes a car out of the race, saying why (RETIREMENTS)."""
+        self.retired[car] = True
+        self.retired_by[car] = why
 
     def _harm(self, contact):
         """Damage from one contact: general damage to both cars, and to whichever part of each car was hit.
@@ -407,6 +421,7 @@ class Race:
         cars = self.cars
         pair = [contact.first, contact.second]
         self.contact_ticks[pair] += 1
+        self.touched_at[pair] = self.time
         harm = DAMAGE['per_impulse'] * max(contact.impulse - DAMAGE['gentle'], 0.0)
         cars.damage[pair] = np.minimum(1.0, cars.damage[pair] + harm)
         for car, other in ((contact.first, contact.second), (contact.second, contact.first)):
@@ -441,7 +456,8 @@ class Race:
         heat = np.clip((self.cars.engine_temp - ENGINE_FAILURE['from']) / (1 - ENGINE_FAILURE['from']), 0, 1)
         failing = ~self.cars.engine_failed & ~self.finished & (self.rng.random(self.count) < ENGINE_FAILURE['rate'] * heat ** 2 * DT)
         self.cars.engine_failed |= failing
-        self.retired |= failing
+        for car in np.flatnonzero(failing & ~self.retired):
+            self.retire(car, 'engine')
         events.engine_failures += [int(car) for car in np.flatnonzero(failing)]
 
     def _cross_pit_entry(self, distance_before, events):

@@ -60,7 +60,8 @@ class DriverEnv(RaceVecEnv):
         gained_at = np.where(gaining, race.time, gained_at)
         self.furthest[id(race)] = (best, gained_at)
         beached = ~race.finished & ~race.retired & (race.time - gained_at > STALLED_SECONDS)
-        race.retired |= beached
+        for car in np.flatnonzero(beached):
+            race.retire(car, 'stuck')
         if race.done:
             del self.furthest[id(race)]
         return -self.crash_cost * beached

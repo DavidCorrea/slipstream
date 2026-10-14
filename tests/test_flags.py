@@ -57,6 +57,17 @@ class TestTheStart:
         assert (race.progress > 20).all()
 
 
+    def test_waiting_for_the_lights_is_not_being_stuck(self):
+        from slipstream.scenery import place
+        race = flagged_race()
+        race.place_props(place(race.track, race.pit, 4, 'countryside'))
+        race.marshals.lights_out_at = 25.0
+        events = []
+        while race.time < 24.0:
+            events += race.step(*STILL(2)).crashed
+        assert events == [] and not race.retired.any()
+
+
 class TestYellowFlags:
     def test_come_out_around_a_car_stopped_by_the_track_and_go_in_after(self):
         race = flagged_race()

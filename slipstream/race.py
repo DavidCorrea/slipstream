@@ -403,8 +403,10 @@ class Race:
         """A car that hasn't got STUCK_METRES further in STUCK_SECONDS is out: stuck against, or beached by,
         something it hit."""
         gaining = self.progress > self.furthest + STUCK_METRES
+        # Waiting on the grid for the lights isn't being stuck.
+        waiting = self.marshals is not None and not self.marshals.started(self.time)
         self.furthest = np.where(gaining, self.progress, self.furthest)
-        self.gained_at = np.where(gaining | self.in_lane, self.time, self.gained_at)
+        self.gained_at = np.where(gaining | self.in_lane | waiting, self.time, self.gained_at)
         stuck = ~self.finished & ~self.retired & (self.time - self.gained_at > STUCK_SECONDS)
         for car in np.flatnonzero(stuck):
             self.retire(car, 'stuck')

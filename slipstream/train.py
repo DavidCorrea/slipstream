@@ -46,6 +46,8 @@ from .warmstart import warm_start
 # their races), every driver is rewarded just for driving well; from then on both fade in over SHAPING_RAMP
 # decisions. (Starting them at a fixed step count failed when a run hadn't learned to drive by then.)
 CAN_DRIVE = 0.5
+# Racing drivers (racer_env.py) can drive once they finish this share of their solo benchmark races.
+CAN_DRIVE_ALONE = 0.75
 SHAPING_RAMP = 4_000_000
 # Exploration noise the strategy outputs start with (log standard deviation): much quieter than the driving
 # outputs, so early learning isn't drowned in random pit calls and plans. The pit call gets a little more, so
@@ -206,6 +208,7 @@ class Progress(BaseCallback):
         self.shaping_file = run / 'shaping.json'
         self.shaping_start = json.loads(self.shaping_file.read_text())['start'] if self.shaping_file.exists() else None
         self.races: list[dict] = []
+        self.finished_alone = None   # the latest benchmark's share of solo races finished
         self.next_benchmark = None
         self.started = time.time()
 
@@ -214,7 +217,7 @@ class Progress(BaseCallback):
         self._set_shaping_strength()
 
     def _set_shaping_strength(self):
-        if self.shaping_start is None and self.races and np.mean([race['finished'] for race in self.races]) >= CAN_DRIVE:
+        if self.shaping_start is None and self._can_drive():
             self.shaping_start = self.num_timesteps
             self.shaping_file.write_text(json.dumps({'start': self.shaping_start}))
             print(f'step {self.num_timesteps:,}: the drivers can drive; personality and condition start to count', flush=True)
@@ -224,6 +227,11 @@ class Progress(BaseCallback):
         if self.training_env.get_attr('pays_for_condition')[0]:
             self.training_env.set_attr('condition_strength', strength)
         self.logger.record('train/shaping_strength', strength)
+
+    def _can_drive(self):
+        if self.training_env.get_attr('judged_alone')[0]:
+            return self.finished_alone is not None and self.finished_alone >= CAN_DRIVE_ALONE
+        return bool(self.races) and np.mean([race['finished'] for race in self.races]) >= CAN_DRIVE
 
     def _on_step(self):
         for info in self.locals['infos']:
@@ -242,6 +250,7 @@ class Progress(BaseCallback):
 
     def _checkpoint(self):
         scores = benchmark(self.model)
+        self.finished_alone = scores['finished']
         for key, value in scores.items():
             self.logger.record(f'benchmark/{key}', value)
         entry = {'step': self.num_timesteps, 'time': round(time.time() - self.started), **scores}

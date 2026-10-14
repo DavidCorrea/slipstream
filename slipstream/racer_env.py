@@ -62,6 +62,9 @@ RACER_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012, 'retire': 3.5, 'of
 
 class RacerEnv(DriverEnv):
     has_league = True
+    # Even the scripted driver finishes only about a fifth of these races (big fields, props, nobody avoiding
+    # anybody, no help off a wall), so how many training cars finish never shows whether the network can drive.
+    judged_alone = True
 
     def __init__(self, races=32, seed=0, rewards=None):
         self.league: list[NumpyNetwork] = []

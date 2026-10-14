@@ -128,3 +128,22 @@ class TestRacingSteady:
         assert steady.rewards['hard_hit'] == fair.rewards['hard_hit']
         assert fair.crash_cost < steady.crash_cost < clean.crash_cost
         assert fair.rewards['off_track'] < steady.rewards['off_track'] < clean.rewards['off_track']
+
+
+class TestKnowingWhenARacingDriverCanDrive:
+    def test_is_judged_from_its_solo_benchmark_races_not_the_chaos_of_training(self):
+        from slipstream.racer_env import RacerEnv
+        from slipstream.train import CAN_DRIVE_ALONE, Progress
+
+        class Training:
+            def get_attr(self, name):
+                return [getattr(RacerEnv, name)]
+
+        progress = Progress.__new__(Progress)
+        progress.races = [{'finished': 0.1}]
+        progress.locals, progress.globals = {}, {}
+        progress.model = type('Model', (), {'get_env': lambda self: Training()})()
+        progress.finished_alone = CAN_DRIVE_ALONE - 0.1
+        assert not progress._can_drive()
+        progress.finished_alone = CAN_DRIVE_ALONE
+        assert progress._can_drive()

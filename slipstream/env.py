@@ -52,6 +52,9 @@ def random_specs(count, rng, spread):
 
 class RaceVecEnv(VecEnv):
     has_league = False   # whether earlier snapshots race as rivals (racer_env.py)
+    # Whether the trainer judges if the network can drive from its solo benchmark races rather than from how many
+    # training cars finish (see train.Progress).
+    judged_alone = False
 
     def __init__(self, races=16, cars=6, laps=LAPS, seed=0, spec_spread=SPEC_SPREAD, rewards=None, rivals=0):
         """`laps` is a number of laps, or a (fewest, most) range each race draws from. `rivals` of each race's

@@ -16,6 +16,10 @@ What a racing driver is paid for, on top of a driver by feel's (env.REWARDS, tra
   wall's business, the driver's is to bring the car in.
 - `radio`, per decision, for doing what the radio asks (the engine mode down when asked to save, up to push).
 
+Like personality, these only count once the network can drive (train.CAN_DRIVE), fading in with the same ramp: a
+first racing driver run paid them from the start, and a driver that could barely get round found that every start
+in traffic cost it penalties and damage, so by 2M decisions it no longer left the grid.
+
 A share of races are drills (PIT_DRILL): the learners are called in from the first lap, so the lane, the limiter
 and the box come up far more often than real strategy would bring them.
 """
@@ -155,6 +159,7 @@ class RacerEnv(DriverEnv):
     def _rewarded(self, race, personality, mine, controls):
         """Plays the decision out and pays every car for it (see the module notes)."""
         rewards, count = self.rewards, race.count
+        # personality_strength is the shaping ramp (train.Progress): 0 until the network can drive, then up to 1.
         weights, strength = traits.WEIGHTS, self.personality_strength
         scaled = lambda multiplier: 1 + (multiplier - 1) * strength
         contact_cost = rewards['contact'] * scaled(traits.blend(weights['contact'], traits.trait(personality, 'aggression')))
@@ -186,13 +191,13 @@ class RacerEnv(DriverEnv):
             used_fuel = np.maximum(fuel - race.cars.fuel, 0.0)
             reward -= conservation * (weights['tyre_wear'] * used_tyres + weights['fuel'] * used_fuel)
             harmed = np.maximum(race.cars.damage + race.cars.wing_damage + race.cars.suspension_damage - harm, 0.0)
-            reward -= rewards['damage'] * harmed * np.minimum(laps_left(race), DAMAGE_LAPS)
+            reward -= strength * rewards['damage'] * harmed * np.minimum(laps_left(race), DAMAGE_LAPS)
             for penalty in events.penalties:
-                reward[penalty.car] -= rewards['penalty'] * penalty.seconds
+                reward[penalty.car] -= strength * rewards['penalty'] * penalty.seconds
             for car, _, _ in events.pit_stopped:
-                reward[car] += rewards['stop']
+                reward[car] += strength * rewards['stop']
             missed = called_before & (race.pit_state == pit.CALLED) & race.pit.entered(distance_before, race.progress % race.track.length)
-            reward -= rewards['stop'] * missed
+            reward -= strength * rewards['stop'] * missed
             reward[events.crashed] -= self.crash_cost
             for car in events.finished:
                 place_now = int(np.flatnonzero(race.standings() == car)[0])
@@ -204,6 +209,6 @@ class RacerEnv(DriverEnv):
         engine = controls[-1]
         heard = race.radio
         followed = ((heard == RADIO_CALLS.index('save')) & (engine < 0.4)) | ((heard == RADIO_CALLS.index('push')) & (engine > 0.6))
-        reward += rewards['radio'] * followed
+        reward += strength * rewards['radio'] * followed
         reward -= rewards['time'] * racing
         return reward

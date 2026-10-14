@@ -47,6 +47,17 @@ def braking(race):
 
 
 class TestWhatARacingDriverIsPaidFor:
+    def test_nothing_racing_costs_extra_until_the_network_can_drive(self):
+        quiet, jumping = env(races=1), env(races=1)
+        for racing in (quiet, jumping):
+            racing.personality_strength = 0.0
+            racing.reset()
+        car = quiet.learner_cars[0][0]
+        early = braking(jumping.races[0])
+        early[car, 1] = 1.0
+        assert jumping.races[0].stewards is not None
+        assert decisions(jumping, early, 20)[car] > decisions(quiet, braking(quiet.races[0]), 20)[car] - RACER_REWARDS['penalty'] * 9
+
     def test_a_penalty_costs_what_that_much_race_time_is_worth(self):
         quiet, jumping = env(races=1), env(races=1)
         quiet.reset(), jumping.reset()

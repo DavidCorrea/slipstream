@@ -15,19 +15,24 @@
   saver really saves. Both sit at 1 for a network that ignores personality.
 - Field race (only from check.py, as it's slow): every car the trained driver, on a circuit with its scenery, the
   race the viewer watches. `field_out` is the share of cars out of the race, `field_off_track` the share of time
-  spent off the tarmac and `field_hits` the hard hits per car. A driver can beat scripted rivals by racing wildly
+  spent off the tarmac and `field_hits` the hard hits per car; for racing drivers also `field_penalties`, the
+  stewards' seconds per car, and the share of cars out for each reason (`field_out_barrier` and so on, see
+  race.RETIREMENTS).
+
+Racing drivers (brains.is_racer) are tested in the world they race in, with the stewards, the start lights and
+flags, and the pit lane to drive themselves, and so is the scripted driver they're measured against. A driver can beat scripted rivals by racing wildly
   and still wreck a field of itself: on 2026-10-12 driver-pass 90M led every other score, while in a field of
   itself a third of its cars crashed out, four times as many as driver-race 82M.
 """
 import numpy as np
 
 from . import personality as traits
-from .brains import NetworkDriver
+from .brains import NetworkDriver, is_racer
 from .car import CarSpecs, FUEL_CAPACITY
 from .field import field_controls, makes_pit_calls
 from .human import Driving
 from .observe import OBSERVATION_NAMES
-from .race import HARD_HIT, Race
+from .race import HARD_HIT, RETIREMENTS, Race
 from .scenery import location_for, place
 from .track import generate_track
 from .weather import Weather
@@ -48,11 +53,12 @@ FIELD_CARS = 12
 FIELD_LAPS = 3
 
 
-def benchmark_race(track, cars, laps, weather=None):
+def benchmark_race(track, cars, laps, weather=None, racing=False):
     """A race on a benchmark circuit. Every car, trained or scripted, races with human hands and feet (see
-    human.py), as drivers train with them; chance is seeded from the circuit, so every snapshot faces the same race."""
+    human.py), as drivers train with them; chance is seeded from the circuit, so every snapshot faces the same race.
+    `racing` makes it a racing driver's race (see the module notes)."""
     return Race(track, CarSpecs.uniform(cars), laps, weather=weather, rng=np.random.default_rng(track.seed),
-                driving=Driving(cars, np.random.default_rng(track.seed + 1)))
+                driving=Driving(cars, np.random.default_rng(track.seed + 1)), stewards=racing, assisted=not racing, flags=racing)
 
 
 def run_race(race, model, trained, personality=None):
@@ -75,16 +81,17 @@ def run_race(race, model, trained, personality=None):
 
 def benchmark(model, seeds=SEEDS):
     paces, finished, off_track, places, damage = [], [], [], [], []
+    racing = is_racer(model)
     for seed in seeds:
         track = generate_track(seed)
-        solo = run_race(benchmark_race(track, 1, LAPS), model, np.array([True]))
-        script = run_race(benchmark_race(track, 1, LAPS), None, np.array([False]))
+        solo = run_race(benchmark_race(track, 1, LAPS, racing=racing), model, np.array([True]))
+        script = run_race(benchmark_race(track, 1, LAPS, racing=racing), None, np.array([False]))
         finished.append(float(solo.finished[0]))
         paces.append(script.finish_time[0] / solo.finish_time[0] if solo.finished[0] else 0.0)
         off_track.append(solo.off_track_ticks[0] / solo.tick)
 
         trained = np.arange(6) % 2 == 0
-        mixed = run_race(benchmark_race(track, 6, LAPS), model, trained)
+        mixed = run_race(benchmark_race(track, 6, LAPS, racing=racing), model, trained)
         place = np.empty(6)
         place[mixed.standings()] = np.arange(6) / 5
         places.append(place[trained].mean())
@@ -108,7 +115,7 @@ def wet_time_trial(model, seeds=WET_SEEDS):
     paces, off_track = [], []
     for seed in seeds:
         track = generate_track(seed)
-        wet = lambda: benchmark_race(track, 1, LAPS, Weather.for_race(seed, track.length, LAPS, 'wet'))
+        wet = lambda: benchmark_race(track, 1, LAPS, Weather.for_race(seed, track.length, LAPS, 'wet'), racing=is_racer(model))
         solo = run_race(wet(), model, np.array([True]))
         script = run_race(wet(), None, np.array([False]))
         paces.append(script.finish_time[0] / solo.finish_time[0] if solo.finished[0] else 0.0)
@@ -149,21 +156,31 @@ def trait_effects(model, seeds=TRAIT_SEEDS):
 
 def field_race(model, seeds=FIELD_SEEDS, cars=FIELD_CARS, laps=FIELD_LAPS):
     """Every car driven by `model` (the script when it's None), racing among the scenery the viewer sees."""
-    out, off_track, hits = [], [], []
+    out, off_track, hits, penalties = [], [], [], []
+    causes = {why: [] for why in RETIREMENTS}
+    racing = model is not None and is_racer(model)
     for seed in seeds:
         track = generate_track(seed)
-        race = benchmark_race(track, cars, laps)
+        race = benchmark_race(track, cars, laps, racing=racing)
         race.place_props(place(track, race.pit, seed, location_for(seed)))
         driver = NetworkDriver(model, cars) if model is not None else None
         everyone, hard_hits, racing_ticks, off_ticks = np.ones(cars, dtype=bool), 0, 0, 0
         while not race.done:
             # Only while racing: a car out of the race sits wherever it stopped, often on the grass.
-            racing = ~race.finished & ~race.retired
+            running = ~race.finished & ~race.retired
             events = race.step(*field_controls(race, driver, everyone))
             hard_hits += sum(contact.impulse >= HARD_HIT for contact in events.contacts)
-            racing_ticks += racing.sum()
-            off_ticks += (racing & ~race.on_track).sum()
+            racing_ticks += running.sum()
+            off_ticks += (running & ~race.on_track).sum()
         out.append(race.retired.mean())
         off_track.append(off_ticks / max(racing_ticks, 1))
         hits.append(hard_hits / cars)
-    return {'field_out': float(np.mean(out)), 'field_off_track': float(np.mean(off_track)), 'field_hits': float(np.mean(hits))}
+        for why in RETIREMENTS:
+            causes[why].append(float(np.mean(race.retired_by == why)))
+        if race.stewards is not None:
+            penalties.append(race.stewards.seconds.mean())
+    scores = {'field_out': float(np.mean(out)), 'field_off_track': float(np.mean(off_track)), 'field_hits': float(np.mean(hits))}
+    if racing:
+        scores['field_penalties'] = float(np.mean(penalties))
+        scores.update({f"field_out_{why.replace(' ', '_')}": float(np.mean(shares)) for why, shares in causes.items()})
+    return scores

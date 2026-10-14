@@ -21,6 +21,8 @@ from .brains import load_network
 
 CHECK_SEEDS = tuple(range(2001, 2025))
 CHECKED_SCORES = ('pace', 'place', 'damage', 'off_track', 'finished', 'field_out', 'field_off_track', 'field_hits')
+# Racing drivers' field races also say how much penalty time they collect and why cars drop out.
+RACER_SCORES = ('field_penalties', 'field_out_barrier', 'field_out_barrier_after_contact', 'field_out_stuck', 'field_out_engine')
 WAIT_SECONDS = 60
 # Place moves by about 0.05 from one snapshot to the next with no real change, so a run is judged by the average of
 # its latest few rather than by its single best, which is as much luck as driving.
@@ -35,7 +37,8 @@ def unchecked(run):
 
 
 def record(run, checkpoint, scores):
-    entry = {'checkpoint': checkpoint, 'step': int(checkpoint.split('-')[1]), **{name: scores[name] for name in CHECKED_SCORES}}
+    entry = {'checkpoint': checkpoint, 'step': int(checkpoint.split('-')[1]),
+             **{name: scores[name] for name in CHECKED_SCORES + RACER_SCORES if name in scores}}
     with open(run / 'check.jsonl', 'a') as log:
         log.write(json.dumps(entry) + '\n')
     return entry
@@ -73,6 +76,9 @@ def main():
                   f"damage {entry['damage']:.2f}, off track {entry['off_track']:.1%}", flush=True)
             print(f"  in a field of itself: out {entry['field_out']:.1%}, off track {entry['field_off_track']:.1%}, "
                   f"hard hits {entry['field_hits']:.1f} a car", flush=True)
+            if 'field_penalties' in entry:
+                print(f"  penalties {entry['field_penalties']:.1f} s a car; out into a barrier {entry['field_out_barrier']:.1%} alone, "
+                      f"{entry['field_out_barrier_after_contact']:.1%} after contact, stuck {entry['field_out_stuck']:.1%}", flush=True)
             average = recent_average(run)
             print(f"  latest {AVERAGED} on average: pace {average['pace']:.3f}x, place {average['place']:.2f}, "
                   f"damage {average['damage']:.2f}, field out {average['field_out']:.1%}", flush=True)

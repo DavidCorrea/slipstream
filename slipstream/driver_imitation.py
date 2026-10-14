@@ -11,22 +11,30 @@ import numpy as np
 import torch
 
 from .drivers import scripted_controls
+from .strategy import RACER_ACTIONS
 
 
 def collect_driving(env, decisions, sequence_length=128):
-    """Plays the env's races with the scripted driver at every wheel. Returns, cut into sequences of
-    `sequence_length` decisions per car: what each driver sensed, what the scripted driver did (steer, pedal), and
-    where a new race began inside a sequence."""
+    """Plays the env's races with the scripted driver at every learner's wheel. Returns, cut into sequences of
+    `sequence_length` decisions per car: what each driver sensed, what the scripted driver did (steer, pedal, and for
+    racing drivers the buttons: the limiter on in the pit lane, reverse when it backs up, the engine mode as the team
+    set it), and where a new race began inside a sequence."""
     observations = env.reset()
     sensed, did, began = [], [], []
     starting = np.ones(env.num_envs, dtype=bool)
+    races = env.action_size() == len(RACER_ACTIONS)
     while len(sensed) * env.num_envs < decisions or len(sensed) % sequence_length:
-        actions = np.zeros((env.num_envs, 2), dtype=np.float32)
+        actions = np.zeros((env.num_envs, env.action_size()), dtype=np.float32)
         for number, race in enumerate(env.races):
             steer, throttle, brake = scripted_controls(race)
-            slots = slice(number * env.cars, (number + 1) * env.cars)
-            actions[slots, 0] = np.clip(steer, -1, 1)
-            actions[slots, 1] = np.clip(throttle - brake, -1, 1)
+            mine = env.learner_cars[number]
+            slots = slice(number * env.learners, (number + 1) * env.learners)
+            actions[slots, 0] = np.clip(steer, -1, 1)[mine]
+            actions[slots, 1] = np.clip(throttle - brake, -1, 1)[mine]
+            if races:
+                actions[slots, 2] = np.where(race.in_lane, 1.0, -1.0)[mine]
+                actions[slots, 3] = np.where(race.cars.reversing, 1.0, -1.0)[mine]
+                actions[slots, 4] = (2 * race.cars.engine - 1)[mine]
         sensed.append(observations)
         did.append(actions)
         began.append(starting.copy())

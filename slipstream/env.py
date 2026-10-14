@@ -51,6 +51,8 @@ def random_specs(count, rng, spread):
 
 
 class RaceVecEnv(VecEnv):
+    has_league = False   # whether earlier snapshots race as rivals (racer_env.py)
+
     def __init__(self, races=16, cars=6, laps=LAPS, seed=0, spec_spread=SPEC_SPREAD, rewards=None, rivals=0):
         """`laps` is a number of laps, or a (fewest, most) range each race draws from. `rivals` of each race's
         `cars` are driven by the scripted driver: the network only drives (and learns from) the rest, but races
@@ -103,6 +105,10 @@ class RaceVecEnv(VecEnv):
         """Anything else each car earns or pays once its decision has played out (nothing, here)."""
         return np.zeros(race.count)
 
+    def field_size(self):
+        """How many cars the next race has: always `cars` here; subclasses can vary it (with `learners` fixed)."""
+        return self.cars
+
     def controls(self, race, actions):
         """Steer, throttle, brake, pit call and stop plan for every car in a race."""
         return decode(actions, race.count)
@@ -115,9 +121,9 @@ class RaceVecEnv(VecEnv):
         return Race(track, random_specs(self.cars, self.rng, self.spec_spread), laps, weather=Weather.for_race(seed, track.length, laps))
 
     def reset(self):
-        self.personalities = [traits.random_personalities(self.cars, self.rng) for _ in range(self.race_count)]
+        self.personalities = [traits.random_personalities(self.field_size(), self.rng) for _ in range(self.race_count)]
         self.races = [self.new_race(personality) for personality in self.personalities]
-        self.learner_cars = [self._seat_learners() for _ in self.races]
+        self.learner_cars = [self._seat_learners(race.count) for race in self.races]
         self.condition = [self.condition_strength * condition_value(race) for race in self.races]
         self.returns[:] = 0
         self.lengths[:] = 0
@@ -134,7 +140,7 @@ class RaceVecEnv(VecEnv):
         for number, race in enumerate(self.races):
             slots = slice(number * self.learners, (number + 1) * self.learners)
             mine = self.learner_cars[number]
-            actions = np.zeros((self.cars, self.action_size()))
+            actions = np.zeros((race.count, self.action_size()))
             actions[mine] = self.actions[slots]
             earned = self._drive(race, self.personalities[number], actions, mine) + self.after_drive(race)
             observations[slots] = self.observe(race, self.personalities[number])[mine]
@@ -151,9 +157,9 @@ class RaceVecEnv(VecEnv):
                 for slot in range(slots.start, slots.stop):
                     infos[slot]['terminal_observation'] = observations[slot].copy()
                 infos[slots.start]['race'] = summarize(race)
-                self.personalities[number] = traits.random_personalities(self.cars, self.rng)
+                self.personalities[number] = traits.random_personalities(self.field_size(), self.rng)
                 self.races[number] = race = self.new_race(self.personalities[number])
-                self.learner_cars[number] = self._seat_learners()
+                self.learner_cars[number] = self._seat_learners(race.count)
                 self.condition[number] = self.condition_strength * condition_value(race)
                 observations[slots] = self.observe(race, self.personalities[number])[self.learner_cars[number]]
         self.returns += rewards
@@ -164,8 +170,8 @@ class RaceVecEnv(VecEnv):
         self.lengths[dones] = 0
         return observations, rewards.astype(np.float32), dones, infos
 
-    def _seat_learners(self):
-        return np.sort(self.rng.permutation(self.cars)[:self.learners])
+    def _seat_learners(self, count):
+        return np.sort(self.rng.permutation(count)[:self.learners])
 
     def _drive(self, race, personality, actions, mine):
         steer, throttle, brake, pit_call, plan = self.controls(race, actions)

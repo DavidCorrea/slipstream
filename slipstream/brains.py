@@ -37,15 +37,19 @@ def load_network(path: Path):
     return PPO.load(path, device='cpu')
 
 
+def is_racer(model):
+    """Whether a network is a racing driver (senses.RACER_SENSE_NAMES in, strategy.RACER_ACTIONS out)."""
+    return model.observation_space.shape[0] == len(RACER_SENSE_NAMES) and model.action_space.shape[0] == len(RACER_ACTIONS)
+
+
 class NetworkDriver:
     def __init__(self, model, count):
         self.model = model
         self.recurrent = model.has_memory if isinstance(model, NumpyNetwork) else hasattr(model.policy, 'lstm_actor')
         # Drivers by feel sense (senses.py) and only steer and press a pedal; racing drivers know more, and have
         # buttons on the wheel too.
-        inputs, outputs = model.observation_space.shape[0], model.action_space.shape[0]
-        self.races = inputs == len(RACER_SENSE_NAMES) and outputs == len(RACER_ACTIONS)
-        self.feels = self.races or (inputs == len(SENSE_NAMES) and outputs == 2)
+        self.races = is_racer(model)
+        self.feels = self.races or (model.observation_space.shape[0] == len(SENSE_NAMES) and model.action_space.shape[0] == 2)
         self.memory = None
         self.starting = np.ones(count, dtype=bool)
 

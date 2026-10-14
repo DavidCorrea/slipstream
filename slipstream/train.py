@@ -5,6 +5,7 @@
     .venv/bin/python -m slipstream.train --from personality   # a new run that starts as a copy of another
     .venv/bin/python -m slipstream.train --from main/step-000005013504   # ...or of one of its snapshots
     .venv/bin/python -m slipstream.train --feel --run driver   # a driver that drives by feel, with a memory
+    .venv/bin/python -m slipstream.train --racer --run racer --imitate 2000000 --workers 4   # a racing driver
 
 Starting from another run copies every weight the two networks share (see warmstart.py), so the new run can
 already drive and only has to learn what's new.
@@ -18,6 +19,7 @@ A run lives in runs/<name>/:
 Ctrl+C saves the latest network before stopping.
 """
 import argparse
+import functools
 import json
 import time
 from pathlib import Path
@@ -33,6 +35,9 @@ from .benchmark import benchmark
 from .driver_env import DriverEnv
 from .driver_imitation import collect_driving, imitate_driver
 from .env import RaceVecEnv
+from .numpy_network import export
+from .parallel import ParallelRaces
+from .racer_env import LEAGUE_SIZE, RacerEnv
 from .strategy import ACTION_NAMES, DRIVING_ONLY
 from .warmstart import warm_start
 
@@ -128,19 +133,36 @@ def race_rewards(style=None, run=None):
     return REWARD_STYLES[style or 'traffic']
 
 
-def run_learning_rate(rate=None, run=None):
-    """The learning rate a driver by feel trains at: FEEL_SETTINGS's, unless the run was started with its own,
-    which it keeps whenever it's resumed."""
+def run_learning_rate(rate=None, run=None, default=FEEL_SETTINGS['learning_rate']):
+    """The learning rate a driver trains at: `default` (FEEL_SETTINGS's for a driver by feel), unless the run was
+    started with its own, which it keeps whenever it's resumed."""
     marker = run / LEARNING_RATE_FILE if run is not None else None
     if rate and marker is not None:
         marker.write_text(json.dumps({'learning_rate': rate}))
     elif not rate and marker is not None and marker.exists():
         rate = json.loads(marker.read_text())['learning_rate']
-    return rate or FEEL_SETTINGS['learning_rate']
+    return rate or default
 
 
 def driver_env(races, seed, cars=FEEL_CARS, rivals=FEEL_RIVALS, rewards=TRAFFIC_REWARDS):
     return DriverEnv(races=races, cars=cars, seed=seed, rewards=rewards, rivals=rivals)
+
+
+# Racing drivers (racer_env.py) start from scratch, so they learn at the rate drivers by feel started at, and look
+# further ahead: at 0.99 a reward counts about ten seconds ahead, at 0.995 about twenty, closer to how long a hit's
+# damage or a penalty takes to tell in the race.
+RACER_SETTINGS = {**FEEL_SETTINGS, 'learning_rate': 3e-4, 'gamma': 0.995}
+LEAGUE_FOLDER = 'league'
+
+
+def racer_env(races, seed, workers=1):
+    """The racing drivers' training world, its races split over `workers` processes when there's more than one
+    (parallel.py): the same races either way, just played on more CPU cores."""
+    if workers <= 1:
+        return RacerEnv(races=races, seed=seed)
+    if races % workers:
+        raise SystemExit(f'{races} races can\'t be split evenly over {workers} workers')
+    return ParallelRaces([functools.partial(RacerEnv, races=races // workers, seed=seed + worker) for worker in range(workers)])
 
 
 def resume_driver(path, env, rate=FEEL_SETTINGS['learning_rate']):
@@ -229,11 +251,40 @@ class Progress(BaseCallback):
         name = f'step-{self.num_timesteps:012d}'
         self.model.save(self.run / 'checkpoints' / name)
         self.model.save(self.run / 'model')
+        if self.training_env.get_attr('has_league')[0]:
+            # Racing drivers race their own earlier snapshots too (racer_env.py): this one joins them.
+            snapshot = self.run / LEAGUE_FOLDER / f'{name}.npz'
+            snapshot.parent.mkdir(exist_ok=True)
+            export(self.model, snapshot)
+            self.training_env.env_method('add_to_league', snapshot, indices=0)
         with open(self.run / 'history.jsonl', 'a') as history:
             history.write(json.dumps({'checkpoint': name, **entry}) + '\n')
         print(f"step {self.num_timesteps:,}: pace {scores['pace']:.2f}x script, finished {scores['finished']:.0%}, "
               f"off track {scores['off_track']:.1%}, place vs script {scores['place']:.2f} (0 best, 1 worst), damage {scores['damage']:.2f}, "
               f"wet pace {scores['wet_pace']:.2f}x script (off track {scores['wet_off_track']:.1%})", flush=True)
+
+
+def racing_driver(arguments, run, saved):
+    """The racing driver to train: the run's, resumed, or a new one, copying the scripted driver first if asked."""
+    env = racer_env(arguments.races, arguments.seed, arguments.workers)
+    rate = run_learning_rate(arguments.learning_rate, run, default=RACER_SETTINGS['learning_rate'])
+    if saved.exists():
+        model = resume_driver(saved, env, rate)
+        league = sorted((run / LEAGUE_FOLDER).glob('step-*.npz'))
+        for snapshot in league[-LEAGUE_SIZE:]:
+            env.env_method('add_to_league', snapshot, indices=0)
+        print(f'Resuming {run} at step {model.num_timesteps:,}, learning at {rate:g}, with {min(len(league), LEAGUE_SIZE)} snapshots in its league')
+        return model
+    model = RecurrentPPO('MlpLstmPolicy', env, device='cpu', seed=arguments.seed, tensorboard_log=str(run / 'tensorboard'), verbose=0,
+                         **{**RACER_SETTINGS, 'learning_rate': rate})
+    if arguments.imitate:
+        recording = RacerEnv(races=arguments.races, seed=arguments.seed + 1)
+        observations, actions, starts = collect_driving(recording, arguments.imitate)
+        error = imitate_driver(model.policy, observations, actions, starts)
+        print(f'Starting {run}: a racing driver, copying the scripted driver first ({observations.shape[0] * observations.shape[1]:,} decisions, error {error:.4f})')
+    else:
+        print(f'Starting {run}: a racing driver')
+    return model
 
 
 def quiet_strategy(model):
@@ -256,7 +307,9 @@ def main():
     parser.add_argument('--rewards', choices=sorted(REWARD_STYLES), help='with --feel, what to race for (REWARD_STYLES); the run remembers it')
     parser.add_argument('--learning-rate', type=float, help=f"with --feel, the run's learning rate (default {FEEL_SETTINGS['learning_rate']}); the run remembers it")
     parser.add_argument('--imitate', type=int, default=0, metavar='DECISIONS',
-                        help='with --feel, start a new run by copying the scripted driver over this many decisions (see driver_imitation.py)')
+                        help='with --feel or --racer, start a new run by copying the scripted driver over this many decisions (see driver_imitation.py)')
+    parser.add_argument('--racer', action='store_true', help='train a racing driver from scratch, in every rule of the game (see racer_env.py)')
+    parser.add_argument('--workers', type=int, default=1, help='with --racer, processes to play the races on (more CPU cores, more fan)')
     arguments = parser.parse_args()
 
     torch.set_num_threads(4)
@@ -265,7 +318,9 @@ def main():
     saved = run / 'model.zip'
     if arguments.cars is None:
         arguments.cars = FEEL_CARS if arguments.feel else 6
-    if arguments.feel:
+    if arguments.racer:
+        model = racing_driver(arguments, run, saved)
+    elif arguments.feel:
         env = driver_env(races=arguments.races, cars=arguments.cars, seed=arguments.seed, rivals=arguments.rivals,
                          rewards=race_rewards(arguments.rewards, run))
         if env.rewards['closing']:
@@ -310,8 +365,13 @@ def main():
             print(f'Starting {run} as a copy of {source}')
         else:
             print(f'Starting {run}')
-    rivals = f', {arguments.rivals} of them scripted' if arguments.feel and arguments.rivals else ''
-    print(f'{env.num_envs} cars per step ({arguments.races} races of {arguments.cars}{rivals}); benchmark every {arguments.benchmark_every:,} decisions')
+    if arguments.racer:
+        env = model.get_env()
+        print(f'{env.num_envs} cars per step ({arguments.races} races of 6 to 20 cars on {arguments.workers} worker(s)); '
+              f'benchmark every {arguments.benchmark_every:,} decisions')
+    else:
+        rivals = f', {arguments.rivals} of them scripted' if arguments.feel and arguments.rivals else ''
+        print(f'{env.num_envs} cars per step ({arguments.races} races of {arguments.cars}{rivals}); benchmark every {arguments.benchmark_every:,} decisions')
     try:
         model.learn(total_timesteps=arguments.steps, callback=Progress(run, arguments.benchmark_every),
                     reset_num_timesteps=False, tb_log_name='ppo')

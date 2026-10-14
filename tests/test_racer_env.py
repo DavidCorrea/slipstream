@@ -1,0 +1,90 @@
+import numpy as np
+
+from slipstream.racer_env import FIELD, LAPS, LEARNERS, RACER_REWARDS, RacerEnv
+from slipstream.senses import RACER_SENSE_NAMES
+from slipstream.strategy import RACER_ACTIONS
+
+
+def env(races=4, seed=0):
+    racing = RacerEnv(races=races, seed=seed)
+    racing.personality_strength = 1.0
+    return racing
+
+
+class TestTheTrainingWorld:
+    def test_races_have_the_games_rules_and_every_size_of_field(self):
+        racing = env(races=12)
+        racing.reset()
+        sizes = {race.count for race in racing.races}
+        assert min(sizes) >= FIELD[0] and max(sizes) <= FIELD[1] and len(sizes) > 3
+        for race in racing.races:
+            assert race.stewards is not None and race.marshals is not None and not race.assisted
+            assert LAPS[0] <= race.laps <= LAPS[1]
+        assert racing.num_envs == 12 * LEARNERS
+        assert racing.observation_space.shape == (len(RACER_SENSE_NAMES),)
+        assert racing.action_space.shape == (len(RACER_ACTIONS),)
+
+    def test_steps_whole_races_through_to_new_ones(self):
+        racing = env(races=2)
+        observations = racing.reset()
+        assert observations.shape == (2 * LEARNERS, len(RACER_SENSE_NAMES))
+        actions = np.zeros((racing.num_envs, len(RACER_ACTIONS)))
+        actions[:, 1] = 0.6
+        for _ in range(200):
+            observations, rewards, dones, infos = racing.step(actions)
+        assert np.isfinite(rewards).all() and np.isfinite(observations).all()
+
+
+def decisions(racing, controls, count):
+    race, mine = racing.races[0], racing.learner_cars[0]
+    return sum(racing._drive(race, racing.personalities[0], controls, mine) for _ in range(count))
+
+
+def braking(race):
+    controls = np.zeros((race.count, len(RACER_ACTIONS)))
+    controls[:, 1] = -1.0
+    return controls
+
+
+class TestWhatARacingDriverIsPaidFor:
+    def test_a_penalty_costs_what_that_much_race_time_is_worth(self):
+        quiet, jumping = env(races=1), env(races=1)
+        quiet.reset(), jumping.reset()
+        car = quiet.learner_cars[0][0]
+        early = braking(jumping.races[0])
+        early[car, 1] = 1.0
+        # Moving off the grid before the lights is a jump start (the lights take five seconds at least).
+        assert decisions(jumping, early, 20)[car] < decisions(quiet, braking(quiet.races[0]), 20)[car] - RACER_REWARDS['penalty'] * 9
+
+    def test_damage_costs_more_with_more_race_to_go(self):
+        paid = {}
+        for laps in (2, 20):
+            racing = env(races=1)
+            racing.reset()
+            race, car = racing.races[0], racing.learner_cars[0][0]
+            race.laps = laps
+            race.cars.velocity[car] = race.cars.forward[car] * 30.0
+            paid[laps] = decisions(racing, braking(race), 3)[car]
+            assert race.cars.damage[car] > 0
+        assert paid[20] < paid[2]
+
+
+class TestTheLeague:
+    def test_earlier_snapshots_drive_some_of_the_rivals(self, tmp_path):
+        from sb3_contrib import RecurrentPPO
+
+        from slipstream.numpy_network import export
+        from slipstream.train import RACER_SETTINGS
+
+        racing = env(races=6, seed=3)
+        export(RecurrentPPO('MlpLstmPolicy', racing, device='cpu', **RACER_SETTINGS), tmp_path / 'snapshot.npz')
+        racing.add_to_league(tmp_path / 'snapshot.npz')
+        racing.reset()
+        actions = np.zeros((racing.num_envs, len(RACER_ACTIONS)))
+        for _ in range(3):
+            racing.step(actions)
+        seated = [racing.league_cars[id(race)] for race in racing.races]
+        assert any(len(cars) for cars in seated)
+        for race, cars, mine in zip(racing.races, seated, racing.learner_cars):
+            assert not set(cars) & set(mine)
+            assert len(cars) <= (race.count - LEARNERS) // 2

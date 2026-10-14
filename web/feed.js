@@ -28,6 +28,7 @@ export function createFeed({ onSelect }) {
       case 'crash': return ['control', `${name(car)} retires: crashed`];
       case 'barrier': return ['control', `${name(car)} hits the barrier`];
       case 'mistake': return ['control', `A mistake from ${name(car)}`];
+      case 'penalty': return ['control', `${moment.seconds} s penalty for ${name(car)}: ${moment.reason}`];
       case 'tow': return ['control', `${name(car)} in the tow of ${name(other)}`];
       case 'rainStarts': return ['control', 'Rain is falling on the circuit', false];
       case 'rainStops': return ['control', `The rain has stopped; the track is ${Math.round(moment.wetness * 100)}% wet`, false];

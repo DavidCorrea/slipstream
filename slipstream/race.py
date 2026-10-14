@@ -17,6 +17,7 @@ from .obstacles import Obstacles
 from .surface import Surface
 from .pit import PitLane, PitPlan
 from .scenery import SOFT
+from .stewards import Stewards
 from .track import Track
 from .weather import Weather
 
@@ -66,6 +67,8 @@ class Contact:
     second: int
     impulse: float          # m/s of closing speed taken out
     point: np.ndarray       # where they touched
+    first_into: float = 0.0     # m/s each car was moving into the other just before, for the stewards
+    second_into: float = 0.0
 
 
 @dataclass
@@ -91,16 +94,18 @@ class TickEvents:
     punctures: list = field(default_factory=list)          # cars that just got a puncture
     engine_failures: list = field(default_factory=list)    # cars whose engine just failed
     mistakes: list = field(default_factory=list)           # drivers who just made a mistake
+    penalties: list = field(default_factory=list)          # stewards.Penalty for each penalty handed out
 
 
 class Race:
     def __init__(self, track: Track, specs: CarSpecs, laps: int, ghosts=False, weather: Weather | None = None,
-                 rng=None, driving: Driving | None = None):
+                 rng=None, driving: Driving | None = None, stewards=False):
         """`ghosts` makes every car race on its own: all start from pole, pass through each other, and the race
         only ends when all of them have finished. That's many solo races run side by side, for training the pit
         wall (see pitwall.py). Without a `weather`, the race is dry. `rng` drives chance (punctures, failures,
         where debris lands); `driving`, when given, puts the drivers' hands and feet between what they ask for and
-        what the cars get (see human.py)."""
+        what the cars get (see human.py). `stewards` hands out time penalties (see stewards.py); training races
+        from before there were any race without them."""
         self.track, self.specs, self.laps, self.ghosts = track, specs, laps, ghosts
         self.rng = rng if rng is not None else np.random.default_rng(track.seed)
         self.driving = driving
@@ -124,6 +129,7 @@ class Race:
         self.tick = 0
         self.finish_time = np.full(count, np.nan)
         self.retired = np.zeros(count, dtype=bool)   # out of the race without finishing (an engine failure, a crash)
+        self.stewards = Stewards(count) if stewards else None
         self.props = None                             # what stands around the track, once placed (place_props)
         # Running totals per car, for summaries: ticks spent off the tarmac and ticks spent touching another car.
         self.off_track_ticks = np.zeros(count, dtype=int)
@@ -204,10 +210,14 @@ class Race:
         """Laps completed by each car (0 on the way to the first line crossing)."""
         return np.maximum(np.floor(self.progress / self.track.length), 0).astype(int)
 
+    def race_times(self):
+        """Each car's race time with its penalties added (NaN until it finishes)."""
+        return self.finish_time + (self.stewards.seconds if self.stewards is not None else 0.0)
+
     def standings(self):
-        """Car indices from first to last: finishers by finishing time, then everyone else by distance covered, and
-        cars that retired last."""
-        key = np.where(self.finished, -1e9 + np.nan_to_num(self.finish_time), np.where(self.retired, 1e9, 0) - self.progress)
+        """Car indices from first to last: finishers by race time, penalties included, then everyone else by distance
+        covered, and cars that retired last."""
+        key = np.where(self.finished, -1e9 + np.nan_to_num(self.race_times()), np.where(self.retired, 1e9, 0) - self.progress)
         return np.argsort(key, kind='stable')
 
     def step(self, steer, throttle, brake, pit_call=None, plan: PitPlan | None = None) -> TickEvents:
@@ -260,6 +270,8 @@ class Race:
         self.off_track_ticks += ~self.on_track
         if self.props is not None:
             self._retire_stuck(events)
+        if self.stewards is not None:
+            events.penalties = self.stewards.judge(self, events.contacts, events.crashed)
 
         crossed = (self.lap_of() > laps_before) & ~self.finished
         events.laps = list(np.flatnonzero(crossed))
@@ -535,6 +547,8 @@ class Race:
             cars.position[first] += normal * overlap / 2
             cars.position[second] -= normal * overlap / 2
             closing = np.dot(cars.velocity[first] - cars.velocity[second], normal)
+            # `normal` points from the second car to the first, so the first moves into the second against it.
+            first_into, second_into = -np.dot(cars.velocity[first], normal), np.dot(cars.velocity[second], normal)
             impulse = 0.0
             if closing < 0:
                 impulse = -(1 + RESTITUTION) * closing / 2
@@ -544,7 +558,7 @@ class Race:
             middle = (centres[first] + centres[second]) / 2
             surface = np.dot(centres[first], normal) - _reach_along(forward[first], left[first], normal) + overlap / 2
             point = middle + normal * (surface - np.dot(middle, normal))
-            contacts.append(Contact(int(first), int(second), float(abs(impulse) * 2), point))
+            contacts.append(Contact(int(first), int(second), float(abs(impulse) * 2), point, float(first_into), float(second_into)))
         return contacts
 
 

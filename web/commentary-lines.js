@@ -1,7 +1,7 @@
 // What the commentator says when the AI commentator isn't writing the line (it isn't loaded, it was too slow, or its
 // line didn't stick to the facts): plenty of lines for each kind of moment, so a race doesn't hear the same few
 // again and again. {car} is who the moment is about, {other} the other car in it; {place}, {compound}, {standing}
-// (seconds stopped), {lapTime}, {lap}, {laps} and {lapsToGo} what it says. The drivers have no stated gender, so
+// (seconds stopped), {seconds} and {reason} (a penalty's), {lapTime}, {lap}, {laps} and {lapsToGo} what it says. The drivers have no stated gender, so
 // no line says he or she.
 
 export const TEMPLATES = {
@@ -175,6 +175,14 @@ export const TEMPLATES = {
     'A heavy impact for {car}, the race is over.',
     'That is a big one! {car} into the barriers, out of the race.',
     '{car} crashes out, a sad end to the race.',
+  ],
+  penalty: [
+    'The stewards have spoken: {seconds} seconds for {car}, for {reason}.',
+    'A {seconds}-second penalty for {car}. That could cost them.',
+    '{car} will have {seconds} seconds added, {reason}.',
+    'Bad news for {car}, a time penalty from the stewards.',
+    'Penalty! {seconds} seconds for {car}.',
+    'The stewards hand {car} {seconds} seconds for {reason}.',
   ],
   barrier: [
     '{car} clips the barrier, that was close!',

@@ -19,6 +19,7 @@
     "slipstream/scenery.py",
     "slipstream/senses.py",
     "slipstream/session.py",
+    "slipstream/stewards.py",
     "slipstream/strategy.py",
     "slipstream/surface.py",
     "slipstream/timing.py",
@@ -33,5 +34,5 @@
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
     "brains/pitwall-feel/driver.json"
   ],
-  "bytes": 2504889
+  "bytes": 2511288
 }

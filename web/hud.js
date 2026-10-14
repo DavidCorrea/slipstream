@@ -126,6 +126,7 @@ export function createHud({ onSelect }) {
       if (cars.draft?.[selected] > 0.3) flags.push('<span class="tow">Tow</span>');
       if (cars.dirtyAir?.[selected] > 0.3) flags.push('<span class="slide">Dirty air</span>');
       if (cars.punctured?.[selected]) flags.push('<span class="warning">Puncture</span>');
+      if (cars.penalty?.[selected]) flags.push(`<span class="warning">+${cars.penalty[selected]} s penalty</span>`);
       if (cars.retired?.[selected]) flags.push('<span class="warning">Engine failure</span>');
       $('tele-flags').innerHTML = flags.join('');
 

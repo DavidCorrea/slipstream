@@ -105,7 +105,8 @@ class RaceSession:
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
         self.seed = int(np.random.default_rng().integers(2 ** 31)) if seed is None else seed
         track = generate_track(self.seed)
-        self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast))
+        self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
+                         stewards=True)
         self.location = location_for(self.seed) if location is None else location
         self.race.place_props(place(track, self.race.pit, self.seed, self.location))
         self.timing = Timing(self.race.track.length, cars)
@@ -233,7 +234,7 @@ class RaceSession:
         race = self.race
         happened = {'contacts': [], 'laps': [], 'finished': [], 'pitEntered': [], 'pitStopped': [], 'pitReleased': [], 'pitExited': [],
                     'punctures': [], 'engineFailures': [], 'mistakes': [], 'debris': [], 'timing': [], 'fastestLap': None,
-                    'propHits': [], 'crashed': []}
+                    'propHits': [], 'crashed': [], 'penalties': []}
         for _ in range(ticks):
             if race.done:
                 break
@@ -250,6 +251,7 @@ class RaceSession:
                                 ('pitReleased', events.pit_released), ('pitExited', events.pit_exited), ('punctures', events.punctures),
                                 ('engineFailures', events.engine_failures), ('mistakes', events.mistakes), ('crashed', events.crashed)):
                 happened[key] += [int(car) for car in values]
+            happened['penalties'] += [{'car': penalty.car, 'seconds': penalty.seconds, 'reason': penalty.reason} for penalty in events.penalties]
             happened['propHits'] += [{'car': hit.car, 'prop': hit.prop, 'impulse': round(hit.impulse, 2), 'broke': hit.broke,
                                       'x': round(float(hit.point[0]), 2), 'y': round(float(hit.point[1]), 2)} for hit in events.prop_hits]
             for car, jobs, standing in events.pit_stopped:
@@ -297,7 +299,9 @@ class RaceSession:
                 'reversing': cars.reversing.astype(int).tolist(),
                 'tyreWear': rounded(cars.tyre_wear, 3), 'fuel': rounded(cars.fuel / FUEL_CAPACITY, 3),
                 'lap': race.lap_of().tolist(), 'progress': rounded(race.progress, 1),
-                'finishTime': [None if np.isnan(time) else round(float(time), 2) for time in race.finish_time],
+                # Race time: the time it took the flag, with its penalties added.
+                'finishTime': [None if np.isnan(time) else round(float(time), 2) for time in race.race_times()],
+                'penalty': rounded(race.stewards.seconds, 1),
                 'compound': [COMPOUNDS[index] for index in cars.compound], 'wing': rounded(cars.wing, 3), 'engine': rounded(cars.engine, 3),
                 'damage': rounded(cars.damage, 3), 'brakeWear': rounded(cars.brake_wear, 3),
                 'lapStart': self._times(self.timing.lap_start), 'lastLap': self._times(self.timing.last_lap), 'bestLap': self._times(self.timing.best_lap),

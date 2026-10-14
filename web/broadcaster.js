@@ -217,7 +217,7 @@ export function createBroadcaster({ onStatus, speech }) {
     const name = car => (car === undefined ? '' : race.cars[car].name);
     return {
       car: name(moment.car), other: name(moment.other), place: moment.place ?? '', compound: moment.compound ?? '',
-      standing: moment.standing?.toFixed(1) ?? '', lapTime: moment.lapTime ? formatLap(moment.lapTime) : '',
+      standing: moment.standing?.toFixed(1) ?? '', seconds: moment.seconds ?? '', reason: moment.reason ?? '', lapTime: moment.lapTime ? formatLap(moment.lapTime) : '',
       laps: context.laps, lap: context.lap, lapsToGo: Math.max(context.laps - context.lap + 1, 1),
       leader: context.leader, second: context.second, leadGap: context.leadGap,
     };
@@ -232,6 +232,7 @@ function narrate(moment, facts) {
     case 'battle': return `${facts.car} is less than a second behind ${facts.other}, fighting for P${facts.place}.`;
     case 'contact': return `${facts.car} and ${facts.other} have just made contact.`;
     case 'offTrack': return `${facts.car} has just run off the track.`;
+    case 'penalty': return `The stewards have given ${facts.car} a ${facts.seconds}-second time penalty for ${facts.reason}.`;
     case 'damage': return `${facts.car} has a damaged car.`;
     case 'tyresGone': return `${facts.car}'s ${facts.compound} tyres are worn out.`;
     case 'lowFuel': return `${facts.car} is almost out of fuel.`;

@@ -165,6 +165,9 @@ export function createRaceEvents() {
       lastBarrier.set(hit.car, time);
       add({ kind: 'barrier', priority: 3, car: hit.car, place: frame.order.indexOf(hit.car) + 1, radio: radio('barrier', hit.car) });
     }
+    for (const { car, seconds, reason } of frame.events.penalties ?? []) {
+      add({ kind: 'penalty', priority: 3, car, seconds, reason, place: frame.order.indexOf(car) + 1, radio: radio('penalty', car) });
+    }
     for (const car of frame.events.mistakes ?? []) {
       if (time - (lastMistake.get(car) ?? -Infinity) < MISTAKE_REPEAT_SECONDS || !racing(car)) continue;
       lastMistake.set(car, time);
@@ -229,6 +232,7 @@ const RADIO = {
   puncture: { speaker: 'driver', lines: ['Puncture! I have a puncture!', 'Tyre is going down, rear tyre!', 'I think I have a puncture, the car is all over the place.'] },
   engine: { speaker: 'driver', lines: ['I have lost power! Engine is gone.', 'No power, no power! Stopping the car.', 'Engine failure. I am out.'] },
   crash: { speaker: 'driver', lines: ['I am in the wall. Sorry guys.', 'I crashed, the car is finished.', 'I am out, I hit the barrier.'] },
+  penalty: { speaker: 'engineer', lines: ['We have a time penalty. Keep pushing.', 'Stewards have given us a penalty. Head down.', 'Penalty from the stewards. We need a gap behind.'] },
   barrier: { speaker: 'driver', lines: ['I hit the wall! Check the car.', 'Touched the barrier, I think it is okay.', 'Big hit, big hit! Still going.'] },
 };
 

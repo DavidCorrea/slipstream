@@ -297,7 +297,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--run', default='main')
     parser.add_argument('--steps', type=int, default=100_000_000, help='total decisions to train for')
-    parser.add_argument('--races', type=int, default=16, help='races played side by side')
+    parser.add_argument('--races', type=int, help='races played side by side (default 32 with --racer, else 16)')
     parser.add_argument('--cars', type=int, help=f'cars per race (default {FEEL_CARS} with --feel, else 6)')
     parser.add_argument('--benchmark-every', type=int, default=1_000_000)
     parser.add_argument('--seed', type=int, default=0)
@@ -318,6 +318,9 @@ def main():
     saved = run / 'model.zip'
     if arguments.cars is None:
         arguments.cars = FEEL_CARS if arguments.feel else 6
+    if arguments.races is None:
+        # Racing drivers learn with five cars a race (racer_env.LEARNERS), so twice the races make as many cars a step.
+        arguments.races = 32 if arguments.racer else 16
     if arguments.racer:
         model = racing_driver(arguments, run, saved)
     elif arguments.feel:

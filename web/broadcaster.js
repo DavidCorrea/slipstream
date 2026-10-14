@@ -232,6 +232,7 @@ function narrate(moment, facts) {
     case 'battle': return `${facts.car} is less than a second behind ${facts.other}, fighting for P${facts.place}.`;
     case 'contact': return `${facts.car} and ${facts.other} have just made contact.`;
     case 'offTrack': return `${facts.car} has just run off the track.`;
+    case 'yellow': return 'The marshals are waving yellow flags after an incident, so no overtaking there.';
     case 'penalty': return `The stewards have given ${facts.car} a ${facts.seconds}-second time penalty for ${facts.reason}.`;
     case 'damage': return `${facts.car} has a damaged car.`;
     case 'tyresGone': return `${facts.car}'s ${facts.compound} tyres are worn out.`;

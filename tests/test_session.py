@@ -43,7 +43,8 @@ class TestSessions:
     def test_send_frames_that_move_the_cars_and_serialise_cleanly(self):
         session = RaceSession(SCRIPTED, seed=5, cars=4, laps=2)
         first = session.advance(1)
-        later = session.advance(40)
+        # Past the start lights (flags.LIGHTS: up to eight seconds).
+        later = session.advance(240)
         assert later['time'] > first['time']
         assert later['cars']['x'] != first['cars']['x']
         assert sorted(later['order']) == [0, 1, 2, 3]

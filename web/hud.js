@@ -126,6 +126,12 @@ export function createHud({ onSelect }) {
       if (cars.draft?.[selected] > 0.3) flags.push('<span class="tow">Tow</span>');
       if (cars.dirtyAir?.[selected] > 0.3) flags.push('<span class="slide">Dirty air</span>');
       if (cars.punctured?.[selected]) flags.push('<span class="warning">Puncture</span>');
+      if (frame.marshals?.blue?.[selected]) flags.push('<span class="tow">Blue flag</span>');
+      const yellowHere = (frame.marshals?.yellow ?? []).some(([start, end]) => {
+        const length = race.track.length;
+        return (((cars.progress[selected] % length) - start) % length + length) % length <= end - start;
+      });
+      if (yellowHere) flags.push('<span class="done">Yellow flag</span>');
       if (cars.penalty?.[selected]) flags.push(`<span class="warning">+${cars.penalty[selected]} s penalty</span>`);
       if (cars.retired?.[selected]) flags.push('<span class="warning">Engine failure</span>');
       $('tele-flags').innerHTML = flags.join('');

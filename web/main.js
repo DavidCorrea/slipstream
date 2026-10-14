@@ -350,7 +350,7 @@ function render(now) {
 function renderLive(frame, seconds, now) {
   const simRate = state.paused ? 0 : Math.max(0, state.current.time - state.previous.time) / FRAME_SECONDS;
   drawCars(frame, seconds, simRate, now, true);
-  state.circuit.update(frame.time, Math.hypot(...(frame.weather.wind ?? [0, 0])));
+  state.circuit.update(frame.time, Math.hypot(...(frame.weather.wind ?? [0, 0])), frame.marshals);
   state.crews.update(frame.time, frame, state.cars);
   racer.update(frame);
   const height = stage.pixelsTall();

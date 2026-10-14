@@ -74,7 +74,7 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
   group.add(scenery);
   const backdrop = [];
   scenery.traverse(object => { if (object.userData.backdrop) backdrop.push(object); });
-  const details = trackside({ props, walled: !!location.walled, breakable });
+  const details = trackside({ props, walled: !!location.walled, breakable, track });
   group.add(mergeStatic(details.group));
   scene.add(group);
 
@@ -85,10 +85,11 @@ export function buildCircuit(scene, track, grid, seed, pitLane, cars, locationNa
       for (const hide of breakers.get(id) ?? []) hide();
       breakers.delete(id);
     },
-    update(time, wind = 0) {
+    // `marshals` is the frame's lights and flags (null in races without them: the lights then just count down).
+    update(time, wind = 0, marshals = null) {
       stands.update(time);
-      gantry.update(time);
-      details.update(time, wind);
+      gantry.update(time, marshals);
+      details.update(time, wind, marshals && { zones: marshals.yellow, length: track.length });
     },
     // Hides the backdrop between the camera and what it's looking at, like the near wall of a diorama: hundreds
     // of metres tall, it otherwise hides the circuit whenever the camera looks across it.
@@ -376,6 +377,7 @@ function startGantry(points, normals, half) {
   }
   // Five lights that count down at the start and then turn green.
   const lights = [];
+  let greenFrom = null;
   for (let index = 0; index < 5; index++) {
     const light = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 8), new THREE.MeshStandardMaterial({ color: '#330000', emissive: '#000000', emissiveIntensity: 2.5 }));
     light.position.set(0.65, 7.5, (index - 2) * 1.6);
@@ -392,12 +394,16 @@ function startGantry(points, normals, half) {
   group.rotation.y = facing(nx, ny, 'z');
   return {
     group,
-    update(time) {
+    update(time, marshals) {
+      // With marshals the race's own lights: a red for every light lit, green for a few seconds after they go out.
+      if (marshals && !marshals.started) greenFrom = null;
+      if (marshals && marshals.started && greenFrom === null) greenFrom = time;
       lights.forEach((light, index) => {
-        const lit = time < 0.6 + index * 0.25;
-        const green = time >= 1.9 && time < 5;
-        light.material.color.set(green ? '#0b3' : lit && time > 0.05 ? '#f22' : '#331111');
-        light.material.emissive.set(green ? '#0f4' : lit && time > 0.05 ? '#f00' : '#000');
+        const lit = marshals ? !marshals.started && index < marshals.lights : time < 0.6 + index * 0.25;
+        const green = marshals ? greenFrom !== null && time - greenFrom < 3 : time >= 1.9 && time < 5;
+        const red = lit && (marshals || time > 0.05);
+        light.material.color.set(green ? '#0b3' : red ? '#f22' : '#331111');
+        light.material.emissive.set(green ? '#0f4' : red ? '#f00' : '#000');
       });
     },
   };

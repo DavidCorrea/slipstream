@@ -18,6 +18,7 @@ from .obstacles import Obstacles
 from .surface import Surface
 from .pit import PitLane, PitPlan
 from .scenery import SOFT
+from .flags import Marshals
 from .stewards import PIT_LINE, PIT_SPEEDING, Stewards
 from .track import Track
 from .weather import Weather
@@ -95,19 +96,21 @@ class TickEvents:
     punctures: list = field(default_factory=list)          # cars that just got a puncture
     engine_failures: list = field(default_factory=list)    # cars whose engine just failed
     mistakes: list = field(default_factory=list)           # drivers who just made a mistake
+    yellow_flags: list = field(default_factory=list)       # circuit distances where yellow flags just came out
     penalties: list = field(default_factory=list)          # stewards.Penalty for each penalty handed out
 
 
 class Race:
     def __init__(self, track: Track, specs: CarSpecs, laps: int, ghosts=False, weather: Weather | None = None,
-                 rng=None, driving: Driving | None = None, stewards=False, assisted=True):
+                 rng=None, driving: Driving | None = None, stewards=False, assisted=True, flags=False):
         """`ghosts` makes every car race on its own: all start from pole, pass through each other, and the race
         only ends when all of them have finished. That's many solo races run side by side, for training the pit
         wall (see pitwall.py). Without a `weather`, the race is dry. `rng` drives chance (punctures, failures,
         where debris lands); `driving`, when given, puts the drivers' hands and feet between what they ask for and
         what the cars get (see human.py). `stewards` hands out time penalties (see stewards.py); training races
         from before there were any race without them. `assisted` drives cars through the pit lane for them and
-        backs a car stuck against something off it, as every race did before drivers learned to do both."""
+        backs a car stuck against something off it, as every race did before drivers learned to do both. `flags` brings
+        the marshals (see flags.py): a standing start under the lights, and yellow and blue flags."""
         self.track, self.specs, self.laps, self.ghosts = track, specs, laps, ghosts
         self.assisted = assisted
         self.rng = rng if rng is not None else np.random.default_rng(track.seed)
@@ -154,6 +157,7 @@ class Race:
         self.pit_decided = np.zeros(count, dtype=bool)
         # Driving the lane yourself: whether each car came in because it was called (the crew is out waiting), and
         # whether it has already been caught speeding on this visit.
+        self.marshals = Marshals(self, start_lights=True) if flags else None
         self.lane_called = np.zeros(count, dtype=bool)
         self.lane_speeding = np.zeros(count, dtype=bool)
         self.on_lane = np.zeros(count, dtype=bool)
@@ -293,6 +297,8 @@ class Race:
         self.off_track_ticks += ~self.on_track
         if self.props is not None:
             self._retire_stuck(events)
+        if self.marshals is not None:
+            events.yellow_flags = self.marshals.update(self, events)
         if self.stewards is not None:
             events.penalties += self.stewards.judge(self, events.contacts, events.crashed)
 

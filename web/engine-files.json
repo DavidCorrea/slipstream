@@ -8,6 +8,7 @@
     "slipstream/cast.py",
     "slipstream/drivers.py",
     "slipstream/field.py",
+    "slipstream/flags.py",
     "slipstream/human.py",
     "slipstream/numpy_network.py",
     "slipstream/observe.py",
@@ -34,5 +35,5 @@
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
     "brains/pitwall-feel/driver.json"
   ],
-  "bytes": 2528486
+  "bytes": 2539013
 }

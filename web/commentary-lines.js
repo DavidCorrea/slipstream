@@ -176,6 +176,12 @@ export const TEMPLATES = {
     'That is a big one! {car} into the barriers, out of the race.',
     '{car} crashes out, a sad end to the race.',
   ],
+  yellow: [
+    'Yellow flags are out, the drivers need to be careful here.',
+    'Waved yellows, no overtaking through there.',
+    'Yellow flag, something has happened up ahead.',
+    'The marshals are out with the yellow flags.',
+  ],
   penalty: [
     'The stewards have spoken: {seconds} seconds for {car}, for {reason}.',
     'A {seconds}-second penalty for {car}. That could cost them.',

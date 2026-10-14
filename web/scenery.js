@@ -272,7 +272,7 @@ function sponsorTexture([name, background, ink]) {
 // camera towers on the outside of corners, a sponsor bridge over a straight, armco on the outside of the fast bits
 // (walls all round on a street circuit), and tyre walls on the outside of the tightest corners: all where the sim
 // put them. Returns the group and what moves each frame.
-export function trackside({ props, walled, breakable }) {
+export function trackside({ props, walled, breakable, track }) {
   const group = new THREE.Group();
   const boardMaterials = SPONSORS.map(sponsor => new THREE.MeshStandardMaterial({ map: sponsorTexture(sponsor), roughness: 0.6 }));
   // A breakable prop drawn as its own object: hidden whole when it breaks.
@@ -298,8 +298,17 @@ export function trackside({ props, walled, breakable }) {
     own(sign, prop);
   }
 
-  // Marshal posts: a hut, a marshal in orange, and a waving flag.
+  // Marshal posts: a hut, a marshal in orange, and a waving flag. In races with marshals (slipstream/flags.py) the
+  // flag only comes out, yellow, where there's an incident ahead; otherwise it just waves.
   const flags = [];
+  const alongTrack = prop => {
+    let best = 0, bestDistance = Infinity;
+    track.points.forEach(([x, y], index) => {
+      const distance = (x - prop.x) ** 2 + (y - prop.y) ** 2;
+      if (distance < bestDistance) { best = index; bestDistance = distance; }
+    });
+    return best * track.length / track.points.length;
+  };
   const flagCloth = new THREE.MeshStandardMaterial({ color: '#ffd23f', side: THREE.DoubleSide, roughness: 0.8 });
   for (const prop of ofKind(props, 'marshal')) {
     const post = new THREE.Group();
@@ -316,7 +325,7 @@ export function trackside({ props, walled, breakable }) {
     post.position.copy(spot(prop));
     post.rotation.y = prop.angle;
     group.add(post);
-    flags.push({ flag, phase: prop.phase });
+    flags.push({ flag, phase: prop.phase, along: alongTrack(prop) });
     // The marshal is too small to make out in the sun's shadow map; the hut casts the post's shadow.
     hut.castShadow = true;
   }
@@ -388,9 +397,12 @@ export function trackside({ props, walled, breakable }) {
 
   return {
     group,
-    // Flags flap, harder in a stronger wind.
-    update(time, wind = 0) {
-      for (const { flag, phase } of flags) {
+    // Flags flap, harder in a stronger wind. `yellow` is the race's yellow zones (circuit distances, and the lap's
+    // length), or null in a race without marshals.
+    update(time, wind = 0, yellow = null) {
+      for (const { flag, phase, along } of flags) {
+        flag.visible = !yellow || yellow.zones.some(([start, end]) => ((along - start) % yellow.length + yellow.length) % yellow.length <= end - start);
+        if (!flag.visible) continue;
         flag.rotation.y = Math.sin(time * (3 + wind * 0.4) + phase) * (0.25 + wind * 0.04);
         flag.rotation.z = Math.sin(time * 5 + phase) * 0.08;
       }

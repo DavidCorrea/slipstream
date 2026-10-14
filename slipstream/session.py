@@ -105,9 +105,10 @@ class RaceSession:
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
         self.seed = int(np.random.default_rng().integers(2 ** 31)) if seed is None else seed
         track = generate_track(self.seed)
-        # The networks published so far learned with the lane driven for them; the scripted driver drives it itself.
+        # The networks published so far learned with the lane driven for them and without lights or flags; the scripted
+        # driver drives the lane itself, waits for the lights and minds the flags.
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
-                         stewards=True, assisted=self.policy is not None)
+                         stewards=True, assisted=self.policy is not None, flags=self.policy is None)
         self.location = location_for(self.seed) if location is None else location
         self.race.place_props(place(track, self.race.pit, self.seed, self.location))
         self.timing = Timing(self.race.track.length, cars)
@@ -235,7 +236,7 @@ class RaceSession:
         race = self.race
         happened = {'contacts': [], 'laps': [], 'finished': [], 'pitEntered': [], 'pitStopped': [], 'pitReleased': [], 'pitExited': [],
                     'punctures': [], 'engineFailures': [], 'mistakes': [], 'debris': [], 'timing': [], 'fastestLap': None,
-                    'propHits': [], 'crashed': [], 'penalties': []}
+                    'propHits': [], 'crashed': [], 'penalties': [], 'yellowFlags': []}
         for _ in range(ticks):
             if race.done:
                 break
@@ -252,6 +253,7 @@ class RaceSession:
                                 ('pitReleased', events.pit_released), ('pitExited', events.pit_exited), ('punctures', events.punctures),
                                 ('engineFailures', events.engine_failures), ('mistakes', events.mistakes), ('crashed', events.crashed)):
                 happened[key] += [int(car) for car in values]
+            happened['yellowFlags'] += [round(distance, 1) for distance in events.yellow_flags]
             happened['penalties'] += [{'car': penalty.car, 'seconds': penalty.seconds, 'reason': penalty.reason} for penalty in events.penalties]
             happened['propHits'] += [{'car': hit.car, 'prop': hit.prop, 'impulse': round(hit.impulse, 2), 'broke': hit.broke,
                                       'x': round(float(hit.point[0]), 2), 'y': round(float(hit.point[1]), 2)} for hit in events.prop_hits]
@@ -316,6 +318,8 @@ class RaceSession:
             # The track's rubber, marbles and dry line change slowly, so they go out about once a second.
             'surface': surface_map(race.surface) if self.frames % SURFACE_EVERY == 1 else None,
             'order': race.standings().tolist(),
+            # The start lights and flags, in races that have marshals (flags.py).
+            'marshals': race.marshals.describe(race) if race.marshals is not None else None,
             'weather': {'wetness': round(race.weather.wetness, 3), 'rain': round(race.weather.rain, 3),
                         'temperature': round(race.weather.temperature, 3), 'wind': np.round(race.weather.wind, 2).tolist()},
             'yourPit': {'strategy': self.strategy, 'boxCalled': self.box_called},

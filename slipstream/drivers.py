@@ -23,6 +23,11 @@ RECOVERY_SPEED = 9.0      # m/s
 # into a wall, a car, a tree, or facing the wrong way after a spin). It backs up, swinging its nose round towards
 # where it's going, for up to BACK_UP seconds or until it's pointing well enough, then drives on.
 BLOCKED_SECONDS = 1.5
+# Under the marshals (flags.py): it waits on the brakes for the lights to go out and reacts in this many seconds
+# (each car its own, from its number), and shown blue it eases off to this share of its speed to let the car
+# lapping it by.
+START_REACTION = (0.15, 0.15)
+BLUE_EASE = 0.85
 BACK_UP = {'longest': 2.0, 'shortest': 0.8, 'aligned': 0.6}   # seconds, seconds, radians off the way ahead
 # Driving the pit lane itself (in races that aren't assisted): from this far before the entry a called car moves
 # over to the lane's side of the track, it aims this far under the limit and is down to it by the mouth of the lane
@@ -55,6 +60,8 @@ def scripted_controls(race):
     lead = np.minimum((speed * REACTION / SPACING).astype(int), profile.shape[1] - 1)
     target_speed = np.minimum(profile[np.arange(len(speed)), lead], effective_top_speed(cars, specs))
     target_speed = np.where(race.on_track, target_speed, np.minimum(target_speed, RECOVERY_SPEED))
+    if race.marshals is not None:
+        target_speed = np.where(race.marshals.blue, target_speed * BLUE_EASE, target_speed)
 
     throttle = np.clip((target_speed - speed) / 1.0, 0, 1)
     # Brake only with the grip the corner it's in leaves over (the friction circle), or it can't turn.
@@ -65,8 +72,17 @@ def scripted_controls(race):
     steer = np.clip(steer, -1, 1)
     if not race.assisted:
         steer, throttle, brake = _pit_lane(race, speed, grip, np.minimum(braking, full_grip), target_speed, spare / braking, steer, throttle, brake)
-    # Nobody reverses in the pit lane: a car standing in it is in its box, or waiting to be let out.
-    return _backing_up(cars, angle, steer, throttle, brake, can_back_up=~race.in_lane)
+    # Nobody reverses in the pit lane (a car standing in it is in its box, or waiting to be let out), nor on the
+    # grid, where standing still is waiting for the lights.
+    stopped_for = cars.stopped_for
+    on_the_grid = np.zeros(race.count, dtype=bool)
+    if race.marshals is not None:
+        reaction = START_REACTION[0] + START_REACTION[1] * ((np.arange(race.count) * 0.618) % 1.0)
+        going = race.marshals.lights_out_at + reaction
+        on_the_grid = race.time < going
+        throttle, brake = np.where(on_the_grid, 0.0, throttle), np.where(on_the_grid, 1.0, brake)
+        stopped_for = np.minimum(stopped_for, race.time - going)
+    return _backing_up(cars, angle, steer, throttle, brake, stopped_for, can_back_up=~race.in_lane & ~on_the_grid)
 
 
 def _pit_lane(race, speed, grip, deceleration, target_speed, most_brake, steer, throttle, brake):
@@ -176,10 +192,11 @@ def _room_in_lane(race, car, along):
     return max(race.cars.speed[others[nearest]] + np.sqrt(2 * PIT_APPROACH['box_braking'] * max(gap, 0.0)) * (gap > 0), 0.0)
 
 
-def _backing_up(cars, angle, steer, throttle, brake, can_back_up):
-    """Overrides the controls of blocked cars: both pedals to select reverse, then the throttle with the steering
-    turned the opposite way (reverse turns the nose the other way), then the brake to stop and go back to first."""
-    blocked = ~cars.reversing & (cars.stopped_for > BLOCKED_SECONDS) & can_back_up
+def _backing_up(cars, angle, steer, throttle, brake, stopped_for, can_back_up):
+    """Overrides the controls of blocked cars (standing still `stopped_for` seconds while racing): both pedals to
+    select reverse, then the throttle with the steering turned the opposite way (reverse turns the nose the other
+    way), then the brake to stop and go back to first."""
+    blocked = ~cars.reversing & (stopped_for > BLOCKED_SECONDS) & can_back_up
     backed_enough = (cars.reversed_for > BACK_UP['longest']) | \
         ((cars.reversed_for > BACK_UP['shortest']) & (np.abs(angle) < BACK_UP['aligned']))
     backing = cars.reversing & ~backed_enough

@@ -11,12 +11,15 @@ judge what the race does:
   because of it. One crash is judged once, however many ticks the cars stay in touch.
 - reversing on the track: backing up out of trouble off the road is fine, backing down the racing line isn't.
 - the pit lane (pit.py): speeding in it, and crossing the white lines that part its entry and exit from the track.
+- the marshals' lights and flags (flags.py), in races that have them: jumping the start, overtaking under yellow
+  (a crawling or stopped car may be passed), and holding up a car lapping it for BLUE_FLAGS seconds.
 """
 from dataclasses import dataclass
 
 import numpy as np
 
 from .car import DT
+from .flags import CRAWLING
 
 TRACK_LIMITS = {'lasting': 0.3, 'warnings': 3, 'seconds': 5.0}   # s off to count; free strikes; s a strike after
 # m/s of impulse that makes a crash; how many times more the car to blame must have moved into the other; s; s if the
@@ -25,13 +28,18 @@ COLLISION = {'impulse': 10.0, 'blame': 2.0, 'seconds': 5.0, 'out': 10.0, 'apart'
 REVERSING = {'lasting': 2.0, 'seconds': 5.0}                      # s backing up on the tarmac before it's dangerous
 PIT_SPEEDING = 5.0
 PIT_LINE = 5.0
+JUMP_START = 10.0
+YELLOW_PASS = 5.0
+BLUE_FLAGS = {'lasting': 12.0, 'seconds': 5.0}   # s holding up a lapping car before it costs time
+PASS_REACH = 30.0                                # metres apart two cars swapping places must be to count as a pass
 
 
 @dataclass
 class Penalty:
     car: int
     seconds: float
-    reason: str      # 'track limits', 'collision', 'reversing', 'pit speeding', 'pit line'
+    reason: str      # 'track limits', 'collision', 'reversing', 'pit speeding', 'pit line', 'jump start',
+                     # 'yellow flag', 'blue flags'
 
 
 class Stewards:
@@ -41,6 +49,10 @@ class Stewards:
         self.off_for = np.zeros(count)          # seconds of the current run off the tarmac
         self.reversing_for = np.zeros(count)    # seconds of the current spell backing up on the tarmac
         self.judged = {}                        # (at fault, other) -> race time the pair was last judged
+        self.jumped = np.zeros(count, dtype=bool)
+        self.progress = None                    # every car's progress last tick, to spot passes
+        self.held_up = {}                       # (blue-flagged car, lapping car) -> seconds held up
+        self.blue_judged = set()
 
     def penalise(self, car, seconds, reason):
         self.seconds[car] += seconds
@@ -50,7 +62,40 @@ class Stewards:
         """Every penalty this tick: track limits, collisions (from this tick's `contacts`) and reversing on the
         track."""
         racing = ~race.finished & ~race.retired
-        return self._track_limits(race, racing) + self._collisions(race, contacts, crashed) + self._reversing(race, racing)
+        penalties = self._track_limits(race, racing) + self._collisions(race, contacts, crashed) + self._reversing(race, racing)
+        if race.marshals is not None:
+            penalties += self._start(race) + self._yellow_passes(race, racing) + self._blue_flags(race)
+        self.progress = race.progress.copy()
+        return penalties
+
+    def _start(self, race):
+        jumping = race.marshals.jumped(race) & ~self.jumped
+        self.jumped |= jumping
+        return [self.penalise(car, JUMP_START, 'jump start') for car in np.flatnonzero(jumping)]
+
+    def _yellow_passes(self, race, racing):
+        """Passes made under yellow: a car that was behind another within PASS_REACH is now ahead of it, where the
+        car passed is inside a yellow zone and not crawling."""
+        if self.progress is None or not race.marshals.zones:
+            return []
+        running = racing & ~race.in_lane
+        before, after = self.progress, race.progress
+        passed = (before[:, None] < before[None, :]) & (after[:, None] > after[None, :])      # [passer, passed]
+        passed &= (before[None, :] - before[:, None]) < PASS_REACH
+        passed &= running[:, None] & running[None, :]
+        yellow = race.marshals.under_yellow(after % race.track.length, race.track.length)
+        passed &= (yellow & (race.cars.speed >= CRAWLING))[None, :]
+        return [self.penalise(passer, YELLOW_PASS, 'yellow flag') for passer in np.flatnonzero(passed.any(axis=1))]
+
+    def _blue_flags(self, race):
+        penalties = []
+        for car in np.flatnonzero(race.marshals.blue):
+            pair = (int(car), int(race.marshals.lapping[car]))
+            self.held_up[pair] = self.held_up.get(pair, 0.0) + DT
+            if self.held_up[pair] >= BLUE_FLAGS['lasting'] and pair not in self.blue_judged:
+                self.blue_judged.add(pair)
+                penalties.append(self.penalise(car, BLUE_FLAGS['seconds'], 'blue flags'))
+        return penalties
 
     def _track_limits(self, race, racing):
         off = ~race.on_track & racing

@@ -71,7 +71,8 @@ export function createRaceEvents() {
       if (!raining && wasRaining) add({ kind: 'rainStops', priority: 3, car: frame.order[0], wetness: frame.weather.wetness });
     }
 
-    if (!started && time >= LIGHTS_OUT) {
+    // With marshals the race says when the lights went out; without, the gantry just counts down.
+    if (!started && (frame.marshals ? frame.marshals.started : time >= LIGHTS_OUT)) {
       started = true;
       add({ kind: 'start', priority: 5, car: frame.order[0] });
     }
@@ -165,6 +166,7 @@ export function createRaceEvents() {
       lastBarrier.set(hit.car, time);
       add({ kind: 'barrier', priority: 3, car: hit.car, place: frame.order.indexOf(hit.car) + 1, radio: radio('barrier', hit.car) });
     }
+    if ((frame.events.yellowFlags ?? []).length && started) add({ kind: 'yellow', priority: 2, car: frame.order[0] });
     for (const { car, seconds, reason } of frame.events.penalties ?? []) {
       add({ kind: 'penalty', priority: 3, car, seconds, reason, place: frame.order.indexOf(car) + 1, radio: radio('penalty', car) });
     }

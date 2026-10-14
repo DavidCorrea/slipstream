@@ -287,10 +287,11 @@ def fuel_burn_rate(engine):
 
 
 def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track, conditions: Conditions | None = None,
-              can_reverse=None):
+              can_reverse=None, speed_cap=None):
     """Advances every car one tick. steer in [-1, 1] (positive turns left), throttle and brake in [0, 1]. Without
     `conditions`, the track is dry, clean and the air clear. Only cars `can_reverse` marks (all, if not given) can
-    select reverse."""
+    select reverse. `speed_cap` is the most each car's engine will drive it to (a pit limiter): full power up to it,
+    nothing above it, so a car going faster coasts down to it rather than braking."""
     conditions = conditions if conditions is not None else Conditions.uniform(len(state.heading))
     wetness = conditions.wetness
     # Bent suspension pulls the car to one side whatever the driver does.
@@ -318,6 +319,8 @@ def step_cars(state: CarState, specs: CarSpecs, steer, throttle, brake, on_track
     top_speed = np.where(reversing, REVERSE['top_speed'], top_speed)
     power = np.where(reversing, REVERSE['power'], power)
     drive = throttle * power * heaviness * np.clip(1 - (speed / top_speed) ** 2, 0, 1)
+    if speed_cap is not None:
+        drive = np.minimum(drive, np.maximum(speed_cap - speed, 0.0) / DT)
     stopping = brake * braking * heaviness + ROLLING_DRAG + np.where(on_track, 0.0, OFF_TRACK['drag']) \
         + np.where(state.punctured, PUNCTURE['drag'], 0.0)
     # Slowing down can't take more than stopping the car outright this tick needs: the grip left over goes to

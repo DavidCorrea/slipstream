@@ -105,8 +105,9 @@ class RaceSession:
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
         self.seed = int(np.random.default_rng().integers(2 ** 31)) if seed is None else seed
         track = generate_track(self.seed)
+        # The networks published so far learned with the lane driven for them; the scripted driver drives it itself.
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
-                         stewards=True)
+                         stewards=True, assisted=self.policy is not None)
         self.location = location_for(self.seed) if location is None else location
         self.race.place_props(place(track, self.race.pit, self.seed, self.location))
         self.timing = Timing(self.race.track.length, cars)

@@ -1,10 +1,13 @@
 """The pit lane and what happens in it.
 
 The lane runs beside the start straight, on the outside of the circuit, from ENTRY_BEFORE metres before the line
-to EXIT_AFTER metres after it. Each car has a box along it. A car that has been called in leaves the track when
-it reaches the entry and drives itself through the lane: it slows to the speed limit, stops in its box while
-the crew works, then drives out at the limit and rejoins. Drivers only decide whether to come in and what the
-crew should do; nobody has to learn to steer down a pit lane.
+to EXIT_AFTER metres after it. Each car has a box along it. How a car gets through it depends on the race. In
+an assisted race (every race before drivers learned the lane) a car that has been called in leaves the track when
+it reaches the entry and is driven through the lane: it slows to the speed limit, stops in its box while the crew
+works, then drives out at the limit and rejoins. Otherwise the lane is tarmac like the track and the driver does
+it all (see Race): turns into the mouth of the lane before the white line starts, is down to the speed limit by the
+speed line (the pit limiter holds it there), stops on its marks, and drives out after the crew lets it go. The
+stewards penalise speeding and crossing the white lines that part the lane's entry and exit from the track.
 
 Whether to come in is decided once a lap, like a pit wall's "box this lap": the first decision a driver makes
 after passing a point DECIDE_BEFORE metres before the entry commits it, in or not, until it has passed the entry.
@@ -35,7 +38,9 @@ SPEED_LIMIT = 22.0      # m/s (about 80 km/h)
 DECIDE_BEFORE = 150.0   # metres before the entry where the lap's pit decision is made
 SLOW_DOWN = 14.0        # m/s^2 a car brakes at to reach the limit and to stop in its box
 FIRST_BOX = -60.0       # metres from the line to the first box (negative is before the line)
-BOX_SPACING = 12.0
+# A real car can't swing from the fast lane into its box past a car stopped in the box before inside 12 m: at full
+# lock it turns in about 9 m. The lane on rails could.
+BOX_SPACING = 16.0
 LANES_APART = 3.6       # metres between the fast lane's centre and the working lane's
 # Moving between lanes happens within the gap between two boxes (BOX_SPACING less a car length), so a car turning
 # in or pulling out never swings across the next box.
@@ -48,6 +53,11 @@ NOSE_TO_TAIL = 5.5      # metres, centre to centre, two cars in the same lane ca
 MERGE_CLEAR = (15.0, 9.0)   # a car leaving its box waits while a fast-lane car is this far behind or ahead of it
 SERVICE = {'base': 2.0, 'tyres': 2.4, 'fuel_per_second': 12.0, 'wing': 1.5, 'engine': 1.0, 'repair_per_damage': 10.0, 'brakes': 4.0}
 CHANGE_THRESHOLD = 0.05  # a wing or engine setting has to move this much for the crew to bother
+LANE_HALF_WIDTH = 3.6   # metres either side of the lane's centre: a fast lane and a working lane (web/circuit.js)
+SPEEDING = 0.5          # m/s over the limit before it counts
+# How close to its marks a stopped car must be for the crew to work (metres along, metres across), how far off
+# they'll still drag it onto them, and the seconds that costs.
+BOX_MARKS = {'along': 1.0, 'across': 1.0, 'reach_along': 3.0, 'reach_across': 2.0, 'drag': 2.5}
 
 RACING, CALLED, IN_LANE, STOPPED = 0, 1, 2, 3
 
@@ -117,6 +127,10 @@ class PitLane:
         self.offset = self.side * (track.width / 2 + LANE_OFFSET)
         self.fast_lane = self.offset - self.side * LANES_APART / 2
         self.working_lane = self.offset + self.side * LANES_APART / 2
+        # The white line along the track edge starts where the lane's inner edge leaves it: before that a car can
+        # turn into the lane's mouth, after it it's crossing the line. The same holds the other way at the exit.
+        steps = np.arange(0.0, RAMP, 0.25)
+        self.mouth = float(steps[np.argmax(self.side * self.centre(steps) - LANE_HALF_WIDTH >= track.width / 2)])
 
     def lateral(self, along, start, shift=0.0):
         """Offset from the centre line `along` metres into the lane, for a car that came in at lateral `start` and is
@@ -128,6 +142,33 @@ class PitLane:
         rejoin = self.side * self.track.width / 4
         lateral = np.where(along > self.length - RAMP, rejoin + (self.fast_lane - rejoin) * ease(out), lateral)
         return lateral + shift * (self.working_lane - self.fast_lane)
+
+    def centre(self, along):
+        """The lane's centre line `along` metres in, as an offset from the circuit's: from the track edge out to the
+        lane and back again over the ramps (web/circuit.js draws it so)."""
+        into = np.clip(np.asarray(along, dtype=float) / RAMP, 0, 1)
+        out = np.clip((self.length - np.asarray(along, dtype=float)) / RAMP, 0, 1)
+        edge = self.side * self.track.width / 2
+        blend = np.minimum(into, out)
+        return edge + (self.offset - edge) * blend * blend * (3 - 2 * blend)
+
+    def along(self, distance):
+        """Metres into the lane for cars at `distance` along the circuit: negative before the entry (down to minus
+        half a lap), past `length` beyond the exit."""
+        length = self.track.length
+        return (np.asarray(distance) - self.entry + length / 2) % length - length / 2
+
+    def on_lane(self, along, lateral):
+        """Whether each car is on the lane's tarmac: past the entry, short of the exit, beyond the track edge and
+        within the lane's width."""
+        outwards, centre = self.side * np.asarray(lateral), self.side * self.centre(along)
+        return ((along >= 0) & (along <= self.length) & (outwards > self.track.width / 2)
+                & (outwards <= centre + LANE_HALF_WIDTH) & (outwards >= centre - LANE_HALF_WIDTH))
+
+    def crossing_line(self, along):
+        """Whether moving between the track and the lane `along` metres in crosses a white line (or, beside the
+        straight, the grass and the pit wall)."""
+        return (along > self.mouth) & (along < self.length - self.mouth)
 
     def stretch(self, along, start, shift=0.0):
         """How many metres of a car's actual path one metre along the centre line is, `along` metres into the lane:

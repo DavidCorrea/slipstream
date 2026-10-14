@@ -3,7 +3,8 @@
 For contact each car is its footprint as drawn: a rectangle from its front wing to its rear wing, as wide as its
 wheels, turned with the car. Every bump does damage. Progress is measured along the centre line from the start line; the
 grid starts behind it, so progress begins negative and a car finishes when it has covered `laps` full lengths.
-Cars in the pit lane (see pit.py) drive themselves and can't touch cars on track.
+In an assisted race cars in the pit lane (see pit.py) are driven through it and can't touch anything; otherwise
+their drivers drive it, and it's tarmac like the track.
 """
 from dataclasses import dataclass, field
 
@@ -11,13 +12,13 @@ import numpy as np
 
 from . import pit
 from .aero import air_between
-from .car import DAMAGE, DT, CarSpecs, CarState, Conditions, step_cars, suited_compound
+from .car import DAMAGE, DT, REVERSE, CarSpecs, CarState, Conditions, step_cars, suited_compound
 from .human import Driving
 from .obstacles import Obstacles
 from .surface import Surface
 from .pit import PitLane, PitPlan
 from .scenery import SOFT
-from .stewards import Stewards
+from .stewards import PIT_LINE, PIT_SPEEDING, Stewards
 from .track import Track
 from .weather import Weather
 
@@ -99,14 +100,16 @@ class TickEvents:
 
 class Race:
     def __init__(self, track: Track, specs: CarSpecs, laps: int, ghosts=False, weather: Weather | None = None,
-                 rng=None, driving: Driving | None = None, stewards=False):
+                 rng=None, driving: Driving | None = None, stewards=False, assisted=True):
         """`ghosts` makes every car race on its own: all start from pole, pass through each other, and the race
         only ends when all of them have finished. That's many solo races run side by side, for training the pit
         wall (see pitwall.py). Without a `weather`, the race is dry. `rng` drives chance (punctures, failures,
         where debris lands); `driving`, when given, puts the drivers' hands and feet between what they ask for and
         what the cars get (see human.py). `stewards` hands out time penalties (see stewards.py); training races
-        from before there were any race without them."""
+        from before there were any race without them. `assisted` drives cars through the pit lane for them and
+        backs a car stuck against something off it, as every race did before drivers learned to do both."""
         self.track, self.specs, self.laps, self.ghosts = track, specs, laps, ghosts
+        self.assisted = assisted
         self.rng = rng if rng is not None else np.random.default_rng(track.seed)
         self.driving = driving
         self.surface = Surface(track)
@@ -149,6 +152,11 @@ class Race:
         self.stops = np.zeros(count, dtype=int)
         # Whether each car has made this lap's pit decision (see pit.py); cleared once it passes the entry.
         self.pit_decided = np.zeros(count, dtype=bool)
+        # Driving the lane yourself: whether each car came in because it was called (the crew is out waiting), and
+        # whether it has already been caught speeding on this visit.
+        self.lane_called = np.zeros(count, dtype=bool)
+        self.lane_speeding = np.zeros(count, dtype=bool)
+        self.on_lane = np.zeros(count, dtype=bool)
 
     @property
     def time(self):
@@ -189,9 +197,14 @@ class Race:
         return self.pit_state >= pit.IN_LANE
 
     @property
+    def on_rails(self):
+        """Cars being driven through the pit lane in an assisted race."""
+        return self.in_lane if self.assisted else np.zeros(self.count, dtype=bool)
+
+    @property
     def on_track(self):
         """On the tarmac, which includes the pit lane."""
-        return (np.abs(self.lateral) <= self.track.width / 2) | self.in_lane
+        return (np.abs(self.lateral) <= self.track.width / 2) | self.in_lane | self.on_lane
 
     @property
     def finished(self):
@@ -220,9 +233,10 @@ class Race:
         key = np.where(self.finished, -1e9 + np.nan_to_num(self.race_times()), np.where(self.retired, 1e9, 0) - self.progress)
         return np.argsort(key, kind='stable')
 
-    def step(self, steer, throttle, brake, pit_call=None, plan: PitPlan | None = None) -> TickEvents:
+    def step(self, steer, throttle, brake, pit_call=None, plan: PitPlan | None = None, limiter=None) -> TickEvents:
         """One tick. `pit_call` says which cars want to come in; it only counts once a lap, when a car first
-        reaches the decision point before the pit entry (see pit.py). `plan` is what the crew does at each stop."""
+        reaches the decision point before the pit entry (see pit.py). `plan` is what the crew does at each stop.
+        `limiter` marks the cars with their pit limiter on."""
         events = TickEvents()
         if self.done:
             return events
@@ -235,15 +249,18 @@ class Race:
         if self.driving is not None:
             steer, throttle, brake = self.driving.apply(steer, throttle, brake, self.pressure(), self.time)
             events.mistakes = [int(car) for car in np.flatnonzero(self.driving.just_erred & ~self.finished & ~self.retired)]
-        # A car that has taken the flag coasts to a stop, a retired one pulls up; cars in the lane are driven by it,
-        # not by their drivers.
-        driven = ~self.in_lane
+        # A car that has taken the flag coasts to a stop, a retired one pulls up; cars on rails in the lane are driven
+        # by it, and a car in its box is held there by the crew, not by its driver.
+        driven = ~self.on_rails & (self.pit_state != pit.STOPPED)
         stopping = self.finished | self.retired
         throttle = np.where(stopping | ~driven, 0.0, throttle)
         brake = np.where(stopping, 0.3, np.where(driven, brake, 0.0))
         steer = np.where(driven & ~self.retired, steer, 0.0)
         fuel, wear = self.cars.fuel.copy(), self.cars.tyre_wear.copy()
-        step_cars(self.cars, self.specs, steer, throttle, brake, self.on_track, self.conditions(), can_reverse=driven & ~stopping)
+        speed_cap = None if limiter is None else np.where(np.asarray(limiter, dtype=bool), pit.SPEED_LIMIT, np.inf)
+        # Nobody reverses in the pit lane: the crew pushes a car back.
+        step_cars(self.cars, self.specs, steer, throttle, brake, self.on_track, self.conditions(),
+                  can_reverse=driven & ~stopping & ~self.in_lane, speed_cap=speed_cap)
         self.weather.step(DT)
         self.fuel_used += fuel - self.cars.fuel
         shed = np.maximum(self.cars.tyre_wear - wear, 0.0)
@@ -256,7 +273,11 @@ class Race:
             self._hit_props(events)
         self._run_over_debris(events)
         self._fail_engines(events)
-        self._drive_pit_lane(plan or PitPlan.standard(self.count), events)
+        plan = plan or PitPlan.standard(self.count)
+        if self.assisted:
+            self._drive_pit_lane(plan, events)
+        else:
+            self._work_in_boxes(events)
 
         self.track_index, distance, self.lateral = self.track.locate(self.cars.position, self.track_index)
         # Progress follows the change in distance along the loop, wrapped so crossing the line counts as a small
@@ -265,13 +286,15 @@ class Race:
         change = (distance - before + self.track.length / 2) % self.track.length - self.track.length / 2
         self.progress = self.progress + change
         self._cross_pit_entry(distance_before, events)
+        if not self.assisted:
+            self._through_the_lane(plan, events)
         self.surface.update(self.progress % self.track.length, self.lateral, self.on_track & ~self.in_lane, shed, self.weather.rain, DT)
         self.tick += 1
         self.off_track_ticks += ~self.on_track
         if self.props is not None:
             self._retire_stuck(events)
         if self.stewards is not None:
-            events.penalties = self.stewards.judge(self, events.contacts, events.crashed)
+            events.penalties += self.stewards.judge(self, events.contacts, events.crashed)
 
         crossed = (self.lap_of() > laps_before) & ~self.finished
         events.laps = list(np.flatnonzero(crossed))
@@ -290,7 +313,7 @@ class Race:
     def _hit_props(self, events):
         props, cars = self.props, self.cars
         # Props all stand off the tarmac, so a car well inside its edges can't be touching one.
-        close = np.flatnonzero(~self.in_lane & (np.abs(self.lateral) > self.track.width / 2 - FOOTPRINT_REACH - 1.0))
+        close = np.flatnonzero(~self.on_rails & (np.abs(self.lateral) > self.track.width / 2 - FOOTPRINT_REACH - 1.0))
         for car in close:
             centre = cars.position[car] + cars.forward[car] * FOOTPRINT_OFFSET
             for prop, away, depth, point in props.touching(centre, cars.forward[car], cars.left[car], FOOTPRINT_HALF_LENGTH, FOOTPRINT_HALF_WIDTH):
@@ -312,7 +335,7 @@ class Race:
                     cars.velocity[car] = sliding * kept + away * (impulse + closing)
                 events.prop_hits.append(PropHit(int(car), int(prop), impulse, point, False))
                 self._harm_by_prop(car, impulse * (PROPS['soft_harm'] if soft else 1.0), point)
-                if np.linalg.norm(cars.velocity[car]) < RECOVERY['below']:
+                if self.assisted and np.linalg.norm(cars.velocity[car]) < RECOVERY['below']:
                     self._back_off(car, away)
                 if impulse >= CRASH_OUT and not self.retired[car]:
                     self.retired[car] = True
@@ -412,6 +435,8 @@ class Race:
         crossed = lane.entered(distance_before, distance_after)
         self.pit_decided &= ~crossed
         # A car off in the grass can't turn in; it stays called and comes in next time round.
+        if not self.assisted:
+            return
         within_reach = np.abs(self.lateral) <= self.track.width / 2 + pit.ENTRY_REACH
         for car in np.flatnonzero(crossed & within_reach & (self.pit_state == pit.CALLED)):
             self.pit_state[car] = pit.IN_LANE
@@ -481,6 +506,87 @@ class Race:
             cars.heading[car] = np.arctan2(direction[1], direction[0])
             cars.velocity[car] = direction * self.lane_speed[car]
 
+    def _through_the_lane(self, plan, events):
+        """The lane driven: cars on its tarmac are in it, called cars that stop on their marks get the crew, and the
+        stewards watch the speed limit and the white lines. Runs after the cars have moved and been located."""
+        lane, cars = self.pit, self.cars
+        along = lane.along(self.progress % self.track.length)
+        self.on_lane = lane.on_lane(along, self.lateral)
+        racing = ~self.finished & ~self.retired
+        was_in = self.in_lane
+        for car in np.flatnonzero(self.on_lane & ~was_in & racing):
+            if lane.crossing_line(along[car]):
+                self._penalise(car, PIT_LINE, 'pit line', events)
+            self.lane_called[car] = self.pit_state[car] == pit.CALLED
+            self.lane_speeding[car] = False
+            self.pit_state[car] = pit.IN_LANE
+            self.lane_along[car] = along[car]
+            events.pit_entered.append(int(car))
+        for car in np.flatnonzero(~self.on_lane & (self.pit_state == pit.IN_LANE)):
+            out_of_the_exit = along[car] >= lane.length - lane.mouth
+            towards_track = lane.side * self.lateral[car] < lane.side * lane.centre(along[car])
+            if lane.crossing_line(along[car]) and towards_track and racing[car]:
+                self._penalise(car, PIT_LINE, 'pit line', events)
+            serviced = self.service_jobs[car] is not None
+            self.pit_state[car] = pit.CALLED if self.lane_called[car] and not serviced else pit.RACING
+            self.service_jobs[car] = None
+            if out_of_the_exit:
+                events.pit_exited.append(int(car))
+        driving = np.flatnonzero(self.pit_state == pit.IN_LANE)
+        self.lane_along[driving] = along[driving]
+        speed_zone = (along >= pit.RAMP) & (along <= lane.length - pit.RAMP)
+        for car in np.flatnonzero((self.pit_state == pit.IN_LANE) & speed_zone & ~self.lane_speeding
+                                  & (cars.speed > pit.SPEED_LIMIT + pit.SPEEDING)):
+            self.lane_speeding[car] = True
+            self._penalise(car, PIT_SPEEDING, 'pit speeding', events)
+        for car in driving:
+            if self.lane_called[car] and self.service_jobs[car] is None and np.linalg.norm(cars.velocity[car]) < REVERSE['still']:
+                self._stop_on_marks(car, along[car], plan, events)
+
+    def _stop_on_marks(self, car, along, plan, events):
+        """A called car standing near its box: on its marks, the crew gets to work; a little off them, they drag it
+        on first; further off, they wait for it."""
+        lane, marks = self.pit, pit.BOX_MARKS
+        off_along = abs(along - lane.boxes[car])
+        off_across = abs(self.lateral[car] - lane.working_lane)
+        if off_along > marks['reach_along'] or off_across > marks['reach_across']:
+            return
+        dragged = off_along > marks['along'] or off_across > marks['across']
+        jobs, standing = pit.service_times(plan, self.cars, car)
+        standing += marks['drag'] if dragged else 0.0
+        frozen = PitPlan(*(np.array(getattr(plan, name)) for name in PitPlan.__dataclass_fields__))
+        self.service_jobs[car] = {'jobs': jobs, 'plan': frozen}
+        self.service_left[car] = standing
+        self.pit_state[car] = pit.STOPPED
+        self.stops[car] += 1
+        self.cars.velocity[car] = 0.0
+        events.pit_stopped.append((int(car), jobs, round(standing, 2)))
+
+    def _work_in_boxes(self, events):
+        """Cars in their boxes stand still while the crew works, then are let go once the fast lane beside them is
+        clear (letting a car out into another's path is the crew's mistake, not the driver's)."""
+        for car in np.flatnonzero(self.pit_state == pit.STOPPED):
+            self.cars.velocity[car] = 0.0
+            self.service_left[car] -= DT
+            if self.service_left[car] <= 0 and not self._fast_lane_busy(car):
+                pit.apply_service(self.service_jobs[car]['plan'], self.cars, car, self.service_jobs[car]['jobs'])
+                self.service_left[car] = 0.0
+                self.pit_state[car] = pit.IN_LANE
+                events.pit_released.append(int(car))
+
+    def _fast_lane_busy(self, car):
+        """Whether a car driving down the lane is about to pass `car`'s box. One standing behind it, queued for the
+        way it blocks, doesn't count: holding on for that one would keep both there for ever."""
+        moving = self.cars.speed > REVERSE['still']
+        others = np.flatnonzero((self.pit_state == pit.IN_LANE) & moving & (np.arange(self.count) != car))
+        behind, ahead = pit.MERGE_CLEAR
+        offset = self.lane_along[others] - self.lane_along[car]
+        return bool(((offset > -behind) & (offset < ahead)).any())
+
+    def _penalise(self, car, seconds, reason, events):
+        if self.stewards is not None:
+            events.penalties.append(self.stewards.penalise(car, seconds, reason))
+
     def _lane_neighbours(self, car):
         """The other cars in the pit lane (driving or in their boxes): who, how far along, and whether each is in the
         same lane as `car`. Ghosts race alone, so they never share the lane."""
@@ -537,7 +643,8 @@ class Race:
         centres = cars.position + forward * FOOTPRINT_OFFSET
         gaps = centres[:, None, :] - centres[None, :, :]
         # Only footprints whose surrounding circles meet can touch; the exact test is for those few pairs.
-        near = (np.linalg.norm(gaps, axis=2) < 2 * FOOTPRINT_REACH) & ~self.in_lane[:, None] & ~self.in_lane[None, :]
+        rails = self.on_rails
+        near = (np.linalg.norm(gaps, axis=2) < 2 * FOOTPRINT_REACH) & ~rails[:, None] & ~rails[None, :]
         contacts = []
         for first, second in zip(*np.nonzero(np.triu(near, 1))):
             touching = _footprint_overlap(centres[first], forward[first], left[first], centres[second], forward[second], left[second])

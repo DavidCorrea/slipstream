@@ -42,6 +42,7 @@ CONDITION_VALUE = {'tyres': 4.2, 'damage': 2.4, 'brakes': 1.0, 'fuel_shortfall':
 WEAR_PER_LAP = 0.13
 LOOKAHEAD_STEP = 0.25     # laps between the points the tyre outlook is added up at
 MAX_LAPS = 12
+MEASURED_FROM = 0.5       # laps a car has to have covered before its own fuel use is trusted over the estimate
 
 
 def decode(actions, count):
@@ -74,7 +75,7 @@ def scripted_radio(race):
     """What a simple pit wall tells each driver (an index into RADIO_CALLS): save when the fuel won't reach the flag
     or the tyres are going off with laps to go, otherwise push when there's a car within PUSH_GAP ahead or behind."""
     cars, laps = race.cars, laps_left(race)
-    save = (cars.fuel < fuel_to_finish(race)) | ((cars.tyre_wear > SAVE_WEAR) & (laps > SAVE_LAPS))
+    save = (cars.fuel < measured_fuel_to_finish(race)) | ((cars.tyre_wear > SAVE_WEAR) & (laps > SAVE_LAPS))
     order = race.standings()
     gaps = np.full(race.count, np.inf)
     between = (race.progress[order[:-1]] - race.progress[order[1:]]) / np.maximum(cars.speed[order[1:]], 10.0)
@@ -133,6 +134,21 @@ def fuel_per_lap(race):
     return race.track.length / racing_speed(race) * fuel_burn_rate(race.cars.engine) * THROTTLE_SHARE
 
 
+def measured_fuel_per_lap(race):
+    """kg each car has really burned per lap so far, as a team reads it off the telemetry, once it has covered
+    MEASURED_FROM of a lap (the rough estimate before then). The estimate assumes clear-air laps at RACING_SPEED,
+    and in traffic, on worn tyres and in the wet cars burned about twice that: the scripted strategist called them in
+    too late, filled them too little, and in 20-car races a quarter of the field ran dry."""
+    laps = np.maximum(race.progress, 0.0) / race.track.length
+    measured = race.fuel_used / np.maximum(laps, 1e-6)
+    return np.where(laps >= MEASURED_FROM, np.maximum(measured, fuel_per_lap(race)), fuel_per_lap(race))
+
+
+def measured_fuel_to_finish(race):
+    """kg each car needs to reach the flag at the rate it has really been burning fuel."""
+    return measured_fuel_per_lap(race) * laps_left(race)
+
+
 def racing_speed(race):
     return RACING_SPEED * (1 - WET_SLOWDOWN * race.weather.wetness)
 
@@ -162,9 +178,9 @@ def scripted_strategy(race):
     """A sensible fixed strategy: come in when the fuel won't reach the flag and is about to run dry, for worn
     tyres or real damage with enough race left to make it pay, or for the right tyres when the track gets wetter or
     drier; take enough fuel to finish and the tyres that suit the track."""
-    cars, laps, needed = race.cars, laps_left(race), fuel_to_finish(race)
+    cars, laps, needed = race.cars, laps_left(race), measured_fuel_to_finish(race)
     wetness = race.weather.wetness
-    short_of_fuel = (cars.fuel < needed) & (cars.fuel < fuel_per_lap(race) * 1.4 + FUEL_MARGIN)
+    short_of_fuel = (cars.fuel < needed) & (cars.fuel < measured_fuel_per_lap(race) * 1.4 + FUEL_MARGIN)
     worn_out = (cars.tyre_wear > 0.7) & (laps > 2)
     broken = (np.maximum.reduce([cars.damage, cars.wing_damage, cars.suspension_damage]) > 0.4) & (laps > 2)
     changing_conditions = wrong_tyres(cars.compound, wetness) & (laps > 0.7)

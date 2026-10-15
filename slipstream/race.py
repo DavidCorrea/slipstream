@@ -547,18 +547,16 @@ class Race:
         stewards watch the speed limit and the white lines. Runs after the cars have moved and been located."""
         lane, cars = self.pit, self.cars
         along = lane.along(self.progress % self.track.length)
-        self.on_lane = lane.on_lane(along, self.lateral)
         racing = ~self.finished & ~self.retired
-        was_in = self.in_lane
-        for car in np.flatnonzero(self.on_lane & ~was_in & racing):
-            if lane.crossing_line(along[car]):
-                self._penalise(car, PIT_LINE, 'pit line', events)
+        in_reach = lane.on_lane(along, self.lateral, margin=pit.LINE_CROSSED)
+        entering = lane.on_lane(along, self.lateral) & ~self.in_lane & racing & (along <= lane.mouth)
+        for car in np.flatnonzero(entering):
             self.lane_called[car] = self.pit_state[car] == pit.CALLED
             self.lane_speeding[car] = False
             self.pit_state[car] = pit.IN_LANE
             self.lane_along[car] = along[car]
             events.pit_entered.append(int(car))
-        for car in np.flatnonzero(~self.on_lane & (self.pit_state == pit.IN_LANE)):
+        for car in np.flatnonzero(~in_reach & (self.pit_state == pit.IN_LANE)):
             out_of_the_exit = along[car] >= lane.length - lane.mouth
             towards_track = lane.side * self.lateral[car] < lane.side * lane.centre(along[car])
             if lane.crossing_line(along[car]) and towards_track and racing[car]:
@@ -568,6 +566,7 @@ class Race:
             self.service_jobs[car] = None
             if out_of_the_exit:
                 events.pit_exited.append(int(car))
+        self.on_lane = self.in_lane & in_reach
         driving = np.flatnonzero(self.pit_state == pit.IN_LANE)
         self.lane_along[driving] = along[driving]
         speed_zone = (along >= pit.RAMP) & (along <= lane.length - pit.RAMP)

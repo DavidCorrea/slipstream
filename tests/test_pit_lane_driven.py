@@ -105,17 +105,27 @@ class TestTheRules:
             penalties += race.step(np.zeros(1), np.ones(1), np.zeros(1)).penalties
         assert [(penalty.reason, penalty.seconds) for penalty in penalties] == [('pit speeding', PIT_SPEEDING)]
 
-    def test_crossing_the_white_line_into_the_lane_costs_time(self):
+    def test_the_only_way_in_is_through_the_mouth(self):
         race = driven_race(props=False)
         put_in_lane(race, 0, race.pit.mouth + 10.0, 20.0)
         events = race.step(np.zeros(1), np.zeros(1), np.zeros(1))
+        assert not race.in_lane[0] and not race.on_track[0]
+        assert events.penalties == []
+
+    def test_leaving_the_lane_over_the_white_line_costs_time(self):
+        race = driven_race(props=False)
+        put_in_lane(race, 0, 5.0, 15.0, lateral=race.pit.side * (race.track.width / 2 + 1.0))
+        race.step(np.zeros(1), np.zeros(1), np.zeros(1))
         assert race.in_lane[0]
+        put_in_lane(race, 0, 60.0, 15.0, lateral=race.pit.side * (race.track.width / 2 - 1.0))
+        events = race.step(np.zeros(1), np.zeros(1), np.zeros(1))
+        assert not race.in_lane[0]
         assert [(penalty.reason, penalty.seconds) for penalty in events.penalties] == [('pit line', PIT_LINE)]
 
     def test_a_car_short_of_its_marks_is_dragged_onto_them_for_a_price(self):
         exact, short = driven_race(props=False), driven_race(props=False)
         for race, off in ((exact, 0.0), (short, 2.0)):
-            race.pit_state[0] = pit.CALLED
+            race.pit_state[0], race.lane_called[0] = pit.IN_LANE, True
             box = race.pit.boxes[0] - off
             put_in_lane(race, 0, box - 0.05, 0.0, lateral=race.pit.working_lane)
             race.step(np.zeros(1), np.zeros(1), np.ones(1), plan=PitPlan.standard(1))

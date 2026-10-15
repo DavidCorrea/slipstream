@@ -5,7 +5,9 @@ to EXIT_AFTER metres after it. Each car has a box along it. How a car gets throu
 an assisted race (every race before drivers learned the lane) a car that has been called in leaves the track when
 it reaches the entry and is driven through the lane: it slows to the speed limit, stops in its box while the crew
 works, then drives out at the limit and rejoins. Otherwise the lane is tarmac like the track and the driver does
-it all (see Race): turns into the mouth of the lane before the white line starts, is down to the speed limit by the
+it all (see Race): turns into the mouth of the lane before the white line starts (the only way in: a car that runs
+onto the lane's tarmac anywhere else, as cars running wide in a first corner the lane runs on into do, is just off
+the track), is down to the speed limit by the
 speed line (the pit limiter holds it there), stops on its marks, and drives out after the crew lets it go. The
 stewards penalise speeding and crossing the white lines that part the lane's entry and exit from the track.
 
@@ -54,6 +56,8 @@ MERGE_CLEAR = (15.0, 9.0)   # a car leaving its box waits while a fast-lane car 
 SERVICE = {'base': 2.0, 'tyres': 2.4, 'fuel_per_second': 12.0, 'wing': 1.5, 'engine': 1.0, 'repair_per_damage': 10.0, 'brakes': 4.0}
 CHANGE_THRESHOLD = 0.05  # a wing or engine setting has to move this much for the crew to bother
 LANE_HALF_WIDTH = 3.6   # metres either side of the lane's centre: a fast lane and a working lane (web/circuit.js)
+# A car in the lane has only left it, over the white line, once it's this far over: the whole car, not a wheel.
+LINE_CROSSED = 1.1
 SPEEDING = 0.5          # m/s over the limit before it counts
 # How close to its marks a stopped car must be for the crew to work (metres along, metres across), how far off
 # they'll still drag it onto them, and the seconds that costs.
@@ -158,12 +162,12 @@ class PitLane:
         length = self.track.length
         return (np.asarray(distance) - self.entry + length / 2) % length - length / 2
 
-    def on_lane(self, along, lateral):
+    def on_lane(self, along, lateral, margin=0.0):
         """Whether each car is on the lane's tarmac: past the entry, short of the exit, beyond the track edge and
-        within the lane's width."""
+        within the lane's width, or within `margin` metres of its edge on the track's side."""
         outwards, centre = self.side * np.asarray(lateral), self.side * self.centre(along)
-        return ((along >= 0) & (along <= self.length) & (outwards > self.track.width / 2)
-                & (outwards <= centre + LANE_HALF_WIDTH) & (outwards >= centre - LANE_HALF_WIDTH))
+        return ((along >= 0) & (along <= self.length) & (outwards > self.track.width / 2 - margin)
+                & (outwards <= centre + LANE_HALF_WIDTH) & (outwards >= centre - LANE_HALF_WIDTH - margin))
 
     def crossing_line(self, along):
         """Whether moving between the track and the lane `along` metres in crosses a white line (or, beside the

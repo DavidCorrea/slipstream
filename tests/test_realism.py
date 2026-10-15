@@ -149,3 +149,16 @@ class TestTheDay:
         drive(into, specs, 30, throttle=1.0, conditions=Conditions.uniform(1, headwind=8.0))
         drive(with_it, specs, 30, throttle=1.0, conditions=Conditions.uniform(1, headwind=-8.0))
         assert into.speed[0] < still.speed[0] - 1 and with_it.speed[0] > still.speed[0] + 1
+
+
+class TestHandsAndFeet:
+    def test_standing_on_both_pedals_reaches_the_car(self):
+        import numpy as np
+
+        from slipstream.human import LATENCY_TICKS, Driving
+
+        driving = Driving(2, np.random.default_rng(0))
+        for _ in range(LATENCY_TICKS + 1):
+            steer, throttle, brake = driving.apply(np.zeros(2), np.array([1.0, 0.8]), np.array([1.0, 0.0]), np.zeros(2), 0.0)
+        assert throttle[0] == 1.0 and brake[0] == 1.0
+        assert brake[1] == 0.0 and 0.6 < throttle[1] < 1.0

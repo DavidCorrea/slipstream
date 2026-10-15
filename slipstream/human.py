@@ -6,6 +6,10 @@ pressure (a car right behind or right ahead), with fatigue as the race wears on,
 driver is. Once in a while, more so under pressure, a driver makes a real mistake: a moment's too much steering,
 a stab of brake, a lift where it should have been flat. Two of the driver's traits shape this: `consistency`
 (how small the errors are and how rare the mistakes) and `stamina` (how slowly fatigue sets in).
+
+The feet work one pedal at a time (throttle less brake), except when a driver deliberately stands on both, as the
+scripted driver does to select reverse (car.py): then both arrive. Folded into one pedal, both pedals came out as
+neither, and no scripted car could ever back out of trouble.
 """
 import numpy as np
 
@@ -36,6 +40,7 @@ class Driving:
         self.queue.append((np.asarray(steer, dtype=float), np.asarray(throttle, dtype=float), np.asarray(brake, dtype=float)))
         steer, throttle, brake = self.queue.pop(0)
         count = len(steer)
+        both = (throttle > 0.5) & (brake > 0.5)
         fatigue = np.minimum(time / FATIGUE_SECONDS, 1.5) * (1.2 - self.stamina)
         unsteadiness = (1.5 - self.consistency) * (1 + PRESSURE_NOISE * pressure + FATIGUE_NOISE * fatigue)
         steer = steer + self.rng.normal(0, NOISE['steer'], count) * unsteadiness
@@ -50,4 +55,4 @@ class Driving:
         steer = steer + np.where(erring, self.mistake[:, 0], 0.0)
         pedal = pedal + np.where(erring, self.mistake[:, 1], 0.0)
         self.mistake_left[erring] -= 1
-        return np.clip(steer, -1, 1), np.clip(pedal, 0, 1), np.clip(-pedal, 0, 1)
+        return np.clip(steer, -1, 1), np.where(both, throttle, np.clip(pedal, 0, 1)), np.where(both, brake, np.clip(-pedal, 0, 1))

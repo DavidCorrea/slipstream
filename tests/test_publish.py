@@ -1,9 +1,10 @@
 import json
 
+import pytest
 from stable_baselines3 import PPO
 
 from slipstream.env import RaceVecEnv
-from slipstream.publish import ENGINE_FILES, ROOT, browser_modules, publish
+from slipstream.publish import ENGINE_FILES, ROOT, browser_modules, choose_default_driver, publish
 
 
 class TestPublishingTheSite:
@@ -28,3 +29,13 @@ class TestPublishingTheSite:
         assert (tmp_path / 'brains' / 'wall' / 'checkpoints' / 'step-000000000100.npz').is_file()
         assert (tmp_path / 'brains' / 'wall' / 'driver.json').read_text() == '{"driver": "fast"}'
         assert sorted(path.name for path in published) == ['driver.json', 'step-000000000100.npz']
+
+    def test_names_the_driver_the_page_starts_with(self, tmp_path):
+        (tmp_path / 'polish' / 'checkpoints').mkdir(parents=True)
+        (tmp_path / 'polish' / 'checkpoints' / 'step-000000000100.npz').write_bytes(b'')
+        choose_default_driver('polish/step-000000000100', destination=tmp_path)
+        assert (tmp_path / 'default-driver.txt').read_text() == 'polish/step-000000000100\n'
+
+    def test_refuses_a_default_driver_that_isnt_published(self, tmp_path):
+        with pytest.raises(ValueError, match='polish/step-000000000100'):
+            choose_default_driver('polish/step-000000000100', destination=tmp_path)

@@ -53,3 +53,17 @@ class TestRacingInTheBrowser:
     def test_the_browser_side_needs_none_of_the_training_libraries(self):
         result = imports_without_training_libraries('slipstream.browser')
         assert result.returncode == 0, result.stderr
+
+    def test_offers_the_driver_chosen_when_publishing_first_rather_than_the_newest(self, tmp_path):
+        import json
+        from slipstream.browser import BrowserRaces
+        for run in ('driver-polish', 'racer-2'):
+            (tmp_path / run / 'checkpoints').mkdir(parents=True)
+            (tmp_path / run / 'checkpoints' / 'step-000036016128.npz').write_bytes(b'')
+        (tmp_path / 'default-driver.txt').write_text('driver-polish/step-000036016128\n')
+        assert json.loads(BrowserRaces(tmp_path).brains())['defaultDriver'] == 'driver-polish/step-000036016128'
+
+    def test_without_a_chosen_driver_leaves_the_page_to_pick_the_newest(self, tmp_path):
+        import json
+        from slipstream.browser import BrowserRaces
+        assert json.loads(BrowserRaces(tmp_path).brains())['defaultDriver'] is None

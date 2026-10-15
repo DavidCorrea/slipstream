@@ -571,10 +571,11 @@ async function serverBrains() {
   }
 }
 
-function showBrains({ drivers, pitwalls }) {
+function showBrains({ drivers, pitwalls, defaultDriver }) {
   state.brainLabels = new Map([...drivers, ...pitwalls].map(brain => [brain.id, brain.label]));
-  // Default to the newest snapshot of any run, since watching training is the point.
-  fillPicker($('brain'), drivers, drivers[1]?.id ?? 'scripted');
+  // The published site starts with the driver chosen when publishing; otherwise the newest snapshot of any run,
+  // since watching training is the point.
+  fillPicker($('brain'), drivers, defaultDriver ?? drivers[1]?.id ?? 'scripted');
   fillPicker($('pitwall'), pitwalls, pitwalls[2]?.id ?? 'driver');
 }
 

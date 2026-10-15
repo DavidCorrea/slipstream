@@ -12,6 +12,9 @@ from .session import list_brains, list_pitwalls
 from .viewer import Viewer
 
 PUBLISHED = Path('brains')
+# Names the driver a visitor starts with (written by publish.py), so a newer, unproven snapshot can be published
+# for trying without becoming what everyone sees first.
+DEFAULT_DRIVER = 'default-driver.txt'
 
 
 class Outbox:
@@ -42,4 +45,6 @@ class BrowserRaces:
         return messages
 
     def brains(self):
-        return json.dumps({'drivers': list_brains(self.runs), 'pitwalls': list_pitwalls(self.runs)})
+        chosen = self.runs / DEFAULT_DRIVER
+        default = chosen.read_text().strip() if chosen.is_file() else None
+        return json.dumps({'drivers': list_brains(self.runs), 'pitwalls': list_pitwalls(self.runs), 'defaultDriver': default})

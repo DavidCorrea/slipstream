@@ -2,6 +2,7 @@
 
     .venv/bin/python -m slipstream.publish driver-polish/step-000092033024 driver-polish/step-000119025664 pitwall-feel/step-000000251904
     .venv/bin/python -m slipstream.publish            # only refreshes the list, after changing the simulation
+    .venv/bin/python -m slipstream.publish --default driver-polish/step-000119025664   # the driver the page starts with
 
 The published site has no server: the page runs the simulation itself (browser.py in a web worker). Static
 hosting can't list a folder, so ENGINE_FILES names everything the worker fetches: the Python modules the browser
@@ -15,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .browser import DEFAULT_DRIVER
 from .session import RUNS, brain_path, is_pitwall_run
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +50,15 @@ def publish(snapshots, runs=RUNS, destination=BRAINS):
     return written
 
 
+def choose_default_driver(snapshot, destination=BRAINS):
+    """Makes a published snapshot ('run/step-N') the driver the page starts with. Without one the page starts
+    with the newest, which suits a local server watching training but not a site visitors try."""
+    run, step = snapshot.split('/', 1)
+    if not (destination / run / 'checkpoints' / f'{step}.npz').is_file():
+        raise ValueError(f'Only a published snapshot can be the default driver, {snapshot!r} is not published')
+    (destination / DEFAULT_DRIVER).write_text(snapshot + '\n')
+
+
 def write_engine_files():
     """Lists the files with their total size, which the loading screen counts the download against."""
     modules = browser_modules()
@@ -60,9 +71,13 @@ def write_engine_files():
 def main():
     parser = argparse.ArgumentParser(description='Export networks for the published site and list the files it needs')
     parser.add_argument('snapshots', nargs='*', help="snapshots to publish, like 'driver-rivals/step-000036016128'")
+    parser.add_argument('--default', help='published snapshot the page starts with, like driver-polish/step-000119025664')
     arguments = parser.parse_args()
     for path in publish(arguments.snapshots):
         print(f'published {path.relative_to(ROOT)} ({path.stat().st_size / 1e6:.2f} MB)')
+    if arguments.default:
+        choose_default_driver(arguments.default)
+        print(f'the page starts with {arguments.default}')
     brains = write_engine_files()
     print(f'{ENGINE_FILES}: {len(browser_modules())} modules, {len(brains)} brain files')
 

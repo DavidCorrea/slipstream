@@ -29,11 +29,13 @@
     "slipstream/weather.py"
   ],
   "brains": [
+    "brains/default-driver.txt",
     "brains/driver-copy/checkpoints/step-000032022528.npz",
     "brains/driver-polish/checkpoints/step-000092033024.npz",
     "brains/driver-polish/checkpoints/step-000119025664.npz",
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
-    "brains/pitwall-feel/driver.json"
+    "brains/pitwall-feel/driver.json",
+    "brains/racer-2/checkpoints/step-000035026080.npz"
   ],
-  "bytes": 2557520
+  "bytes": 3389902
 }

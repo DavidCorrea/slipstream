@@ -5,9 +5,9 @@ to EXIT_AFTER metres after it. Each car has a box along it. How a car gets throu
 an assisted race (every race before drivers learned the lane) a car that has been called in leaves the track when
 it reaches the entry and is driven through the lane: it slows to the speed limit, stops in its box while the crew
 works, then drives out at the limit and rejoins. Otherwise the lane is tarmac like the track and the driver does
-it all (see Race): turns into the mouth of the lane before the white line starts (the only way in: a car that runs
-onto the lane's tarmac anywhere else, as cars running wide in a first corner the lane runs on into do, is just off
-the track), is down to the speed limit by the
+it all (see Race): turns into the lane's opening before the pit wall starts (the only way in: a car that runs onto
+the lane's tarmac anywhere else, as cars running wide in a first corner the lane runs on into do, is just off the
+track), is down to the speed limit by the
 speed line (the pit limiter holds it there), stops on its marks, and drives out after the crew lets it go. The
 stewards penalise speeding and crossing the white lines that part the lane's entry and exit from the track.
 
@@ -58,6 +58,10 @@ CHANGE_THRESHOLD = 0.05  # a wing or engine setting has to move this much for th
 LANE_HALF_WIDTH = 3.6   # metres either side of the lane's centre: a fast lane and a working lane (web/circuit.js)
 # A car in the lane has only left it, over the white line, once it's this far over: the whole car, not a wheel.
 LINE_CROSSED = 1.1
+# How far into the lane a car can still turn into it: the whole opening up to where the pit wall starts (RAMP),
+# less a car's length. Only its first 20 m (the mouth, before the white line) and a car coming in a little wide
+# or fast missed it, then steered for a lane it wasn't in and into the pit wall, while its tyres and fuel ran out.
+ENTRY_WINDOW = 30.0
 SPEEDING = 0.5          # m/s over the limit before it counts
 # How close to its marks a stopped car must be for the crew to work (metres along, metres across), how far off
 # they'll still drag it onto them, and the seconds that costs.

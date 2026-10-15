@@ -105,9 +105,9 @@ class TestTheRules:
             penalties += race.step(np.zeros(1), np.ones(1), np.zeros(1)).penalties
         assert [(penalty.reason, penalty.seconds) for penalty in penalties] == [('pit speeding', PIT_SPEEDING)]
 
-    def test_the_only_way_in_is_through_the_mouth(self):
+    def test_the_only_way_in_is_through_the_opening_before_the_pit_wall(self):
         race = driven_race(props=False)
-        put_in_lane(race, 0, race.pit.mouth + 10.0, 20.0)
+        put_in_lane(race, 0, pit.ENTRY_WINDOW + 10.0, 20.0)
         events = race.step(np.zeros(1), np.zeros(1), np.zeros(1))
         assert not race.in_lane[0] and not race.on_track[0]
         assert events.penalties == []

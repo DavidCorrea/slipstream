@@ -549,7 +549,7 @@ class Race:
         along = lane.along(self.progress % self.track.length)
         racing = ~self.finished & ~self.retired
         in_reach = lane.on_lane(along, self.lateral, margin=pit.LINE_CROSSED)
-        entering = lane.on_lane(along, self.lateral) & ~self.in_lane & racing & (along <= lane.mouth)
+        entering = lane.on_lane(along, self.lateral) & ~self.in_lane & racing & (along <= pit.ENTRY_WINDOW)
         for car in np.flatnonzero(entering):
             self.lane_called[car] = self.pit_state[car] == pit.CALLED
             self.lane_speeding[car] = False

@@ -1,13 +1,19 @@
-"""A scripted driver that follows the centre line: no learning, no racecraft.
+"""A scripted driver that follows the centre line: no learning, and only the racecraft not to crash.
 
 It aims at a point ahead on the centre line (pure pursuit) and picks a target speed from the corners coming
 up: the fastest speed that grip allows through each one, plus what braking can shed before reaching it. It
 proves the physics can be driven, and gives trained drivers a fixed opponent to beat.
+
+It has traffic sense too: it keeps a braking distance from the car ahead in its path, and steers round a car
+that is crawling or stopped in it. Without that a field of them drove into each other at the first corner and
+piled up off the track, where each one stuck against another backed up and drove into it again: in 20-car races
+with props only about a fifth of them finished.
 """
 import numpy as np
 
 from . import pit
 from .car import BRAKE_WEAR, GRAVITY, MAX_STEER, OFF_TRACK, STEER_FADE_SPEED, WHEELBASE, effective_grip, effective_top_speed
+from .observe import to_car_frame
 from .track import SPACING
 
 # Every driver, scripted or trained, decides every DECISION_TICKS physics ticks and holds its controls in between.
@@ -28,7 +34,11 @@ BLOCKED_SECONDS = 1.5
 # lapping it by.
 START_REACTION = (0.15, 0.15)
 BLUE_EASE = 0.85
-BACK_UP = {'longest': 2.0, 'shortest': 0.8, 'aligned': 0.6}   # seconds, seconds, radians off the way ahead
+# Traffic: a car in the way is one up to `looking` metres ahead, within `across` metres of its line; it keeps `gap`
+# metres to it, braking with `braking` of what its brakes can do, and goes round one slower than `slow` of its own
+# speed, aiming `beside` metres to the side of it.
+TRAFFIC = {'looking': 60.0, 'across': 2.4, 'gap': 7.0, 'braking': 0.6, 'slow': 0.5, 'beside': 3.5}
+BACK_UP = {'longest': 3.0, 'shortest': 0.8, 'aligned': 0.6}   # seconds, seconds, radians off the way ahead
 # Driving the pit lane itself (in races that aren't assisted): from this far before the entry a called car moves
 # over to the lane's side of the track, it aims this far under the limit and is down to it by the mouth of the lane
 # (braking with this share of what grip and brakes allow), swings into its box over `turn_in` metres and back out
@@ -42,7 +52,9 @@ def scripted_controls(race):
     speed = np.maximum(cars.speed, 0.0)
     distance = race.progress % track.length
 
-    target = track.point_at(distance + LOOKAHEAD[0] + LOOKAHEAD[1] * speed)
+    braking = specs.braking * (1 - BRAKE_WEAR['loss'] * cars.brake_wear)
+    in_the_way, way_speed, going_round, around = _traffic(race, speed)
+    target = track.point_at(distance + LOOKAHEAD[0] + LOOKAHEAD[1] * speed, around)
     to_target = target - cars.position
     angle = np.arctan2(to_target[:, 1], to_target[:, 0]) - cars.heading
     angle = (angle + np.pi) % (2 * np.pi) - np.pi
@@ -54,7 +66,6 @@ def scripted_controls(race):
     indices = (np.floor((distance[:, None] + ahead[None, :]) / SPACING).astype(int)) % track.size
     curvature = np.abs(track.curvature[indices])
     grip = CAUTION * effective_grip(cars, specs, race.weather.wetness) * GRAVITY
-    braking = specs.braking * (1 - BRAKE_WEAR['loss'] * cars.brake_wear)
     corner_speed = np.sqrt(grip[:, None] / np.maximum(curvature, 1e-4))
     profile = _speed_profile(corner_speed, curvature, grip, CAUTION * braking)
     lead = np.minimum((speed * REACTION / SPACING).astype(int), profile.shape[1] - 1)
@@ -62,6 +73,9 @@ def scripted_controls(race):
     target_speed = np.where(race.on_track, target_speed, np.minimum(target_speed, RECOVERY_SPEED))
     if race.marshals is not None:
         target_speed = np.where(race.marshals.blue, target_speed * BLUE_EASE, target_speed)
+    # Behind a car it isn't going round, no faster than lets it stop a gap short of it.
+    following = way_speed + np.sqrt(2 * TRAFFIC['braking'] * braking * np.maximum(in_the_way - TRAFFIC['gap'], 0.0))
+    target_speed = np.where(np.isfinite(in_the_way) & ~going_round, np.minimum(target_speed, following), target_speed)
 
     throttle = np.clip((target_speed - speed) / 1.0, 0, 1)
     # Brake only with the grip the corner it's in leaves over (the friction circle), or it can't turn.
@@ -190,6 +204,36 @@ def _room_in_lane(race, car, along):
     nearest = np.argmin(np.where(blocking, ahead, np.inf))
     gap = ahead[nearest] - pit.QUEUE_GAP
     return max(race.cars.speed[others[nearest]] + np.sqrt(2 * PIT_APPROACH['box_braking'] * max(gap, 0.0)) * (gap > 0), 0.0)
+
+
+def _traffic(race, speed):
+    """For each car: how far ahead the nearest car in its path is (inf for none), how fast that car is going its
+    way, whether it's going round it, and where across the track to aim (0, the centre line, when it isn't). A car
+    heading into the pit lane or in it queues instead of going round: a car ahead there is slowing for the limit, and
+    swinging out round it took cars over the white lines and past the entry."""
+    count = race.count
+    nothing = np.full(count, np.inf), np.zeros(count), np.zeros(count, dtype=bool), np.zeros(count)
+    if race.ghosts or count < 2:
+        return nothing
+    cars = race.cars
+    offset = to_car_frame(cars.position[None, :, :] - cars.position[:, None, :], cars.heading[:, None])
+    ahead, across = offset[..., 0], offset[..., 1]
+    # Cars on rails in the lane, and the car itself, are never in the way.
+    blocking = (ahead > 0) & (ahead < TRAFFIC['looking']) & (np.abs(across) < TRAFFIC['across'])
+    blocking &= ~np.eye(count, dtype=bool) & ~race.on_rails[None, :] & ~race.on_rails[:, None]
+    if not blocking.any():
+        return nothing
+    distance = np.where(blocking, ahead, np.inf)
+    nearest = np.argmin(distance, axis=1)
+    gap = distance[np.arange(count), nearest]
+    their_speed = np.einsum('ck,ck->c', cars.velocity[nearest], cars.forward)
+    along = race.pit.along(race.progress % race.track.length)
+    for_the_lane = race.in_lane | ((race.pit_state == pit.CALLED) & (along > -PIT_APPROACH['from']) & (along < race.pit.length))
+    slow = np.isfinite(gap) & (their_speed < TRAFFIC['slow'] * np.maximum(speed, 5.0)) & ~for_the_lane
+    half = race.track.width / 2 - 1.5
+    side = np.where(race.lateral[nearest] > 0, -1.0, 1.0)
+    around = np.where(slow, np.clip(race.lateral[nearest] + side * TRAFFIC['beside'], -half, half), 0.0)
+    return gap, np.maximum(their_speed, 0.0), slow, around
 
 
 def _backing_up(cars, angle, steer, throttle, brake, stopped_for, can_back_up):

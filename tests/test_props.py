@@ -1,7 +1,7 @@
 import numpy as np
 
 from slipstream.car import CarSpecs
-from slipstream.drivers import scripted_controls
+from slipstream.drivers import BACK_UP, scripted_controls
 from slipstream.pit import PitPlan
 from slipstream.race import Race
 from slipstream.scenery import BREAKABLE, SOFT, SOLID, Prop, place
@@ -135,7 +135,7 @@ class TestBackingOut:
         race.cars.reversing[0], race.cars.reversed_for[0] = True, 0.5
         steer, throttle, brake = scripted_controls(race)
         assert throttle[0] == 1.0 and brake[0] == 0.0 and steer[0] == 1.0   # nose wants right: reverse steers left
-        race.cars.reversed_for[0] = 2.5
+        race.cars.reversed_for[0] = BACK_UP['longest'] + 0.5
         _, throttle, brake = scripted_controls(race)
         assert throttle[0] == 0.0 and brake[0] == 1.0
 

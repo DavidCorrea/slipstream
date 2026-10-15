@@ -20,6 +20,10 @@ Like personality, these only count once the network can drive (train.CAN_DRIVE),
 first racing driver run paid them from the start, and a driver that could barely get round found that every start
 in traffic cost it penalties and damage, so by 2M decisions it no longer left the grid.
 
+- `still`, per decision a car sits below STILL_SPEED once the lights are out (not in the pit lane), on top of the
+  time it loses: a field of a network's own copies once sat on the grid after the lights, each car waiting for the
+  one ahead, and later queued for good behind a car that had stopped, rather than go round it.
+
 A share of races are drills (PIT_DRILL): the learners are called in from the first lap, so the lane, the limiter
 and the box come up far more often than real strategy would bring them.
 """
@@ -52,12 +56,13 @@ LEAGUE_SIZE = 5
 DAMAGE_LAPS = 10.0
 CLEAN_SECONDS = 2.0
 PIT_DRILL = 0.25
+STILL_SPEED = 2.0
 STALLED_SECONDS = 15.0
 # On top of env.REWARDS and train.TRAFFIC_REWARDS. A second of race time is worth 0.12 (train.TRAFFIC_REWARDS
 # charges 0.012 a decision), and a penalty second is charged the same. A hard hit worth 0.1 damage with five laps
 # to go costs 0.75, about a place.
 RACER_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012, 'retire': 3.5, 'off_track': 0.01, 'hard_hit': 0.25,
-                 'penalty': 0.12, 'damage': 1.5, 'rough_pass': 0.25, 'stop': 0.5, 'radio': 0.002}
+                 'penalty': 0.12, 'damage': 1.5, 'rough_pass': 0.25, 'stop': 0.5, 'radio': 0.002, 'still': 0.024}
 
 
 class RacerEnv(DriverEnv):
@@ -214,4 +219,6 @@ class RacerEnv(DriverEnv):
         followed = ((heard == RADIO_CALLS.index('save')) & (engine < 0.4)) | ((heard == RADIO_CALLS.index('push')) & (engine > 0.6))
         reward += strength * rewards['radio'] * followed
         reward -= rewards['time'] * racing
+        stalled = racing & (race.cars.speed < STILL_SPEED) & ~race.in_lane & race.marshals.started(race.time)
+        reward -= rewards['still'] * stalled
         return reward

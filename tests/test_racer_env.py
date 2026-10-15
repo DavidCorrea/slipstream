@@ -1,6 +1,6 @@
 import numpy as np
 
-from slipstream.racer_env import FIELD, LAPS, LEARNERS, RACER_REWARDS, RacerEnv
+from slipstream.racer_env import FIELD, LAPS, LEARNERS, RACER_REWARDS, STILL_SPEED, RacerEnv
 from slipstream.senses import RACER_SENSE_NAMES
 from slipstream.strategy import RACER_ACTIONS
 
@@ -67,6 +67,23 @@ class TestWhatARacingDriverIsPaidFor:
         # Moving off the grid before the lights is a jump start (the lights take five seconds at least).
         assert decisions(jumping, early, 20)[car] < decisions(quiet, braking(quiet.races[0]), 20)[car] - RACER_REWARDS['penalty'] * 9
 
+    def test_sitting_still_after_the_lights_costs_on_top_of_the_time_lost(self):
+        charged, free = env(races=1), RacerEnv(races=1, rewards={'still': 0.0})
+        free.personality_strength = 1.0
+        for racing in (charged, free):
+            racing.reset()
+            racing.races[0].marshals.lights_out_at = racing.races[0].time
+        car = charged.learner_cars[0][0]
+        extra = decisions(free, braking(free.races[0]), 5)[car] - decisions(charged, braking(charged.races[0]), 5)[car]
+        assert np.isclose(extra, RACER_REWARDS['still'] * 5)
+
+    def test_waiting_for_the_lights_costs_nothing_extra(self):
+        racing = env(races=1)
+        racing.reset()
+        race, car = racing.races[0], racing.learner_cars[0][0]
+        assert not race.marshals.started(race.time) and race.cars.speed[car] < STILL_SPEED
+        assert decisions(racing, braking(race), 1)[car] > -RACER_REWARDS['still']
+
     def test_damage_costs_more_with_more_race_to_go(self):
         paid = {}
         for laps in (2, 20):
@@ -99,3 +116,4 @@ class TestTheLeague:
         for race, cars, mine in zip(racing.races, seated, racing.learner_cars):
             assert not set(cars) & set(mine)
             assert len(cars) <= (race.count - LEARNERS) // 2
+

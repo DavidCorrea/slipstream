@@ -117,3 +117,15 @@ class TestTheLeague:
             assert not set(cars) & set(mine)
             assert len(cars) <= (race.count - LEARNERS) // 2
 
+
+class TestStartDrills:
+    def test_some_races_start_the_learners_from_the_back_of_the_grid(self):
+        racing = env(races=12, seed=1)
+        racing.reset()
+        drilled = [racing.start_drills[id(race)] for race in racing.races]
+        assert any(drilled) and not all(drilled)
+        for race, mine, at_the_back in zip(racing.races, racing.learner_cars, drilled):
+            if at_the_back:
+                assert list(mine) == list(range(race.count - LEARNERS, race.count))
+                assert race.progress[mine].max() < np.delete(race.progress, mine).min()
+

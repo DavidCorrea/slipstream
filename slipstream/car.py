@@ -42,8 +42,10 @@ STEER_FADE_SPEED = 35.0 # m/s at which the available steering lock has halved
 EMPTY_MASS = 750.0      # kg, car and driver
 FUEL_CAPACITY = 60.0    # kg: about five laps at racing pace, so long races need a stop or a lot of saving
 ROLLING_DRAG = 0.4      # m/s^2
-# Reverse: how still the car must be and for how long both pedals are held to select it, and how it drives.
-REVERSE = {'still': 0.5, 'select': 0.5, 'power': 3.0, 'top_speed': 4.0}   # m/s; seconds; m/s^2; m/s
+# Reverse: how still the car must be and for how long both pedals are held to select it, and how it drives. Its
+# power beats the grass's drag (OFF_TRACK): at 3 m/s^2 a car that slid onto the grass against something could
+# never back off it.
+REVERSE = {'still': 0.5, 'select': 0.5, 'power': 9.0, 'top_speed': 5.0}   # m/s; seconds; m/s^2; m/s
 OFF_TRACK = {'grip': 0.55, 'drag': 5.0}
 # Tyre wear per second at full cornering load, and extra while sliding: mediums go off after four or five laps,
 # so one stop clearly pays from about seven laps on (at a gentler rate it only broke even around nine).

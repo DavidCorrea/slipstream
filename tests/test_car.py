@@ -1,6 +1,6 @@
 import numpy as np
 
-from slipstream.car import DT, FUEL_CAPACITY, GRAVITY, CarSpecs, CarState, step_cars
+from slipstream.car import DT, FUEL_CAPACITY, GRAVITY, REVERSE, CarSpecs, CarState, step_cars
 
 
 def one_car(speed=0.0, fuel=FUEL_CAPACITY, **specs):
@@ -157,7 +157,7 @@ class TestReverseGear:
         state, specs = one_car()
         self.select_reverse(state, specs)
         drive(state, specs, 5, throttle=1)
-        assert -4.0 <= state.speed[0] < -2.0 and state.position[0, 0] < -5.0
+        assert -REVERSE['top_speed'] <= state.speed[0] < -2.0 and state.position[0, 0] < -5.0
 
     def test_braking_alone_to_a_stop_never_selects_reverse(self):
         state, specs = one_car(speed=30.0)

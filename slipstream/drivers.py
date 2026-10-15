@@ -43,8 +43,8 @@ BACK_UP = {'longest': 3.0, 'shortest': 0.8, 'aligned': 0.6}   # seconds, seconds
 # over to the lane's side of the track, it aims this far under the limit and is down to it by the mouth of the lane
 # (braking with this share of what grip and brakes allow), swings into its box over `turn_in` metres and back out
 # over `pull_out`, and brakes gently enough for its box to stop on its marks.
-PIT_APPROACH = {'from': 110.0, 'over': 70.0, 'edge': 2.5, 'under_limit': 1.0, 'turn_in': 13.0, 'pull_out': 14.0,
-                'box_braking': 4.0, 'limit_braking': 0.6, 'lane_look': 4.0}
+PIT_APPROACH = {'from': 200.0, 'over': 140.0, 'edge': 2.5, 'under_limit': 1.0, 'turn_in': 13.0, 'pull_out': 14.0,
+                'box_braking': 4.0, 'limit_braking': 0.35, 'lane_look': 4.0}
 
 
 def scripted_controls(race):
@@ -106,7 +106,7 @@ def _pit_lane(race, speed, grip, deceleration, target_speed, most_brake, steer, 
     `most_brake` the brake its cornering leaves grip for."""
     lane, cars, track = race.pit, race.cars, race.track
     along = lane.along(race.progress % track.length)
-    approaching = (race.pit_state == pit.CALLED) & (along > -PIT_APPROACH['from']) & (along < lane.mouth)
+    approaching = (race.pit_state == pit.CALLED) & (along > -PIT_APPROACH['from']) & (along < pit.ENTRY_WINDOW)
     lane_cars = np.flatnonzero(approaching | race.in_lane)
     for car in lane_cars:
         # In the lane it looks closer, to follow its tighter turns into the box and out.

@@ -26,7 +26,9 @@ in traffic cost it penalties and damage, so by 2M decisions it no longer left th
 
 A share of races are drills (PIT_DRILL): the learners are called in from the first lap, so the lane, the limiter
 and the box come up far more often than real strategy would bring them. In START_DRILL of races the learners start
-from the back of the grid, where getting away means finding a way round cars still slow off the line.
+from the back of the grid, where getting away means finding a way round cars still slow off the line. And in
+SELF_RACE of races, once there is a league, every rival is one of its snapshots: scripted rivals react to the
+network, copies of it don't, and only racing them teaches it to start and pass among drivers like itself.
 """
 from pathlib import Path
 
@@ -58,6 +60,7 @@ DAMAGE_LAPS = 10.0
 CLEAN_SECONDS = 2.0
 PIT_DRILL = 0.25
 START_DRILL = 0.25
+SELF_RACE = 0.25
 STILL_SPEED = 2.0
 STALLED_SECONDS = 15.0
 # On top of env.REWARDS and train.TRAFFIC_REWARDS. A second of race time is worth 0.12 (train.TRAFFIC_REWARDS
@@ -76,7 +79,7 @@ class RacerEnv(DriverEnv):
     def __init__(self, races=32, seed=0, rewards=None):
         self.league: list[NumpyNetwork] = []
         self.league_cars, self.league_drivers, self.drills, self.hit_at = {}, {}, {}, {}
-        self.start_drills = {}
+        self.start_drills, self.self_races = {}, {}
         super().__init__(races=races, cars=FIELD[1], laps=LAPS, seed=seed, rewards={**RACER_REWARDS, **(rewards or {})},
                          rivals=FIELD[1] - LEARNERS)
 
@@ -112,6 +115,7 @@ class RacerEnv(DriverEnv):
         race.place_props(place(track, race.pit, seed, location_for(seed)))
         self.drills[id(race)] = bool(self.rng.random() < PIT_DRILL)
         self.start_drills[id(race)] = bool(self.rng.random() < START_DRILL)
+        self.self_races[id(race)] = bool(self.rng.random() < SELF_RACE)
         self.hit_at[id(race)] = np.full(count, -np.inf)
         return race
 
@@ -123,10 +127,15 @@ class RacerEnv(DriverEnv):
 
     def _seat_league(self, race, mine):
         """Which of the cars the network isn't learning with a snapshot from the league drives, decided at a race's
-        first decision (once the learners have their seats)."""
+        first decision (once the learners have their seats): all of them in a race against itself."""
         others = np.setdiff1d(np.arange(race.count), mine)
         most = int(LEAGUE_SHARE * len(others)) if self.league else 0
-        chosen = np.sort(self.rng.permutation(others)[:int(self.rng.integers(0, most + 1))]) if most else np.zeros(0, dtype=int)
+        if self.league and self.self_races[id(race)]:
+            chosen = others
+        elif most:
+            chosen = np.sort(self.rng.permutation(others)[:int(self.rng.integers(0, most + 1))])
+        else:
+            chosen = np.zeros(0, dtype=int)
         self.league_cars[id(race)] = chosen
         if len(chosen):
             snapshot = self.league[int(self.rng.integers(len(self.league)))]
@@ -146,7 +155,7 @@ class RacerEnv(DriverEnv):
             race.retire(car, 'stuck')
         if race.done:
             for store in (self.furthest, self.league_cars, self.league_drivers, self.drills, self.hit_at,
-                          self.start_drills):
+                          self.start_drills, self.self_races):
                 store.pop(id(race), None)
         return -self.crash_cost * beached
 

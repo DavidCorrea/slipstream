@@ -115,7 +115,21 @@ class TestTheLeague:
         assert any(len(cars) for cars in seated)
         for race, cars, mine in zip(racing.races, seated, racing.learner_cars):
             assert not set(cars) & set(mine)
-            assert len(cars) <= (race.count - LEARNERS) // 2
+            if not racing.self_races[id(race)]:
+                assert len(cars) <= (race.count - LEARNERS) // 2
+
+    def test_some_races_are_against_nobody_but_itself(self, tmp_path):
+        racing = league_env(tmp_path, races=12)
+        assert any(racing.self_races.values()) and not all(racing.self_races.values())
+        for race, mine in zip(racing.races, racing.learner_cars):
+            if racing.self_races[id(race)]:
+                assert sorted([*racing.league_cars[id(race)], *mine]) == list(range(race.count))
+
+    def test_with_no_league_yet_every_race_has_scripted_rivals(self):
+        racing = env(races=12, seed=3)
+        racing.reset()
+        racing.step(np.zeros((racing.num_envs, len(RACER_ACTIONS))))
+        assert not any(len(racing.league_cars[id(race)]) for race in racing.races)
 
 
 class TestStartDrills:
@@ -129,3 +143,16 @@ class TestStartDrills:
                 assert list(mine) == list(range(race.count - LEARNERS, race.count))
                 assert race.progress[mine].max() < np.delete(race.progress, mine).min()
 
+
+def league_env(tmp_path, races, seed=3):
+    from sb3_contrib import RecurrentPPO
+
+    from slipstream.numpy_network import export
+    from slipstream.train import RACER_SETTINGS
+
+    racing = env(races=races, seed=seed)
+    export(RecurrentPPO('MlpLstmPolicy', racing, device='cpu', **RACER_SETTINGS), tmp_path / 'snapshot.npz')
+    racing.add_to_league(tmp_path / 'snapshot.npz')
+    racing.reset()
+    racing.step(np.zeros((racing.num_envs, len(RACER_ACTIONS))))
+    return racing

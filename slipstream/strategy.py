@@ -43,6 +43,13 @@ WEAR_PER_LAP = 0.13
 LOOKAHEAD_STEP = 0.25     # laps between the points the tyre outlook is added up at
 MAX_LAPS = 12
 MEASURED_FROM = 0.5       # laps a car has to have covered before its own fuel use is trusted over the estimate
+# Tyres past this much wear are off the cliff (car.tyre_grip_factor): a car still out on them slid wide even at
+# pit-lane speed and couldn't make the turn into the lane. The strategist calls a car in while a lap more won't
+# take its tyres past it, rather than once they're past WORN_OUT. A call is made once a lap, at the decision point,
+# so a car can still have up to a lap and a half to run before it reaches its box.
+TYRE_CLIFF = 0.8
+LAPS_TO_THE_BOX = 1.5
+WORN_OUT = 0.7
 
 
 def decode(actions, count):
@@ -144,6 +151,13 @@ def measured_fuel_per_lap(race):
     return np.where(laps >= MEASURED_FROM, np.maximum(measured, fuel_per_lap(race)), fuel_per_lap(race))
 
 
+def measured_wear_per_lap(race):
+    """Tyre wear each car has really put on per lap so far (every set counted), once it has covered MEASURED_FROM of
+    a lap; until then, nothing measured yet."""
+    laps = np.maximum(race.progress, 0.0) / race.track.length
+    return np.where(laps >= MEASURED_FROM, race.tyre_used / np.maximum(laps, 1e-6), 0.0)
+
+
 def measured_fuel_to_finish(race):
     """kg each car needs to reach the flag at the rate it has really been burning fuel."""
     return measured_fuel_per_lap(race) * laps_left(race)
@@ -181,7 +195,7 @@ def scripted_strategy(race):
     cars, laps, needed = race.cars, laps_left(race), measured_fuel_to_finish(race)
     wetness = race.weather.wetness
     short_of_fuel = (cars.fuel < needed) & (cars.fuel < measured_fuel_per_lap(race) * 1.4 + FUEL_MARGIN)
-    worn_out = (cars.tyre_wear > 0.7) & (laps > 2)
+    worn_out = ((cars.tyre_wear > WORN_OUT) | (cars.tyre_wear + LAPS_TO_THE_BOX * measured_wear_per_lap(race) > TYRE_CLIFF)) & (laps > 2)
     broken = (np.maximum.reduce([cars.damage, cars.wing_damage, cars.suspension_damage]) > 0.4) & (laps > 2)
     changing_conditions = wrong_tyres(cars.compound, wetness) & (laps > 0.7)
     call = (short_of_fuel | worn_out | broken | changing_conditions | cars.punctured | (race.pit_state == CALLED)) & ~race.finished & (laps > 0.3)

@@ -68,6 +68,7 @@
     <p class="hint">Spoken when commentary is set to captions and voice; your car's team radio comes over the radio.</p>
 
     <h3>Replays</h3>
+    <label class="check"><input type="checkbox" id="grid-intro-setting"> Show the grid before the start</label>
     <label class="check"><input type="checkbox" id="automatic-replays"> Replay serious crashes automatically</label>
 
     <h3>Keys</h3>
@@ -271,6 +272,12 @@
     <span id="replay-shot" class="replay-shot"></span>
     <i class="replay-bar"><b id="replay-progress"></b></i>
     <button id="skip-replay" class="ghost-button" title="Back to the race (Esc)">Skip</button>
+  </div>
+  <!-- The grid before the start (grid-intro.js) -->
+  <div id="grid-intro" class="hidden">
+    <div id="grid-intro-title" class="intro-title hidden"></div>
+    <div id="grid-intro-third" class="intro-third hidden"></div>
+    <button id="skip-intro" class="ghost-button" title="Straight to the lights (Esc)">Skip</button>
   </div>
   <div id="banner" class="hidden"></div>
   <div id="race-control" class="hidden" role="status"></div>

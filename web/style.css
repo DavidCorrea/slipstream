@@ -309,6 +309,35 @@ body.watching #dock { transform: translate(-50%, 8px); }
 #caption b { background: var(--accent); padding: 0 10px; font-size: 10px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; }
 #caption span { padding: 8px 14px; }
 @keyframes caption-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+/* The grid before the start: the broadcast's title, a lower third naming the car in shot, and a way out. */
+body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body.grid-intro #race-control { opacity: 0; pointer-events: none; }
+#grid-intro { position: fixed; inset: 0; pointer-events: none; z-index: 6; }
+#grid-intro::before, #grid-intro::after { content: ''; position: absolute; left: 0; right: 0; height: 56px; background: #000; }
+#grid-intro::before { top: 0; }
+#grid-intro::after { bottom: 0; }
+.intro-title {
+  position: absolute; top: 96px; left: 56px; display: flex; flex-direction: column; gap: 4px; padding: 12px 22px 14px;
+  background: var(--glass-strong); border-left: 5px solid var(--accent); border-radius: 4px; animation: intro-in 0.5s ease;
+}
+.intro-title b { font-size: 34px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.intro-title span { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; }
+.intro-third {
+  position: absolute; bottom: 92px; left: 56px; display: flex; align-items: stretch; background: var(--glass-strong); border-radius: 4px;
+  overflow: hidden; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); animation: intro-in 0.35s ease;
+}
+.intro-third .place { display: grid; place-items: center; min-width: 64px; font: 900 34px 'Titillium Web', sans-serif; background: rgba(255, 255, 255, 0.08); }
+.intro-third .stripe { width: 6px; }
+.intro-third .who { display: flex; flex-direction: column; padding: 8px 20px 9px 14px; font-size: 24px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; }
+.intro-third small { font-size: 10px; font-weight: 700; letter-spacing: 0.16em; color: #78dcff; }
+.intro-third em { font: 400 12px var(--mono); font-style: normal; color: var(--muted); text-transform: none; letter-spacing: 0; }
+#skip-intro { position: absolute; right: 24px; bottom: 11px; pointer-events: auto; color: var(--text); border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.06); }
+@keyframes intro-in { from { opacity: 0; transform: translateX(-12px); } }
+@media (max-width: 760px) {
+  .intro-title { left: 16px; top: 72px; }
+  .intro-title b { font-size: 24px; }
+  .intro-third { left: 16px; bottom: 80px; }
+}
+
 /* Race control, as the broadcast shows it: one message at a time, under the banners. */
 #race-control {
   position: fixed; top: 128px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; max-width: calc(100vw - 32px);

@@ -63,6 +63,7 @@ The viewer plays races live in the browser, in isometric 3D. Every race opens **
 | Click a car or a name, 1–8 | Select a car to follow and see its telemetry |
 | Q / E, scroll | Turn the view a quarter turn, zoom |
 | On the grid | Click a driver to set them up or rename them, **Drive** to make their car yours, **Back to their usual self** to undo your changes; Start race |
+| Start race | The grid as the broadcast shows it first (`web/grid-intro.js`), letterboxed: a helicopter sweeps over it under a Starting grid title, a camera walks down it from pole to the back naming each car, then the pole sitter waits for the lights. Augmented-reality tags stand over every car (place, name, number, tyre) and each car's place glows on the tarmac ahead of it. **Skip**, Esc, Space, Enter or a tap goes straight to the lights; Settings turns it off |
 | ★ Pit wall (your car) | During the race: leave the stops to the AI or make your own plan and box |
 
 On screen:

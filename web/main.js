@@ -9,6 +9,7 @@ import { createDirector } from './director.js';
 import { createFeed } from './feed.js';
 import { createRaceControl } from './race-control.js';
 import { createGhost } from './ghost.js';
+import { createGridIntro } from './grid-intro.js';
 import { createHud } from './hud.js';
 import { createRaceEvents, radioLines } from './race-events.js';
 import { blend, createReplay, replayAt } from './replay.js';
@@ -29,6 +30,7 @@ const PLAY_ICON = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
 // In TV mode the controls step aside after this long without the mouse moving, like a broadcast.
 const IDLE_MS = 2500;
 const EFFECTS_KEY = 'slipstream.effects';
+const GRID_INTRO_KEY = 'slipstream.gridIntro';
 const FRAME_SECONDS = 1 / 20;
 const $ = id => document.getElementById(id);
 
@@ -45,6 +47,7 @@ const raycaster = new THREE.Raycaster();
 const PROP_COLORS = { bale: '#d9b45a', cactus: '#4d7a3a', lamp: '#4a4e57', board: '#f4f4f0', marker: '#ffffff' };
 const replays = createReplay();
 const replayCamera = createReplayCamera({ aspect: window.innerWidth / window.innerHeight });
+const gridIntro = createGridIntro({ aspect: window.innerWidth / window.innerHeight });
 const loading = createLoadingScreen();
 $('loading-retry').addEventListener('click', () => location.reload());
 const weather = createWeather(stage);
@@ -56,6 +59,7 @@ const director = createDirector({ aspect: window.innerWidth / window.innerHeight
 window.addEventListener('resize', () => {
   director.resize(window.innerWidth / window.innerHeight);
   replayCamera.resize(window.innerWidth / window.innerHeight);
+  gridIntro.resize(window.innerWidth / window.innerHeight);
 });
 const speech = createSpeech({ onProgress: showVoicesProgress, knownLines: radioLines() });
 const broadcaster = createBroadcaster({ onStatus: text => hud.status(text), speech });
@@ -137,6 +141,7 @@ function setUpRace(intro) {
   if (state.replay) endReplay();
   replays.reset();
   state.circuit?.dispose();
+  endGridIntro();
   state.effects?.dispose();
   state.crews?.dispose();
   state.cars.forEach(car => stage.scene.remove(car));
@@ -160,7 +165,7 @@ function setUpRace(intro) {
     speed: intro.cars.map(() => 0), steer: intro.cars.map(() => 0), throttle: intro.cars.map(() => 0), brake: intro.cars.map(() => 0),
     sliding: intro.cars.map(() => 0), offTrack: intro.cars.map(() => 0), tyreWear: intro.cars.map(() => 0), fuel: intro.cars.map(() => 1),
     lap: intro.cars.map(() => 0), progress: intro.cars.map(() => 0), finishTime: intro.cars.map(() => null),
-    compound: intro.cars.map(() => 'medium'), wing: intro.cars.map(() => 0.5), engine: intro.cars.map(() => 0.5),
+    compound: intro.startingTyres ?? intro.cars.map(() => 'medium'), wing: intro.cars.map(() => 0.5), engine: intro.cars.map(() => 0.5),
     damage: intro.cars.map(() => 0), brakeWear: intro.cars.map(() => 0), pit: intro.cars.map(() => 0),
     stops: intro.cars.map(() => 0), serviceLeft: intro.cars.map(() => 0),
     lapStart: intro.cars.map(() => null), lastLap: intro.cars.map(() => null), bestLap: intro.cars.map(() => null),
@@ -195,7 +200,7 @@ function setUpRace(intro) {
   stage.view.focus.copy(toWorld(first.x, first.y));
   stage.view.setMode(state.cameraMode, state.circuit);
   // The first race's shaders are compiled while the loading screen is still up, so the game opens ready to race.
-  stage.warmUp([stage.camera, director.camera, replayCamera.camera]);
+  stage.warmUp([stage.camera, director.camera, replayCamera.camera, gridIntro.camera]);
   loading.hide();
   showGrid(intro);
 }
@@ -210,6 +215,36 @@ function showGrid(intro) {
   document.body.classList.add('on-grid');
   setImmersive(false);
   offerVoices();
+}
+
+// Start race: the grid as the broadcast shows it first (grid-intro.js), unless that's turned off, then the lights.
+function startFromTheGrid() {
+  if (!gridIntroWanted()) return lightsOut();
+  $('grid-menu').classList.add('hidden');
+  document.body.classList.remove('on-grid');
+  document.body.classList.add('grid-intro');
+  const intro = state.race;
+  const weatherChoice = $('weather').selectedOptions[0].text.toLowerCase();
+  gridIntro.begin(stage.scene, intro, state.current.cars, `${state.location.label} · ${intro.laps} laps · ${weatherChoice}`);
+}
+
+function endGridIntro() {
+  gridIntro.end();
+  document.body.classList.remove('grid-intro');
+}
+
+function finishGridIntro() {
+  if (!gridIntro.playing) return;
+  endGridIntro();
+  lightsOut();
+}
+
+function gridIntroWanted() {
+  try {
+    return localStorage.getItem(GRID_INTRO_KEY) !== 'off';
+  } catch {
+    return true;
+  }
 }
 
 function lightsOut() {
@@ -343,6 +378,8 @@ function render(now) {
   state.look = { timed: false };
   if (state.replay) {
     renderReplay(seconds, now);
+  } else if (gridIntro.playing) {
+    renderGridIntro(seconds, now);
   } else {
     const frame = state.race && interpolated(now);
     if (frame) renderLive(frame, seconds, now);
@@ -377,6 +414,21 @@ function renderLive(frame, seconds, now) {
   hud.update(frame, state.shot?.car ?? state.selected, state.yours, now);
   broadcaster.update(commentaryContext(frame));
   state.effects.update(seconds * Math.max(simRate, 0.25), pixelsPerMetre);
+}
+
+// The grid before the start, under the intro's cameras: the cars wait in their slots.
+function renderGridIntro(seconds, now) {
+  const frame = interpolated(now);
+  drawCars(frame, seconds, 0, now, false);
+  state.circuit.update(frame.time, Math.hypot(...(frame.weather.wind ?? [0, 0])), frame.marshals);
+  state.crews.update(frame.time, frame, state.cars);
+  const done = gridIntro.update(seconds);
+  // The isometric rig follows the intro's subject: the sun's shadows are drawn around it.
+  stage.view.update(seconds, gridIntro.focus, 0);
+  weather.update(frame.weather.wetness, frame.weather.rain, gridIntro.focus, seconds, now / 1000, frame.weather.wind);
+  state.look = { speed: 0, focus: gridIntro.sharpEverywhere ? null : gridIntro.camera.position.distanceTo(gridIntro.focus), heat: [], timed: true };
+  state.effects.update(seconds, stage.pixelsTall() / (2 * Math.tan(THREE.MathUtils.degToRad(gridIntro.camera.fov) / 2) * 20));
+  if (done) finishGridIntro();
 }
 
 // The recorded race in slow motion, cut together from a few close shots (replay-camera.js), each part at its own
@@ -483,6 +535,7 @@ function endReplay() {
 
 function activeCamera() {
   if (state.replay) return replayCamera.camera;
+  if (gridIntro.playing) return gridIntro.camera;
   return state.shot ? director.camera : stage.camera;
 }
 
@@ -599,11 +652,20 @@ SPEEDS.forEach(speed => {
 $('new-race').addEventListener('click', () => startRace());
 $('new-circuit').addEventListener('click', () => startRace());
 $('replay').addEventListener('click', () => startRace(true));
-$('go').addEventListener('click', lightsOut);
+$('go').addEventListener('click', startFromTheGrid);
+$('skip-intro').addEventListener('click', finishGridIntro);
 $('pause').addEventListener('click', () => setPaused(!state.paused));
 $('replay-last').addEventListener('click', replayLastMoments);
 $('hide-ui').addEventListener('click', () => setImmersive(true));
 $('skip-replay').addEventListener('click', () => state.replay && endReplay());
+$('grid-intro-setting').checked = gridIntroWanted();
+$('grid-intro-setting').addEventListener('change', event => {
+  try {
+    localStorage.setItem(GRID_INTRO_KEY, event.target.checked ? 'on' : 'off');
+  } catch {
+    // Private windows and blocked storage just don't remember it.
+  }
+});
 $('automatic-replays').checked = automaticReplays();
 $('automatic-replays').addEventListener('change', event => {
   try {
@@ -618,6 +680,7 @@ $('pitwall').addEventListener('change', () => startRace(true));
 document.querySelectorAll('#camera [data-camera]').forEach(button => button.addEventListener('click', () => setCamera(button.dataset.camera)));
 
 window.addEventListener('keydown', event => {
+  if (gridIntro.playing && ['Escape', ' ', 'Enter'].includes(event.key)) { event.preventDefault(); return finishGridIntro(); }
   if (event.key === 'Escape' && document.body.classList.contains('immersive')) return setImmersive(false);
   if (event.key === 'Escape' && state.replay) return endReplay();
   if (event.key === 'Escape') return openDrawer(null);
@@ -636,6 +699,7 @@ window.addEventListener('keydown', event => {
 });
 $('scene').addEventListener('wheel', event => { event.preventDefault(); stage.view.zoomBy(Math.exp(event.deltaY * 0.0012)); }, { passive: false });
 $('scene').addEventListener('click', event => {
+  if (gridIntro.playing) return finishGridIntro();
   // With the interface hidden a tap brings it back, so a phone without H or Esc isn't stuck without it.
   if (document.body.classList.contains('immersive')) return setImmersive(false);
   const pointer = new THREE.Vector2((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);

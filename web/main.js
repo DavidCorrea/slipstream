@@ -18,6 +18,7 @@ import { createRacerPanel } from './racer.js';
 import { createStage, timeOfDay, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
 import { createSpeech } from './speech.js';
+import { createStats } from './stats.js';
 import { LOCATIONS } from './scenery.js';
 import { createWeather } from './weather.js';
 
@@ -35,6 +36,7 @@ const FRAME_SECONDS = 1 / 20;
 const $ = id => document.getElementById(id);
 
 const stage = createStage($('scene'));
+const stats = createStats(stage.renderer);
 const hud = createHud({ onSelect: id => select(id) });
 const racer = createRacerPanel({
   send: message => send(message),
@@ -385,7 +387,9 @@ function render(now) {
     if (frame) renderLive(frame, seconds, now);
   }
   state.circuit?.cutAway(activeCamera().position, stage.view.focus);
+  stats.beginFrame(now);
   stage.render(activeCamera(), state.look);
+  stats.endFrame(now);
 }
 
 function renderLive(frame, seconds, now) {

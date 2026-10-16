@@ -338,6 +338,12 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
   .intro-third { left: 16px; bottom: 80px; }
 }
 
+/* The debug readout (stats.js). */
+#stats {
+  position: fixed; top: 70px; right: var(--gutter); margin: 0; padding: 6px 10px; z-index: 30; pointer-events: none;
+  background: rgba(0, 0, 0, 0.72); color: #9ef0b0; border-radius: 4px; font: 400 11px/1.5 var(--mono); white-space: pre;
+}
+
 /* Race control, as the broadcast shows it: one message at a time, under the banners. */
 #race-control {
   position: fixed; top: 128px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; max-width: calc(100vw - 32px);

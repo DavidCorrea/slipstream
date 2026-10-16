@@ -1,4 +1,6 @@
 // The race feed: team radio, race control and timing messages, newest on top, the way a timing app shows them.
+import { RETIREMENT_WORDS } from './race-control.js';
+
 const $ = id => document.getElementById(id);
 const KEEP = 5;
 
@@ -25,7 +27,7 @@ export function createFeed({ onSelect }) {
       case 'finalLap': return ['control', 'Final lap'];
       case 'puncture': return ['control', `${name(car)} has a puncture`];
       case 'engineFailure': return ['control', `${name(car)} retires: engine failure`];
-      case 'crash': return ['control', `${name(car)} retires: crashed`];
+      case 'crash': return ['control', `${name(car)} retires: ${(RETIREMENT_WORDS[moment.why] ?? 'crashed').toLowerCase()}`];
       case 'barrier': return ['control', `${name(car)} hits the barrier`];
       case 'mistake': return ['control', `A mistake from ${name(car)}`];
       case 'yellow': return ['control', 'Yellow flags: no overtaking at the incident', false];

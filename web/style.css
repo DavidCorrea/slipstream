@@ -86,7 +86,7 @@ button.ghost-button:hover, button.ghost-button.open { color: var(--text); backgr
 #weather-line .wet-bar b { display: block; height: 100%; width: 0; background: var(--wet); transition: width 0.5s; }
 #tower { list-style: none; margin: 0; padding: 0 0 4px; border-top: 1px solid var(--line); }
 #tower li {
-  display: grid; grid-template-columns: 22px 3px minmax(0, 1fr) 14px 64px; align-items: center; gap: 8px;
+  display: grid; grid-template-columns: 22px 3px minmax(0, 1fr) 30px 64px; align-items: center; gap: 8px;
   height: 27px; padding: 0 12px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;
 }
 #tower li:nth-child(even) { background: rgba(255, 255, 255, 0.025); }
@@ -97,18 +97,27 @@ button.ghost-button:hover, button.ghost-button.open { color: var(--text); backgr
 #tower li.lost .place { color: var(--brake); }
 #tower li .chip { height: 15px; border-radius: 1px; }
 #tower li .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; letter-spacing: 0.03em; display: flex; align-items: center; gap: 5px; }
+#tower li .driver { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #tower li .yours { color: var(--yours); font-size: 11px; }
 #tower li .yours:empty { display: none; }
 #tower li .pitting { font-size: 10px; font-weight: 700; color: var(--muted); border: 1px solid var(--line-strong); padding: 0 3px; border-radius: 2px; letter-spacing: 0.04em; }
 #tower li .pitting.in-lane { color: #0b0d13; background: var(--fuel); border-color: var(--fuel); }
 #tower li .fastest { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--purple); font-size: 0; }
 #tower li.fastest-lap .fastest { display: inline-block; }
-#tower li .tyre { width: 13px; height: 13px; border-radius: 50%; border: 2.5px solid var(--medium); font-size: 0; }
+#tower li .tyre-cell { display: flex; align-items: center; gap: 3px; }
+#tower li .tyre-age { font: 400 10px var(--mono); color: var(--faint); }
+#tower li .penalty-tag { flex: none; text-transform: none; font: 700 10px var(--mono); color: #fff; background: var(--brake); padding: 0 3px; border-radius: 2px; }
+#tower li .tyre { flex: none; width: 13px; height: 13px; border-radius: 50%; border: 2.5px solid var(--medium); font-size: 0; }
 #tower li .tyre.soft { border-color: var(--soft); }
 #tower li .tyre.medium { border-color: var(--medium); }
 #tower li .tyre.hard { border-color: var(--hard); }
 #tower li .tyre.intermediate { border-color: var(--intermediate); }
 #tower li .tyre.wet { border-color: var(--wet); }
+#telemetry .tyre { display: inline-block; flex: none; width: 13px; height: 13px; border-radius: 50%; border: 2.5px solid var(--medium); }
+#telemetry .tyre.soft { border-color: var(--soft); }
+#telemetry .tyre.hard { border-color: var(--hard); }
+#telemetry .tyre.intermediate { border-color: var(--intermediate); }
+#telemetry .tyre.wet { border-color: var(--wet); }
 #tower li .gap { font: 400 12px var(--mono); color: var(--muted); text-align: right; }
 #tower li.finished .gap { color: var(--yours); }
 #tower li.retired { opacity: 0.45; }
@@ -200,14 +209,31 @@ button.box.called { background: var(--yours); border-color: var(--yours); color:
 .speed-row { display: grid; grid-template-columns: 1fr 70px; align-items: end; gap: 10px; padding: 8px 12px 0; }
 .speedo span { font: 500 38px/1 var(--mono); letter-spacing: -0.02em; }
 .speedo small { color: var(--muted); margin-left: 6px; font-size: 12px; }
-.pedals { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; height: 40px; }
-.pedals i { position: relative; background: rgba(255, 255, 255, 0.07); border-radius: 2px; overflow: hidden; }
+.pedals { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pedals div { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.pedals small, .steering-row small { font-size: 9px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; text-align: center; }
+.pedals i { height: 40px; position: relative; background: rgba(255, 255, 255, 0.07); border-radius: 2px; overflow: hidden; }
 .pedals b { position: absolute; left: 0; right: 0; bottom: 0; height: 0; transition: height 0.08s linear; }
 .pedals b.throttle { background: var(--throttle); }
 .pedals b.brake { background: var(--brake); }
-.steering { position: relative; height: 4px; margin: 10px 12px 2px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; }
+.steering-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; margin: 8px 12px 0; }
+.steering { position: relative; height: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; }
 .steering::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-strong); }
 .steering i { position: absolute; top: -2px; height: 8px; width: 8px; margin-left: -4px; left: 50%; background: var(--text); border-radius: 50%; transition: left 0.08s linear; }
+.tyre-row { display: flex; align-items: center; gap: 7px; margin: 10px 12px 0; font-size: 13px; font-weight: 600; }
+.out { margin: 8px 12px 0; padding: 4px 8px; border-radius: 2px; background: var(--brake); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+#telemetry.retired .speed-row, #telemetry.retired .steering-row { opacity: 0.3; }
+.delta { display: block; font-size: 11px; }
+.delta.faster { color: var(--throttle); }
+.delta.slower { color: var(--brake); }
+.pit-wall-toggle {
+  display: block; width: calc(100% - 24px); margin: 10px 12px 0; padding: 4px 0; background: none; border: 1px solid var(--line-strong);
+  border-radius: 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; cursor: pointer;
+}
+.pit-wall-toggle:hover, .pit-wall-toggle.active { color: var(--text); }
+.bar em { font: 400 11px var(--mono); font-style: normal; color: var(--text); float: right; text-transform: none; letter-spacing: 0; }
+.bar.low em { color: var(--brake); }
+.bar.low b { background: var(--brake) !important; }
 .bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 10px 12px 0; }
 .bar { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .bar i { height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; overflow: hidden; display: block; }
@@ -220,6 +246,7 @@ button.box.called { background: var(--yours); border-color: var(--yours); color:
 .temps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 10px 12px 0; font: 400 13px var(--mono); }
 .temps small { display: block; font: 600 10px 'Titillium Web', sans-serif; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; }
 /* Temperatures: blue when cold, white in their window, orange getting hot, red overheating. */
+.temps span small { display: inline; margin-left: 4px; font-size: 9px; color: inherit; letter-spacing: 0.06em; }
 .temps span.cold { color: #6fb8ff; }
 .temps span.hot { color: #ffa340; }
 .temps span.overheating { color: #ff4d5e; }
@@ -282,6 +309,21 @@ body.watching #dock { transform: translate(-50%, 8px); }
 #caption b { background: var(--accent); padding: 0 10px; font-size: 10px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; }
 #caption span { padding: 8px 14px; }
 @keyframes caption-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+/* Race control, as the broadcast shows it: one message at a time, under the banners. */
+#race-control {
+  position: fixed; top: 128px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; max-width: calc(100vw - 32px);
+  background: var(--glass-strong); border-radius: 4px; overflow: hidden; pointer-events: none; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  animation: race-control 4.5s ease forwards;
+}
+#race-control b { background: #e8b923; color: #0b0d13; padding: 0 10px; font-size: 10px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; white-space: nowrap; }
+#race-control span { padding: 6px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+#race-control strong { display: block; font-size: 15px; font-weight: 900; }
+@keyframes race-control {
+  0% { opacity: 0; transform: translate(-50%, -8px); }
+  6% { opacity: 1; transform: translate(-50%, 0); }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
 #status {
   position: fixed; bottom: 124px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px);
   background: var(--glass-strong); padding: 7px 14px; border-radius: var(--radius); font-size: 13px; color: var(--muted);
@@ -293,7 +335,7 @@ body.watching #dock { transform: translate(-50%, 8px); }
 }
 @media (max-width: 760px) {
   #standings { width: 200px; }
-  #tower li { grid-template-columns: 18px 3px minmax(0, 1fr) 12px 52px; gap: 6px; }
+  #tower li { grid-template-columns: 18px 3px minmax(0, 1fr) 26px 52px; gap: 6px; }
   #telemetry, .seed, .wordmark { display: none !important; }
   .drawer { left: var(--gutter); width: auto; max-height: calc(100vh - 140px); }
   #dock { max-width: calc(100vw - 32px); overflow-x: auto; }
@@ -438,10 +480,10 @@ body.replaying::before, body.replaying::after { content: ''; position: fixed; le
 body.replaying::before { top: 0; }
 body.replaying::after { bottom: 0; }
 /* ...and clears the screen of all but the commentary and the replay's own bar. */
-body.replaying .chrome, body.replaying #tv-tag, body.replaying #banner, body.replaying #status { opacity: 0; pointer-events: none; }
+body.replaying .chrome, body.replaying #tv-tag, body.replaying #banner, body.replaying #race-control, body.replaying #status { opacity: 0; pointer-events: none; }
 
 /* Hiding the interface: only the race, its sound and the commentator's voice. */
-body.immersive .chrome, body.immersive #tv-tag, body.immersive #banner, body.immersive #caption, body.immersive #status,
+body.immersive .chrome, body.immersive #tv-tag, body.immersive #banner, body.immersive #race-control, body.immersive #caption, body.immersive #status,
 body.immersive #replay-tag { opacity: 0; pointer-events: none; }
 body.immersive.watching { cursor: none; }
 #immersive-hint {

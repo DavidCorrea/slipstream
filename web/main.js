@@ -7,6 +7,7 @@ import { createEffects } from './effects.js';
 import { createBroadcaster } from './broadcaster.js';
 import { createDirector } from './director.js';
 import { createFeed } from './feed.js';
+import { createRaceControl } from './race-control.js';
 import { createGhost } from './ghost.js';
 import { createHud } from './hud.js';
 import { createRaceEvents, radioLines } from './race-events.js';
@@ -49,6 +50,7 @@ $('loading-retry').addEventListener('click', () => location.reload());
 const weather = createWeather(stage);
 const raceEvents = createRaceEvents();
 const feed = createFeed({ onSelect: id => select(id) });
+const raceControl = createRaceControl();
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
 window.addEventListener('resize', () => {
@@ -185,6 +187,7 @@ function setUpRace(intro) {
   $('seed').textContent += ` · ${state.location.label}`;
   raceEvents.reset(intro);
   feed.reset(intro);
+  raceControl.reset(intro);
   ghost.reset();
   director.reset(intro, state.circuit);
   broadcaster.reset(intro, intro.yours);
@@ -254,6 +257,7 @@ function receiveFrame(frame) {
   const fastest = frame.events.fastestLap;
   if (fastest) ghost.setTrace(fastest, state.race.cars[fastest.car].color);
   feed.add(moments);
+  raceControl.add(moments);
   director.notice(moments, frame, performance.now());
   broadcaster.notice(moments);
   for (const stop of frame.events.pitStopped) {

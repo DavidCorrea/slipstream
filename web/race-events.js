@@ -158,7 +158,7 @@ export function createRaceEvents() {
     // Props: a car out of the race against something, or a big hit it drives away from.
     const crashed = new Set(frame.events.crashed ?? []);
     for (const car of crashed) {
-      add({ kind: 'crash', priority: 5, car, place: frame.order.indexOf(car) + 1, radio: radio('crash', car) });
+      add({ kind: 'crash', priority: 5, car, why: frame.cars.retiredBy?.[car], place: frame.order.indexOf(car) + 1, radio: radio('crash', car) });
     }
     for (const hit of frame.events.propHits ?? []) {
       if (hit.broke || hit.impulse < BARRIER_HIT || crashed.has(hit.car)) continue;

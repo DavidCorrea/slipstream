@@ -185,33 +185,40 @@
       <span id="tele-name"></span>
       <span id="tele-position"></span>
     </header>
+    <!-- The onboard graphic: what the broadcast shows over a car's onboard camera. -->
     <div class="speed-row">
       <div class="speedo"><span id="tele-speed">0</span><small>km/h</small></div>
       <div class="pedals">
-        <i><b id="tele-throttle" class="throttle"></b></i>
-        <i><b id="tele-brake" class="brake"></b></i>
+        <div><i><b id="tele-throttle" class="throttle"></b></i><small>Thr</small></div>
+        <div><i><b id="tele-brake" class="brake"></b></i><small>Brk</small></div>
       </div>
     </div>
-    <div class="steering"><i id="tele-steer"></i></div>
-    <div class="bars">
-      <div class="bar"><span>Tyres</span><i><b id="tele-tyres" class="tyres"></b></i></div>
-      <div class="bar"><span>Fuel</span><i><b id="tele-fuel" class="fuel"></b></i></div>
-      <div class="bar"><span>Damage</span><i><b id="tele-damage" class="damage"></b></i></div>
-      <div class="bar"><span>Brakes</span><i><b id="tele-brakes" class="brakes"></b></i></div>
-    </div>
-    <div class="temps">
-      <div><small>Tyres</small><span id="temp-tyres">–</span></div>
-      <div><small>Brakes</small><span id="temp-brakes">–</span></div>
-      <div><small>Engine</small><span id="temp-engine">–</span></div>
-    </div>
-    <div id="tele-setup" class="setup"></div>
+    <div class="steering-row"><small>Steer</small><div class="steering"><i id="tele-steer"></i></div></div>
+    <div class="tyre-row"><span id="tele-tyre" class="tyre"></span><span id="tele-tyre-text"></span></div>
+    <div id="tele-out" class="out hidden"></div>
     <div id="tele-flags" class="flags"></div>
     <div class="lap-times">
-      <div><small>Lap</small><span id="lap-running">–:–</span></div>
+      <div><small>Lap</small><span id="lap-running">–:–</span><span id="lap-delta" class="delta"></span></div>
       <div><small>Last</small><span id="lap-last">–</span></div>
       <div><small>Best</small><span id="lap-best">–</span></div>
     </div>
     <div id="sectors" class="sectors"><span>S1</span><span>S2</span><span>S3</span></div>
+    <!-- What only the team sees: the car's condition and temperatures. -->
+    <button id="pit-wall-toggle" class="pit-wall-toggle" aria-expanded="false" aria-controls="pit-wall">Pit wall data</button>
+    <div id="pit-wall" class="pit-wall hidden">
+      <div class="bars">
+        <div class="bar"><span>Tyres left <em id="tele-tyres-value"></em></span><i><b id="tele-tyres" class="tyres"></b></i></div>
+        <div class="bar"><span>Fuel <em id="tele-fuel-value"></em></span><i><b id="tele-fuel" class="fuel"></b></i></div>
+        <div class="bar"><span>Brakes left <em id="tele-brakes-value"></em></span><i><b id="tele-brakes" class="brakes"></b></i></div>
+        <div class="bar"><span>Damage <em id="tele-damage-value"></em></span><i><b id="tele-damage" class="damage"></b></i></div>
+      </div>
+      <div class="temps">
+        <div><small>Tyres</small><span id="temp-tyres">–</span></div>
+        <div><small>Brakes</small><span id="temp-brakes">–</span></div>
+        <div><small>Engine</small><span id="temp-engine">–</span></div>
+      </div>
+      <div id="tele-setup" class="setup"></div>
+    </div>
   </section>
 
   <!-- Playback and cameras -->
@@ -266,6 +273,7 @@
     <button id="skip-replay" class="ghost-button" title="Back to the race (Esc)">Skip</button>
   </div>
   <div id="banner" class="hidden"></div>
+  <div id="race-control" class="hidden" role="status"></div>
   <div id="caption" class="hidden"></div>
   <div id="status" class="hidden"></div>
   <div id="immersive-hint" class="hidden">Press H or tap to bring the interface back</div>

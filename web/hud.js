@@ -1,16 +1,51 @@
-// The overlay: standings tower, lap counter and clock, the selected car's telemetry and lap timing, and banners.
+// The overlay: standings tower, lap counter and clock, the selected car's onboard graphic and lap timing, and
+// banners. Like the TV broadcast, the card shows what a viewer sees over an onboard camera; the car's condition and
+// temperatures are the team's, behind the pit wall button.
 import { formatLap } from './feed.js';
+import { RETIREMENT_WORDS } from './race-control.js';
 
 const $ = id => document.getElementById(id);
 // Each compound's working window in the race's 0-1 temperature (see slipstream/car.py TYRE_WINDOW, ±0.06).
 const TYRE_WINDOWS = { soft: [0.49, 0.61], medium: [0.54, 0.66], hard: [0.59, 0.71], intermediate: [0.36, 0.48], wet: [0.26, 0.38] };
 
-// A temperature in degrees, coloured by where it sits against the range it works best in.
+const PIT_WALL_SETTING = 'slipstream.pitWall';
+// Below these the pit wall bars turn red: worth a stop, or a worry.
+const LOW = { tyres: 0.25, fuel: 0.15, brakes: 0.25 };
+const HEAVY_DAMAGE = 0.4;
+
+// A temperature in degrees, coloured and worded by where it sits against the range it works best in.
 function showTemperature(id, value, [low, high], coldest, hottest) {
   const element = $(id);
   if (value === undefined) { element.textContent = '–'; return; }
-  element.textContent = `${Math.round(coldest + value * (hottest - coldest))}°`;
-  element.className = value < low ? 'cold' : value > high + 0.15 ? 'overheating' : value > high ? 'hot' : '';
+  const state = value < low ? 'cold' : value > high + 0.15 ? 'overheating' : value > high ? 'hot' : 'ok';
+  element.innerHTML = `${Math.round(coldest + value * (hottest - coldest))}°<small>${state}</small>`;
+  element.className = state;
+}
+
+function showBar(id, share, warn) {
+  $(id).style.width = `${share * 100}%`;
+  $(`${id}-value`).textContent = `${Math.round(share * 100)}%`;
+  $(id).parentElement.parentElement.classList.toggle('low', warn);
+}
+
+function remembered(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private windows and blocked storage just don't remember it.
+  }
+}
+
+function formatDelta(seconds) {
+  return `${seconds < 0 ? '−' : '+'}${Math.abs(seconds).toFixed(3)}`;
 }
 
 export function createHud({ onSelect }) {
@@ -18,6 +53,22 @@ export function createHud({ onSelect }) {
   let race = null, rows = [], lastOrder = [], changed = new Map(), bannerTimer = null;
   // Each car's sector times on its current lap ({ time, rating } per sector), and who holds the fastest lap.
   let sectors = [], fastestCar = null;
+  // Each car's sector times on its best lap, and its time against them at the last sector it closed: the delta
+  // the onboard graphic shows next to the lap clock.
+  let bestSplits = [], deltas = [];
+
+  const pitWall = $('pit-wall'), pitWallToggle = $('pit-wall-toggle');
+  function showPitWall(open) {
+    pitWall.classList.toggle('hidden', !open);
+    pitWallToggle.setAttribute('aria-expanded', String(open));
+    pitWallToggle.classList.toggle('active', open);
+  }
+  showPitWall(remembered(PIT_WALL_SETTING) === 'open');
+  pitWallToggle.addEventListener('click', () => {
+    const open = pitWall.classList.contains('hidden');
+    showPitWall(open);
+    remember(PIT_WALL_SETTING, open ? 'open' : 'closed');
+  });
 
   function formatTime(seconds) {
     const minutes = Math.floor(seconds / 60);
@@ -30,19 +81,21 @@ export function createHud({ onSelect }) {
       tower.replaceChildren();
       rows = intro.cars.map((car, id) => {
         const row = document.createElement('li');
-        row.innerHTML = `<span class="place"></span><span class="chip" style="background:${car.color}"></span><span class="name">${car.name}<span class="yours"></span><span class="pitting"></span><span class="fastest" title="Fastest lap">⏱</span></span><span class="tyre"></span><span class="gap"></span>`;
+        row.innerHTML = `<span class="place"></span><span class="chip" style="background:${car.color}"></span><span class="name"><span class="driver">${car.name}</span><span class="yours"></span><span class="pitting"></span><span class="penalty-tag"></span><span class="fastest" title="Fastest lap">⏱</span></span><span class="tyre-cell"><span class="tyre"></span><small class="tyre-age"></small></span><span class="gap"></span>`;
         row.addEventListener('click', () => onSelect(id));
         return row;
       });
       lastOrder = [];
       changed.clear();
       sectors = intro.cars.map(() => []);
+      bestSplits = intro.cars.map(() => null);
+      deltas = intro.cars.map(() => null);
       fastestCar = null;
       $('seed').textContent = `circuit #${intro.seed}`;
     },
 
     rename(id) {
-      rows[id].querySelector('.name').firstChild.textContent = race.cars[id].name;
+      rows[id].querySelector('.driver').textContent = race.cars[id].name;
     },
 
     update(frame, selected, yours, now) {
@@ -73,6 +126,12 @@ export function createHud({ onSelect }) {
         row.querySelector('.yours').textContent = id === yours ? '★' : '';
         row.classList.toggle('fastest-lap', id === fastestCar);
         row.querySelector('.tyre').className = `tyre ${cars.compound[id]}`;
+        row.querySelector('.tyre-age').textContent = cars.tyreLaps?.[id] ?? '';
+        // A finished car's gap already has its penalty in it.
+        const penaltyTag = row.querySelector('.penalty-tag');
+        const owed = cars.finishTime[id] === null && !cars.retired?.[id] ? cars.penalty?.[id] : 0;
+        penaltyTag.textContent = owed ? `+${owed}s` : '';
+        penaltyTag.style.display = owed ? '' : 'none';
         const pitting = row.querySelector('.pitting');
         pitting.textContent = cars.pit[id] >= 2 ? 'PIT' : cars.stops[id] ? `${cars.stops[id]}×` : '';
         pitting.classList.toggle('in-lane', cars.pit[id] >= 2);
@@ -98,47 +157,63 @@ export function createHud({ onSelect }) {
       const car = race.cars[selected];
       $('tele-swatch').style.background = car.color;
       $('tele-name').textContent = car.name;
-      $('tele-position').textContent = `P${order.indexOf(selected) + 1}`;
+      $('tele-position').textContent = cars.retired?.[selected] ? 'OUT' : `P${order.indexOf(selected) + 1}`;
+      // A car out of the race says why and when, and its onboard graphic stops.
+      const out = !!cars.retired?.[selected];
+      panel.classList.toggle('retired', out);
+      $('tele-out').classList.toggle('hidden', !out);
+      if (out) $('tele-out').textContent = `Out · ${RETIREMENT_WORDS[cars.retiredBy?.[selected]] ?? 'Retired'} · lap ${cars.lap[selected] + 1}`;
       // Backing up shows its speed too; the Reverse flag says which way.
-      $('tele-speed').textContent = Math.round(Math.abs(cars.speed[selected]) * 3.6);
-      $('tele-throttle').style.height = `${cars.throttle[selected] * 100}%`;
-      $('tele-brake').style.height = `${cars.brake[selected] * 100}%`;
-      $('tele-tyres').style.width = `${(1 - cars.tyreWear[selected]) * 100}%`;
-      $('tele-fuel').style.width = `${cars.fuel[selected] * 100}%`;
-      $('tele-damage').style.width = `${cars.damage[selected] * 100}%`;
-      $('tele-brakes').style.width = `${(1 - cars.brakeWear[selected]) * 100}%`;
+      $('tele-speed').textContent = out ? 0 : Math.round(Math.abs(cars.speed[selected]) * 3.6);
+      $('tele-throttle').style.height = `${out ? 0 : cars.throttle[selected] * 100}%`;
+      $('tele-brake').style.height = `${out ? 0 : cars.brake[selected] * 100}%`;
+      $('tele-steer').style.left = `${50 + (out ? 0 : cars.steer[selected]) * -46}%`;
+      const compound = cars.compound[selected];
+      const tyreLaps = cars.tyreLaps?.[selected];
+      $('tele-tyre').className = `tyre ${compound}`;
+      $('tele-tyre-text').textContent = `${compound[0].toUpperCase()}${compound.slice(1)}${tyreLaps === undefined ? '' : tyreLaps === 0 ? ' · new' : ` · ${tyreLaps} lap${tyreLaps === 1 ? '' : 's'} old`}`;
+
+      const tyresLeft = 1 - cars.tyreWear[selected], brakesLeft = 1 - cars.brakeWear[selected];
+      showBar('tele-tyres', tyresLeft, tyresLeft < LOW.tyres);
+      showBar('tele-fuel', cars.fuel[selected], cars.fuel[selected] < LOW.fuel);
+      showBar('tele-brakes', brakesLeft, brakesLeft < LOW.brakes);
+      showBar('tele-damage', cars.damage[selected], cars.damage[selected] > HEAVY_DAMAGE);
       const engineMode = cars.engine[selected] > 0.66 ? 'push' : cars.engine[selected] < 0.33 ? 'lean' : 'standard';
       const balance = cars.balance?.[selected] ?? 0;
       const handling = balance > 0.2 ? ' · oversteers' : balance < -0.2 ? ' · understeers' : '';
-      $('tele-setup').textContent = `${cars.compound[selected]} tyres · wing ${Math.round(cars.wing[selected] * 100)}% · ${engineMode} engine · ${cars.stops[selected]} stop${cars.stops[selected] === 1 ? '' : 's'}${handling}`;
-      showTemperature('temp-tyres', cars.tyreTemp?.[selected], TYRE_WINDOWS[cars.compound[selected]], 20, 140);
+      $('tele-setup').textContent = `wing ${Math.round(cars.wing[selected] * 100)}% · ${engineMode} engine · ${cars.stops[selected]} stop${cars.stops[selected] === 1 ? '' : 's'}${handling}`;
+      showTemperature('temp-tyres', cars.tyreTemp?.[selected], TYRE_WINDOWS[compound], 20, 140);
       showTemperature('temp-brakes', cars.brakeTemp?.[selected], [0.3, 0.85], 100, 1100);
       showTemperature('temp-engine', cars.engineTemp?.[selected], [0.35, 0.8], 70, 130);
-      $('tele-steer').style.left = `${50 + cars.steer[selected] * -46}%`;
+
+      // What the car is doing now; penalties and retirements are race control's (race-control.js) and the tower's.
       const flags = [];
-      if (cars.reversing?.[selected]) flags.push('<span class="slide">Reverse</span>');
-      if (cars.sliding[selected]) flags.push('<span class="slide">Sliding</span>');
-      if (cars.offTrack[selected] && !cars.pit[selected]) flags.push('<span class="grass">On the grass</span>');
-      if (cars.pit[selected] === 1) flags.push('<span class="done">Pitting this lap</span>');
-      if (cars.pit[selected] === 2) flags.push('<span class="grass">Pit lane</span>');
-      if (cars.pit[selected] === 3) flags.push(`<span class="slide">Stopped ${cars.serviceLeft[selected].toFixed(1)} s</span>`);
+      if (!out) {
+        if (cars.punctured?.[selected]) flags.push('<span class="warning">Puncture</span>');
+        if (frame.marshals?.blue?.[selected]) flags.push('<span class="tow">Blue flag</span>');
+        const yellowHere = (frame.marshals?.yellow ?? []).some(([start, end]) => {
+          const length = race.track.length;
+          return (((cars.progress[selected] % length) - start) % length + length) % length <= end - start;
+        });
+        if (yellowHere) flags.push('<span class="done">Yellow flag</span>');
+        if (cars.pit[selected] === 1) flags.push('<span class="done">Box this lap</span>');
+        if (cars.pit[selected] === 2) flags.push('<span class="grass">Pit lane</span>');
+        if (cars.pit[selected] === 3) flags.push(`<span class="slide">Stopped ${cars.serviceLeft[selected].toFixed(1)} s</span>`);
+        if (cars.reversing?.[selected]) flags.push('<span class="slide">Reverse</span>');
+        if (cars.sliding[selected]) flags.push('<span class="slide">Sliding</span>');
+        if (cars.offTrack[selected] && !cars.pit[selected]) flags.push('<span class="grass">On the grass</span>');
+        if (cars.draft?.[selected] > 0.3) flags.push('<span class="tow">Tow</span>');
+        if (cars.dirtyAir?.[selected] > 0.3) flags.push('<span class="slide">Dirty air</span>');
+      }
       if (cars.finishTime[selected] !== null) flags.push(`<span class="done">Finished ${formatTime(cars.finishTime[selected])}</span>`);
-      if (cars.draft?.[selected] > 0.3) flags.push('<span class="tow">Tow</span>');
-      if (cars.dirtyAir?.[selected] > 0.3) flags.push('<span class="slide">Dirty air</span>');
-      if (cars.punctured?.[selected]) flags.push('<span class="warning">Puncture</span>');
-      if (frame.marshals?.blue?.[selected]) flags.push('<span class="tow">Blue flag</span>');
-      const yellowHere = (frame.marshals?.yellow ?? []).some(([start, end]) => {
-        const length = race.track.length;
-        return (((cars.progress[selected] % length) - start) % length + length) % length <= end - start;
-      });
-      if (yellowHere) flags.push('<span class="done">Yellow flag</span>');
-      if (cars.penalty?.[selected]) flags.push(`<span class="warning">+${cars.penalty[selected]} s penalty</span>`);
-      if (cars.retired?.[selected]) flags.push('<span class="warning">Engine failure</span>');
       $('tele-flags').innerHTML = flags.join('');
 
       const lapStart = cars.lapStart?.[selected];
-      const running = lapStart === null || lapStart === undefined || cars.finishTime[selected] !== null ? null : frame.time - lapStart;
+      const running = out || lapStart === null || lapStart === undefined || cars.finishTime[selected] !== null ? null : frame.time - lapStart;
       $('lap-running').textContent = running === null ? '–:–' : formatLap(running).slice(0, -2);
+      const delta = running === null ? null : deltas[selected];
+      $('lap-delta').textContent = delta === null || delta === undefined ? '' : formatDelta(delta);
+      $('lap-delta').className = `delta ${delta < 0 ? 'faster' : 'slower'}`;
       $('lap-last').textContent = cars.lastLap?.[selected] ? formatLap(cars.lastLap[selected]) : '–';
       $('lap-best').textContent = cars.bestLap?.[selected] ? formatLap(cars.bestLap[selected]) : '–';
       const done = sectors[selected] ?? [];
@@ -152,11 +227,19 @@ export function createHud({ onSelect }) {
     // Timing events from the server: a sector closes, a lap closes, maybe a new fastest lap.
     timing(events) {
       for (const event of events) {
-        if (event.kind === 'lap' && event.rating === 'overall') fastestCar = event.car;
+        if (event.kind === 'lap') {
+          if (event.rating === 'overall') fastestCar = event.car;
+          // A personal best becomes what the delta counts against, once this lap's own delta is shown.
+          const lap = sectors[event.car];
+          if (event.rating !== 'none' && lap.length === 3) bestSplits[event.car] = lap.map(sector => sector.time);
+        }
         if (event.kind !== 'sector') continue;
         // The first sector of a lap clears the last lap's.
         if (event.sector === 0) sectors[event.car] = [];
         sectors[event.car][event.sector] = { time: event.time, rating: event.rating };
+        const best = bestSplits[event.car];
+        const sum = times => times.slice(0, event.sector + 1).reduce((total, time) => total + time, 0);
+        deltas[event.car] = best ? sum(sectors[event.car].map(sector => sector.time)) - sum(best) : null;
       }
     },
 

@@ -1,14 +1,14 @@
 // The fastest lap so far, driven again by a see-through car in step with the selected car's current lap, so you
 // can see where it gains and loses against the best anyone has done.
 import * as THREE from 'three';
-import { ROAD_HEIGHT, createCar } from './cars.js';
+import { ROAD_HEIGHT, createCar, disposeCar } from './cars.js';
 import { toWorld } from './scene.js';
 
 export function createGhost(scene) {
   let mesh = null, trace = null, enabled = false;
 
   function build(color) {
-    if (mesh) scene.remove(mesh);
+    if (mesh) disposeCar(mesh);
     mesh = createCar(color, 'ghost');
     mesh.traverse(object => {
       if (!object.isMesh) return;
@@ -60,7 +60,7 @@ export function createGhost(scene) {
       mesh.rotation.y = pose.heading;
     },
     dispose() {
-      if (mesh) scene.remove(mesh);
+      if (mesh) disposeCar(mesh);
       mesh = null;
     },
   };

@@ -548,6 +548,31 @@ export function createCar(color, name, number = null) {
 
 // Draws a car in full, or as the simple car when it's too small on screen for its details to show. Either way the
 // simple car casts the shadow; drawn in full, it's only in the shadow.
+// What every car shares (the shapes, the common surfaces), which a car going away must leave for the others.
+function sharedResources() {
+  const shared = new Set([carbonWeave]);
+  for (const geometry of Object.values(shapes ?? {}).flat()) shared.add(geometry);
+  for (const parts of Object.values(wheelShapes ?? {})) for (const geometry of Object.values(parts)) shared.add(geometry);
+  for (const surface of Object.values(common ?? {})) shared.add(surface).add(surface.map);
+  return shared;
+}
+
+// Frees what a car made for itself (its paint, livery, tyre colours, lights, merged pieces) once it's gone: the GPU
+// doesn't let them go by itself, and every race left a field's worth behind.
+export function disposeCar(car) {
+  const shared = sharedResources();
+  car.removeFromParent();
+  car.traverse(object => {
+    if (object.geometry && !shared.has(object.geometry)) object.geometry.dispose();
+    const materials = [object.material].flat().filter(Boolean);
+    for (const material of materials) {
+      if (shared.has(material)) continue;
+      for (const texture of [material.map, material.emissiveMap]) if (texture && !shared.has(texture)) texture.dispose();
+      material.dispose();
+    }
+  });
+}
+
 export function setCarDetail(car, detailed) {
   car.userData.detailed.visible = detailed;
   for (const part of car.userData.simpleParts) part.layers.set(detailed ? SHADOW_ONLY : 0);

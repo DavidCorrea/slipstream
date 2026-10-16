@@ -1,7 +1,7 @@
 // Connects to the server, keeps the last two frames and draws smoothly between them, and wires up the controls.
 import * as THREE from 'three';
 import { buildCircuit } from './circuit.js';
-import { contactPatches, createCar, poseCar, setCarDetail } from './cars.js';
+import { contactPatches, createCar, disposeCar, poseCar, setCarDetail } from './cars.js';
 import { createCrews } from './crew.js';
 import { createEffects } from './effects.js';
 import { createBroadcaster } from './broadcaster.js';
@@ -146,7 +146,7 @@ function setUpRace(intro) {
   endGridIntro();
   state.effects?.dispose();
   state.crews?.dispose();
-  state.cars.forEach(car => stage.scene.remove(car));
+  state.cars.forEach(disposeCar);
   state.race = intro;
   // The sim decides the location (yours, or the circuit's) and everything standing in it.
   const locationName = intro.location;

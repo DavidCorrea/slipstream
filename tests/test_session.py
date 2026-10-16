@@ -246,6 +246,11 @@ class TestShowingTheRace:
         assert 'debris' in frame and 'mistakes' in frame['events']
         json.dumps(frame)
 
+    def test_the_intro_says_which_tyres_each_car_starts_on(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=3, laps=2, forecast='wet')
+        tyres = session.intro()['startingTyres']
+        assert len(tyres) == 3 and set(tyres) <= {'intermediate', 'wet'}
+
     def test_frames_say_why_a_car_is_out(self):
         session = RaceSession(SCRIPTED, seed=5, cars=3, laps=2)
         session.race.retire(1, 'stuck')

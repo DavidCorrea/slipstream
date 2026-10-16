@@ -227,6 +227,7 @@ class RaceSession:
             'specRanges': {name: [round(spec_value(name, 0), 2), round(spec_value(name, 1), 2)] for name in SPEC_DEFAULTS},
             # Whether this brain reads personality at all: networks trained before it existed don't.
             'readsPersonality': self.driver is not None and (self.driver.feels or self.policy.observation_space.shape[0] >= len(OBSERVATION_NAMES)),
+            'startingTyres': [COMPOUNDS[index] for index in self.race.cars.compound],
             # Called before the first tick, so this is where every car lines up.
             'grid': [{'x': round(float(x), 2), 'y': round(float(y), 2), 'heading': round(float(heading), 4)}
                      for (x, y), heading in zip(self.race.cars.position, self.race.cars.heading)],

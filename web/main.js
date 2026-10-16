@@ -6,6 +6,7 @@ import { createCrews } from './crew.js';
 import { createEffects } from './effects.js';
 import { createBroadcaster } from './broadcaster.js';
 import { createDirector } from './director.js';
+import { createDriverCamera } from './driver-camera.js';
 import { createFeed } from './feed.js';
 import { createRaceControl } from './race-control.js';
 import { createGhost } from './ghost.js';
@@ -50,6 +51,7 @@ const PROP_COLORS = { bale: '#d9b45a', cactus: '#4d7a3a', lamp: '#4a4e57', board
 const replays = createReplay();
 const replayCamera = createReplayCamera({ aspect: window.innerWidth / window.innerHeight });
 const gridIntro = createGridIntro({ aspect: window.innerWidth / window.innerHeight });
+const driverCamera = createDriverCamera({ aspect: window.innerWidth / window.innerHeight });
 const loading = createLoadingScreen();
 $('loading-retry').addEventListener('click', () => location.reload());
 const weather = createWeather(stage);
@@ -62,6 +64,7 @@ window.addEventListener('resize', () => {
   director.resize(window.innerWidth / window.innerHeight);
   replayCamera.resize(window.innerWidth / window.innerHeight);
   gridIntro.resize(window.innerWidth / window.innerHeight);
+  driverCamera.resize(window.innerWidth / window.innerHeight);
 });
 const speech = createSpeech({ onProgress: showVoicesProgress, knownLines: radioLines() });
 const broadcaster = createBroadcaster({ onStatus: text => hud.status(text), speech });
@@ -202,7 +205,7 @@ function setUpRace(intro) {
   stage.view.focus.copy(toWorld(first.x, first.y));
   stage.view.setMode(state.cameraMode, state.circuit);
   // The first race's shaders are compiled while the loading screen is still up, so the game opens ready to race.
-  stage.warmUp([stage.camera, director.camera, replayCamera.camera, gridIntro.camera]);
+  stage.warmUp([stage.camera, director.camera, replayCamera.camera, gridIntro.camera, driverCamera.camera]);
   loading.hide();
   showGrid(intro);
 }
@@ -406,11 +409,21 @@ function renderLive(frame, seconds, now) {
     stage.view.update(seconds, state.shot.focus, 0);
     pixelsPerMetre = height / (2 * Math.tan(THREE.MathUtils.degToRad(director.camera.fov) / 2) * state.shot.distance);
   } else {
+    // The driver's eyes ride on the car, but the isometric rig follows it still: the sun's shadows are drawn round it.
     aimCamera(frame, seconds);
   }
-  showShot(state.shot, frame);
-  const moving = state.shot && MOVING_SHOTS.has(state.shot.kind);
-  state.look = { speed: moving ? blurAt(frame.cars.speed[state.shot.car]) : 0, heat: state.shot ? exhaustHaze(frame, director.camera) : [], timed: !state.paused };
+  const driving = state.cameraMode === 'driver';
+  if (driving) {
+    const speed = frame.cars.speed[state.selected];
+    driverCamera.aim(state.cars[state.selected], speed, now / 1000);
+    pixelsPerMetre = height / (2 * Math.tan(THREE.MathUtils.degToRad(driverCamera.camera.fov) / 2) * 6);
+  }
+  showShot(driving ? { label: "Driver's eyes", kind: 'onboard', car: state.selected } : state.shot, frame);
+  const moving = driving || (state.shot && MOVING_SHOTS.has(state.shot.kind));
+  const subject = driving ? state.selected : state.shot?.car;
+  const lens = driving ? driverCamera.camera : director.camera;
+  // From inside the car the edges streak less: the driver looks where they are going.
+  state.look = { speed: moving ? blurAt(frame.cars.speed[subject]) * (driving ? 0.6 : 1) : 0, heat: driving || state.shot ? exhaustHaze(frame, lens) : [], timed: !state.paused };
   weather.update(frame.weather.wetness, frame.weather.rain, state.shot ? state.shot.focus : stage.view.focus, seconds, now / 1000, frame.weather.wind);
   const lapStart = frame.cars.lapStart[state.selected];
   ghost.update(lapStart === null || frame.cars.finishTime[state.selected] !== null ? null : frame.time - lapStart);
@@ -487,7 +500,7 @@ function drawCars(frame, seconds, simRate, now, live) {
     setCarDetail(car, pixelsPerMetreAt(camera, car.position) * CAR_LENGTH >= DETAIL_PIXELS);
     // The chevron marks the car you follow, live on the game's own cameras; a replay and TV are the broadcast's,
     // which doesn't point at anyone, and with the interface hidden there's only the race.
-    const followed = live && id === state.selected && state.cameraMode !== 'tv' && !document.body.classList.contains('immersive');
+    const followed = live && id === state.selected && state.cameraMode !== 'tv' && state.cameraMode !== 'driver' && !document.body.classList.contains('immersive');
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
     poseCar(car, pose, seconds, seconds * simRate, followed, now / 1000);
@@ -540,6 +553,7 @@ function endReplay() {
 function activeCamera() {
   if (state.replay) return replayCamera.camera;
   if (gridIntro.playing) return gridIntro.camera;
+  if (state.cameraMode === 'driver') return driverCamera.camera;
   return state.shot ? director.camera : stage.camera;
 }
 
@@ -597,13 +611,15 @@ function aimCamera(frame, seconds) {
 
 function select(id) {
   state.selected = id;
-  if (state.cameraMode !== 'follow') setCamera('follow');
+  // From the driver's eyes, picking another car puts you in their helmet instead.
+  if (state.cameraMode !== 'follow' && state.cameraMode !== 'driver') setCamera('follow');
 }
 
 function setCamera(mode) {
   state.cameraMode = mode;
   noticeActivity();
-  stage.view.setMode(mode, state.circuit);
+  // The isometric rig keeps following the car under the driver's eyes, for the sun's shadows.
+  stage.view.setMode(mode === 'driver' ? 'follow' : mode, state.circuit);
   document.querySelectorAll('#camera [data-camera]').forEach(button => button.classList.toggle('active', button.dataset.camera === mode));
 }
 
@@ -696,6 +712,7 @@ window.addEventListener('keydown', event => {
   else if (event.key === 'f') setCamera('follow');
   else if (event.key === 't') setCamera('tv');
   else if (event.key === 'o') setCamera('overview');
+  else if (event.key === 'd') setCamera('driver');
   else if (event.key === 'g') setGhost(!ghost.enabled);
   else if (event.key === 'r' || event.key === 'R') replayLastMoments();
   else if (event.key === 'h' || event.key === 'H') setImmersive(!document.body.classList.contains('immersive'));

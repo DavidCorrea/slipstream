@@ -520,6 +520,9 @@ body.replaying .chrome, body.replaying #tv-tag, body.replaying #banner, body.rep
 /* Hiding the interface: only the race, its sound and the commentator's voice. */
 body.immersive .chrome, body.immersive #tv-tag, body.immersive #banner, body.immersive #race-control, body.immersive #caption, body.immersive #status,
 body.immersive #replay-tag { opacity: 0; pointer-events: none; }
+/* The banner and race control fade in and out by animation, which outranks the opacity above: hide them outright. */
+body.replaying #banner, body.replaying #race-control, body.immersive #banner, body.immersive #race-control,
+body.grid-intro #banner, body.grid-intro #race-control { visibility: hidden; }
 body.immersive.watching { cursor: none; }
 #immersive-hint {
   position: fixed; bottom: var(--gutter); left: 50%; transform: translateX(-50%); z-index: 6; pointer-events: none;

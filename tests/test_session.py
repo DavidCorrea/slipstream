@@ -240,10 +240,17 @@ class TestShowingTheRace:
     def test_frames_carry_temperatures_damage_and_the_air(self):
         session = RaceSession(SCRIPTED, seed=5, cars=3, laps=2)
         frame = session.advance(40)
-        for key in ('tyreTemp', 'brakeTemp', 'engineTemp', 'punctured', 'retired', 'wingDamage', 'suspensionDamage', 'draft', 'dirtyAir'):
+        for key in ('tyreTemp', 'brakeTemp', 'engineTemp', 'punctured', 'retired', 'wingDamage', 'suspensionDamage', 'draft', 'dirtyAir',
+                    'retiredBy', 'tyreLaps'):
             assert len(frame['cars'][key]) == 3
         assert 'debris' in frame and 'mistakes' in frame['events']
         json.dumps(frame)
+
+    def test_frames_say_why_a_car_is_out(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=3, laps=2)
+        session.race.retire(1, 'stuck')
+        frame = session.advance(1)
+        assert frame['cars']['retiredBy'] == [None, 'stuck', None]
 
     def test_the_track_surface_goes_out_about_once_a_second_and_decodes(self):
         import base64

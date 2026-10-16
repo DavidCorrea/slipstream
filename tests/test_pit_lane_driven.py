@@ -50,6 +50,14 @@ class TestDrivingTheLane:
         assert not [penalty for tick in events for penalty in tick.penalties]
         assert not [hit for tick in events for hit in tick.prop_hits]
 
+    def test_new_tyres_start_counting_their_laps_again(self):
+        race = driven_race()
+        race.cars.tyre_wear[0] = 0.75
+        drive_until(race, lambda race: race.lap_of()[0] == 1, call=False)
+        assert race.tyre_laps()[0] == 1
+        drive_until(race, lambda race: race.pit_state[0] == pit.STOPPED)
+        assert race.tyre_laps()[0] == 0
+
     def test_finishes_a_race_with_stops_counting_every_lap(self):
         race = driven_race(laps=2)
         events = drive_until(race, lambda race: race.done, limit=20000)

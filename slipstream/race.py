@@ -161,6 +161,7 @@ class Race:
         self.service_left = np.zeros(count)     # seconds the crew still needs
         self.service_jobs = [None] * count
         self.stops = np.zeros(count, dtype=int)
+        self.tyres_fitted_on = np.zeros(count, dtype=int)   # the lap each car's tyres went on (every stop fits new ones)
         # Whether each car has made this lap's pit decision (see pit.py); cleared once it passes the entry.
         self.pit_decided = np.zeros(count, dtype=bool)
         # Driving the lane yourself: whether each car came in because it was called (the crew is out waiting), and
@@ -237,6 +238,10 @@ class Race:
     def lap_of(self):
         """Laps completed by each car (0 on the way to the first line crossing)."""
         return np.maximum(np.floor(self.progress / self.track.length), 0).astype(int)
+
+    def tyre_laps(self):
+        """Laps each car's tyres have done, counted as the timing screen does: from the lap they went on."""
+        return self.lap_of() - self.tyres_fitted_on
 
     def race_times(self):
         """Each car's race time with its penalties added (NaN until it finishes)."""
@@ -524,6 +529,7 @@ class Race:
                 self.service_left[car] = standing
                 self.pit_state[car] = pit.STOPPED
                 self.stops[car] += 1
+                self.tyres_fitted_on[car] = self.lap_of()[car]
                 events.pit_stopped.append((int(car), jobs, round(standing, 2)))
             if self.lane_along[car] >= lane.length:
                 self.pit_state[car] = pit.RACING
@@ -594,6 +600,7 @@ class Race:
         self.service_left[car] = standing
         self.pit_state[car] = pit.STOPPED
         self.stops[car] += 1
+        self.tyres_fitted_on[car] = self.lap_of()[car]
         self.cars.velocity[car] = 0.0
         events.pit_stopped.append((int(car), jobs, round(standing, 2)))
 

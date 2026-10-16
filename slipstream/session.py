@@ -315,6 +315,7 @@ class RaceSession:
                 'pit': race.pit_state.tolist(), 'stops': race.stops.tolist(), 'serviceLeft': rounded(race.service_left, 2),
                 'tyreTemp': rounded(cars.tyre_temp, 3), 'brakeTemp': rounded(cars.brake_temp, 3), 'engineTemp': rounded(cars.engine_temp, 3),
                 'punctured': cars.punctured.astype(int).tolist(), 'retired': race.retired.astype(int).tolist(),
+                'retiredBy': [why or None for why in race.retired_by], 'tyreLaps': race.tyre_laps().tolist(),
                 'wingDamage': rounded(cars.wing_damage, 3), 'suspensionDamage': rounded(cars.suspension_damage, 3),
                 'draft': rounded(conditions.draft), 'dirtyAir': rounded(conditions.dirty_air), 'balance': rounded(race.specs.balance),
             },

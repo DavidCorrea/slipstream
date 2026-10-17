@@ -126,7 +126,10 @@
         </section>
         <section>
           <h2 id="driver-heading">The driver</h2>
-          <label class="field">Name <input id="driver-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
+          <div class="name-row">
+            <label class="field">Name <input id="driver-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
+            <label class="field colour">Colour <input id="driver-color" type="color"></label>
+          </div>
           <p id="name-problem" class="note hidden"></p>
           <p id="racer-note" class="note hidden"></p>
           <div class="sliders" id="personality-sliders"></div>

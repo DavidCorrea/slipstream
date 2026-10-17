@@ -168,6 +168,30 @@ class TestRenamingDrivers:
             session.rename(0, 'Da Silva')
 
 
+class TestRepaintingCars:
+    def test_races_cars_in_the_colours_you_gave_them(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=20, laps=1, colors={'vega': '#00ff88'})
+        vega = next(car for car in session.intro()['cars'] if car['key'] == 'vega')
+        assert vega['color'] == '#00ff88'
+
+    def test_repaints_a_car_on_the_grid_in_lower_case(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=3, laps=1)
+        session.recolor(1, '#A1B2C3')
+        assert session.intro()['cars'][1]['color'] == '#a1b2c3'
+
+    def test_refuses_anything_but_a_six_digit_colour(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=3, laps=1)
+        for color in ('red', '#fff', '#12345g', 'javascript:alert(1)', 7):
+            with pytest.raises(ValueError, match='colour'):
+                session.recolor(1, color)
+
+    def test_refuses_repainting_once_the_race_is_under_way(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=3, laps=1)
+        session.advance(10)
+        with pytest.raises(ValueError, match='before the start'):
+            session.recolor(0, '#123456')
+
+
 class TestYourPitStrategy:
     def test_refuses_unknown_plans_and_strategies(self):
         session = RaceSession(SCRIPTED, seed=5, cars=2, laps=3)

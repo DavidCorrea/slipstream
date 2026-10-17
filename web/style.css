@@ -145,6 +145,8 @@ button.ghost-button:hover, button.ghost-button.open { color: var(--text); backgr
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .field select, .field input { width: 100%; color: var(--text); font-size: 14px; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.name-row { display: grid; grid-template-columns: 1fr 64px; gap: 8px; align-items: end; }
+.field.colour input { height: 34px; padding: 2px; cursor: pointer; background: none; }
 .hint, .note { margin: 0; font-size: 12px; color: var(--faint); line-height: 1.4; }
 .note { color: var(--tyres); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 12px; }

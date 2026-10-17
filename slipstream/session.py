@@ -9,6 +9,7 @@ describing the circuit and the cars, then a frame per update with every car's st
 the last frame (contacts, laps, finishes), so effects aren't lost when frames skip ticks at higher speeds.
 """
 import base64
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -35,6 +36,7 @@ RUNS = Path('runs')
 NETWORK_FILES = ('.zip', '.npz')
 SCRIPTED = 'scripted'
 STATS = (*traits.TRAITS, *SPEC_DEFAULTS, 'balance')
+COLOUR = re.compile(r'#[0-9a-f]{6}')
 
 
 DRIVER_DECIDES = 'driver'
@@ -105,10 +107,11 @@ def spec_value(name, slider):
 
 class RaceSession:
     def __init__(self, brain_id=SCRIPTED, seed=None, cars=6, laps=3, runs=RUNS, yours=None, edited=None, names=None, pitwall_id=DRIVER_DECIDES,
-                 forecast=None, location=None):
+                 forecast=None, location=None, colors=None):
         """`yours` is the key of the driver you race with (the cast's first when not given; they always make the
         field). `edited` maps driver keys to the stats you gave them, which they keep exactly; everyone else turns
-        up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them. `forecast` picks the weather (see weather.FORECASTS)
+        up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them, and
+        `colors` to the colours you painted their cars. `forecast` picks the weather (see weather.FORECASTS)
         and `location` the scenery and everything in it the cars can hit (see scenery.LOCATIONS); without them, the
         seed decides."""
         self.brain_id, self.pitwall_id = brain_id, pitwall_id
@@ -132,6 +135,7 @@ class RaceSession:
         if your_key not in cast.BY_KEY:
             raise ValueError(f'No driver {your_key!r}; the cast is {", ".join(cast.BY_KEY)}')
         self.names = {driver.key: driver.name for driver in cast.CAST} | dict(names or {})
+        self.colors = {driver.key: driver.color for driver in cast.CAST} | dict(colors or {})
         # Its own stream, so the cast's draw doesn't shift the circuit's weather or the drivers' hands.
         cast_rng = np.random.default_rng(self.seed + 2)
         self.lineup = cast.lineup(cars, cast_rng, must_race=your_key)
@@ -222,6 +226,14 @@ class RaceSession:
         key = self.lineup[self._on_the_grid(car)].key
         self.names[key] = cast.tidy_name(name, [other for other_key, other in self.names.items() if other_key != key])
 
+    def recolor(self, car, color):
+        """Paints a driver's car another colour, before the start: a six-digit hex colour like '#a1b2c3'."""
+        key = self.lineup[self._on_the_grid(car)].key
+        tidy = color.strip().lower() if isinstance(color, str) else color
+        if not isinstance(tidy, str) or not COLOUR.fullmatch(tidy):
+            raise ValueError(f"A car's colour must be six hex digits like '#a1b2c3', got {color!r}")
+        self.colors[key] = tidy
+
     def set_yours(self, car):
         """Makes another car yours before the start. Every driver keeps their own traits and car."""
         self.yours = self._on_the_grid(car)
@@ -255,7 +267,7 @@ class RaceSession:
                 'curvature': np.round(track.curvature, 5).tolist(), 'width': track.width, 'length': track.length,
             },
             # A driver's number is theirs, wherever they start.
-            'cars': [{'key': driver.key, 'name': self.names[driver.key], 'color': driver.color, 'number': cast.CAST.index(driver) + 1, 'usual': driver.character,
+            'cars': [{'key': driver.key, 'name': self.names[driver.key], 'color': self.colors[driver.key], 'number': cast.CAST.index(driver) + 1, 'usual': driver.character,
                       'edited': driver.key in self.edited} for driver in self.lineup],
             'yours': self.yours, 'stats': self.stats,
             # Everyone's names, racing or not, since a new name can't be anyone's.

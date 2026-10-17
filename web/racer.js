@@ -53,7 +53,7 @@ function character(stats) {
   return marked.map(({ name, lean }) => CHARACTER[name][lean > 0 ? 1 : 0]).join(' · ');
 }
 
-export function createRacerPanel({ send, onYours, onFollow, onRename }) {
+export function createRacerPanel({ send, onYours, onFollow, onRename, onRecolor }) {
   const inputs = new Map(), planInputs = new Map();
   let ranges = {}, pending = {}, timer = null, current = null, plan = {}, boxCalled = false, editing = 0;
 
@@ -87,6 +87,7 @@ export function createRacerPanel({ send, onYours, onFollow, onRename }) {
     editing = id;
     const name = current.cars[id].name;
     $('driver-name').value = name;
+    $('driver-color').value = current.cars[id].color;
     showNameProblem(null);
     $('driver-heading').textContent = id === current.yours ? 'Your driver' : `${name}, the driver`;
     $('car-heading').textContent = id === current.yours ? 'Your car' : `${name}'s car`;
@@ -192,6 +193,16 @@ export function createRacerPanel({ send, onYours, onFollow, onRename }) {
     current.castNames[current.cars[editing].key] = name;
     edit(editing);
     onRename(editing);
+  });
+
+  // The car's colour, kept like a name from race to race. The picker only ever gives #rrggbb.
+  $('driver-color').addEventListener('change', event => {
+    const color = event.target.value.toLowerCase();
+    if (color === current.cars[editing].color) return;
+    send({ type: 'recolor', car: editing, color });
+    current.cars[editing].color = color;
+    showCars();
+    onRecolor(editing);
   });
 
   $('reset-stats').addEventListener('click', () => {

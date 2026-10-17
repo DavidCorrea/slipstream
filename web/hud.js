@@ -94,6 +94,10 @@ export function createHud({ onSelect }) {
       $('seed').textContent = `circuit #${intro.seed}`;
     },
 
+    recolor(id) {
+      rows[id].querySelector('.chip').style.background = race.cars[id].color;
+    },
+
     rename(id) {
       rows[id].querySelector('.driver').textContent = race.cars[id].name;
     },

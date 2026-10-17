@@ -45,6 +45,17 @@ class TestTheGrid:
 
 
 class TestTheChampionship:
+    def test_a_repainted_car_keeps_its_colour_in_the_next_race(self):
+        async def repaint(viewer):
+            await viewer.handle({'type': 'start', 'cars': 3, 'laps': 1})
+            await viewer.handle({'type': 'recolor', 'car': 1, 'color': '#123456'})
+            await viewer.handle({'type': 'start'})
+        viewer = run(repaint)
+        key = viewer.socket.sent[0]['cars'][1]['key']
+        repainted = [car for car in viewer.socket.sent[-1]['cars'] if car['key'] == key]
+        assert viewer.colors == {key: '#123456'}
+        assert not repainted or repainted[0]['color'] == '#123456'
+
     def test_your_driver_and_your_edits_carry_over_to_the_next_race(self):
         async def two_races(viewer):
             await viewer.handle({'type': 'start', 'cars': 4, 'laps': 1})

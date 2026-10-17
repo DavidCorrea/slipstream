@@ -45,6 +45,7 @@ const racer = createRacerPanel({
   onYours: car => { state.yours = car; broadcaster.setYours(car); select(car); },
   onFollow: () => select(state.yours),
   onRename: id => hud.rename(id),
+  onRecolor: id => repaintCar(id),
 });
 const raycaster = new THREE.Raycaster();
 // What a broken prop scatters, by kind; anything else breaks into pale bits.
@@ -230,6 +231,21 @@ function showGrid(intro) {
 }
 
 // Start race: the grid as the broadcast shows it first (grid-intro.js), unless that's turned off, then the lights.
+// A car painted another colour on the grid: its model, its place in the tower and its pit crew take the new one.
+function repaintCar(id) {
+  const old = state.cars[id];
+  const { color, name, number } = state.race.cars[id];
+  const car = createCar(color, name, number);
+  car.position.copy(old.position);
+  car.quaternion.copy(old.quaternion);
+  disposeCar(old);
+  stage.scene.add(car);
+  state.cars[id] = car;
+  hud.recolor(id);
+  state.crews.dispose();
+  state.crews = createCrews(stage.scene, state.circuit.pits.boxes, state.race.cars);
+}
+
 function startFromTheGrid() {
   if (!state.race) return;
   if (!gridIntroWanted()) return lightsOut();

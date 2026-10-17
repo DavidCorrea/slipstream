@@ -28,11 +28,12 @@ class Viewer:
         self.session = None
         # `weather` is a forecast name, or 'random' to let each circuit's seed decide.
         self.settings = {'brain': SCRIPTED, 'pitwall': DRIVER_DECIDES, 'cars': 6, 'laps': 8, 'weather': 'random', 'location': 'random'}
-        # Like a championship, your driver, every driver you've edited and the names you've given them carry over
+        # Like a championship, your driver, every driver you've edited and the names and colours you've given them carry over
         # from race to race (by each driver's key, since the grid is drawn afresh each time).
         self.yours = None
         self.edited = {}
         self.names = {}
+        self.colors = {}
         self.pit = None
         self.speed = 1.0
         self.paused = False
@@ -57,7 +58,7 @@ class Viewer:
         try:
             self.session = RaceSession(self.settings['brain'], seed=None if seed is None else int(seed),
                                        cars=self.settings['cars'], laps=self.settings['laps'], runs=self.runs,
-                                       yours=self.yours, edited=self.edited, names=self.names, pitwall_id=self.settings['pitwall'],
+                                       yours=self.yours, edited=self.edited, names=self.names, colors=self.colors, pitwall_id=self.settings['pitwall'],
                                        forecast=None if self.settings['weather'] == 'random' else self.settings['weather'],
                                        location=None if self.settings['location'] == 'random' else self.settings['location'])
             if self.pit:
@@ -101,6 +102,11 @@ class Viewer:
             self.session.rename(car, message.get('name'))
             key = self.session.lineup[car].key
             self.names[key] = self.session.names[key]
+        elif kind == 'recolor' and self.session:
+            car = message.get('car')
+            self.session.recolor(car, message.get('color'))
+            key = self.session.lineup[car].key
+            self.colors[key] = self.session.colors[key]
         elif kind == 'pit' and self.session:
             self.session.set_pit(message.get('strategy'), message.get('plan'), message.get('box'), message.get('stayOut'))
             self.pit = {'strategy': self.session.strategy, 'plan': dict(self.session.my_plan)}

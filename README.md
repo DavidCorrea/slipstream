@@ -201,7 +201,7 @@ The newest drivers drive by feel (`slipstream/senses.py`, `driver_env.py`). A re
 .venv/bin/python -m slipstream.check --run racer                                          # its second opinion, as for drivers by feel
 ```
 
-A racing driver trains (`slipstream/racer_env.py`) in every rule the game has: stewards, lights and flags, the pit lane to drive, props, any weather; in fields of 6 to 20 cars over 3 to 25 laps (drawn evenly on a log scale), with the wing set anywhere. Five cars in every race are the network learning; of the rest, up to half are driven by its own five latest snapshots (its league: it learns to race drivers like itself, not just the scripted driver) and the others by the scripted driver. A quarter of races, once there is a league, are against nobody but those snapshots, since copies of itself don't give way the way the scripted driver does. On top of a driver by feel's rewards it pays the stewards' penalties as race time, is charged for damage when it happens (per lap still to race, up to ten), gets only a quarter of a place's worth for a pass made with a hard hit, earns 0.5 for bringing the car in when called (and loses as much for missing the call), and a little for doing what the radio asks, and is charged for every moment it sits still once the lights are out (outside the pit lane). A quarter of races are pit drills, with the learners called in from the first lap, and a quarter are start drills, with the learners at the back of the grid. It looks further ahead (gamma 0.995, about twenty seconds) and starts at 3e-4. `--imitate` starts it as a copy of the scripted driver (steering, pedal, the limiter on in the lane, reverse when it backs up). `--workers` plays the races on that many processes (`slipstream/parallel.py`): four reach about 3.6 times the decisions a second of one, at the cost of more CPU (and fan). The checker reports, for racing drivers, the stewards' seconds per car and why cars dropped out: into a barrier alone, into one after touching another car, stuck, or a failed engine.
+A racing driver trains (`slipstream/racer_env.py`) in every rule the game has: stewards, lights and flags, the pit lane to drive, props, any weather; in fields of 6 to 20 cars over 3 to 25 laps (drawn evenly on a log scale), with the wing set anywhere. Five cars in every race are the network learning; of the rest, up to half are driven by its own five latest snapshots (its league: it learns to race drivers like itself, not just the scripted driver) and the others by the scripted driver. A quarter of races, once there is a league, are against nobody but those snapshots, since copies of itself don't give way the way the scripted driver does. On top of a driver by feel's rewards it pays the stewards' penalties as race time, is charged for damage when it happens (per lap still to race, up to ten), gets only a quarter of a place's worth for a pass made with a hard hit, earns 1 for turning into the lane when called and 2 for reaching the box, isn't charged for the time a called stop takes (and loses 2 for driving past the call), and a little for doing what the radio asks, and is charged for every moment it sits still once the lights are out (outside the pit lane). 40% of races are pit drills, with the learners called in from the first lap, and a quarter are start drills, with the learners at the back of the grid. It looks further ahead (gamma 0.995, about twenty seconds) and starts at 3e-4. `--imitate` starts it as a copy of the scripted driver (steering, pedal, the limiter on in the lane, reverse when it backs up). `--workers` plays the races on that many processes (`slipstream/parallel.py`): four reach about 3.6 times the decisions a second of one, at the cost of more CPU (and fan). The checker reports, for racing drivers, the stewards' seconds per car and why cars dropped out: into a barrier alone, into one after touching another car, stuck, or a failed engine.
 
 Your racer splits the same way. Before the race you pick the driver (personality, consistency, stamina) and the car (specs, handling); during the race you're the pit wall.
 
@@ -247,6 +247,40 @@ How it works:
   - **Long race:** 8 laps, where a tank won't last and tyres go off: `long_pace` compares the network with the scripted driver and its strategist, and `stops` counts the network's stops.
   - **Wet time trial:** the same on a soaked track, both on full wets: `wet_pace` and `wet_off_track`.
   - **Trait effects:** solo laps at the two ends of a trait. `risk_pace` is above 1 when a risky driver laps faster than a cautious one, and `conservation_saving` is above 1 when a saver uses less tyre and fuel than a pusher. Both sit at 1 for a network that ignores personality.
+
+## The exam
+
+Watching races and reading training numbers misses things: a pit test that drove the lane on rails hid for weeks that
+the racing driver couldn't drive into the pit lane at all. So every behaviour that matters is a test in
+`slipstream/exam.py`, played through the game's own race session on fixed circuits and seeds, the same for every
+snapshot. A **must** test passes or fails on a rule; a **scored** test gives a number compared between snapshots.
+
+- **A, driving alone**: finishes on 12 circuits (one per location), pace and wet pace against the scripted driver, lap
+  spread, time off track, track-limit strikes, damage, and getting going again from a spin, facing the wrong way,
+  the grass and a wall.
+- **B, starts**: no jump starts, reaction to the lights, every car of a 20-car grid getting away, first-lap hits.
+- **C, traffic**: stuck cars, hits and penalties in a field of its copies (with a stuck ceiling), place against
+  scripted rivals, going round a car stopped on the racing line (one, and a queue of five), clean passes of a slower
+  car, defending without blame, blue and yellow flags, following closely without contact.
+- **D, the pit lane**: taking the call on 8 circuits by driving in itself, no speeding, no crossing the lines, time
+  in the box, the time a stop costs against the scripted driver, never going in uncalled, three cars called together.
+- **E, long races**: a 20-lap race finishing with every car stopping, never running dry, racing on worn tyres,
+  endurance's two stops, the radio's push and save working, attack passing more than bring it home.
+- **F, weather**, **G, personality** (each trait at 0 and 1 does what it says), **H, the car** (each spec at both ends
+  does what it says and still finishes; wing; tyres; extreme and random cars; every format; a full field), and
+  **I, regressions**: every bug found becomes a test.
+
+```sh
+.venv/bin/python -m slipstream.exam racer-2/step-000080018720 --quick   # 19 tests, about 3 minutes
+.venv/bin/python -m slipstream.exam racer-2/step-000080018720           # all of them
+.venv/bin/python -m slipstream.gate runs/racer-2/exam/step-000084032800.quick.json   # against the published driver
+.venv/bin/python -m slipstream.exam --watch racer-2                     # exam and gate each new snapshot
+```
+
+The gate (`slipstream/gate.py`) passes a snapshot over the published driver when it fails no must test the published
+driver passes, gets no score worse by more than its noise margin, and is better somewhere; tests both fail are listed as
+known failures. `--watch` examines a run's newest snapshot as training saves it (quick tier, then the full exam for one
+that passes) and logs every decision with its reasons to `runs/<run>/gate.jsonl`.
 
 ## The simulation
 

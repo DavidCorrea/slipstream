@@ -185,6 +185,7 @@
             </label>
           </div>
           <p id="format-note" class="hint"></p>
+          <label class="check"><input type="checkbox" id="qualifying-setting"> Qualifying sets the grid</label>
           <div class="pair">
             <label class="field">Cars <input id="cars" type="number" min="2" max="20" value="6"></label>
             <label class="field">Laps <input id="laps" type="number" min="1" max="70" value="8"></label>
@@ -327,6 +328,13 @@
     <button id="skip-intro" class="ghost-button" title="Straight to the lights (Esc)">Skip</button>
   </div>
   <pre id="stats" class="hidden" aria-hidden="true"></pre>
+  <!-- Qualifying results (qualifying.js) -->
+  <section id="qualifying" class="hidden" aria-label="Qualifying results">
+    <header><b>Qualifying</b><span>Results</span></header>
+    <ol id="qualifying-list"></ol>
+    <p id="qualifying-note" class="hint"></p>
+    <button id="qualifying-go" class="primary go">Start race</button>
+  </section>
   <div id="banner" class="hidden"></div>
   <div id="race-control" class="hidden" role="status"></div>
   <div id="caption" class="hidden"></div>

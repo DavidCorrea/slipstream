@@ -9,6 +9,7 @@ import { createDirector } from './director.js';
 import { createDriverCamera } from './driver-camera.js';
 import { createFeed } from './feed.js';
 import { createRaceControl } from './race-control.js';
+import { createQualifyingBoard } from './qualifying.js';
 import { createGhost } from './ghost.js';
 import { createGridIntro } from './grid-intro.js';
 import { createHud } from './hud.js';
@@ -60,6 +61,8 @@ const weather = createWeather(stage);
 const raceEvents = createRaceEvents();
 const feed = createFeed({ onSelect: id => select(id) });
 const raceControl = createRaceControl();
+const qualifyingBoard = createQualifyingBoard({ onDone: () => startFromTheGrid(true) });
+const QUALIFYING_KEY = 'slipstream.qualifying';
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
 window.addEventListener('resize', () => {
@@ -215,7 +218,14 @@ function setUpRace(intro) {
   // The first race's shaders are compiled while the loading screen is still up, so the game opens ready to race.
   stage.warmUp([stage.camera, director.camera, replayCamera.camera, gridIntro.camera, driverCamera.camera]);
   loading.hide();
-  showGrid(intro);
+  // Back from qualifying, the results come first, then the start; otherwise the grid menu.
+  if (intro.qualifying) {
+    hud.status('');
+    document.body.classList.add('on-grid');
+    qualifyingBoard.show(intro);
+  } else {
+    showGrid(intro);
+  }
 }
 
 // Every race waits on the grid (the server holds it there) until you've picked your car and set it up.
@@ -249,8 +259,16 @@ function repaintCar(id) {
   state.crews = createCrews(stage.scene, state.circuit.pits.boxes, state.race.cars);
 }
 
-function startFromTheGrid() {
+// With qualifying on, Start race qualifies first: the race comes back in qualifying order (setUpRace), the results
+// show, and then this goes on with `qualified`.
+function startFromTheGrid(qualified = false) {
   if (!state.race) return;
+  if (!qualified && $('qualifying-setting').checked && !state.race.qualifying) {
+    $('grid-menu').classList.add('hidden');
+    hud.status('Qualifying: every car is out for a flying lap…');
+    send({ type: 'qualify' });
+    return;
+  }
   if (!gridIntroWanted()) return lightsOut();
   $('grid-menu').classList.add('hidden');
   document.body.classList.remove('on-grid');
@@ -702,12 +720,14 @@ SPEEDS.forEach(speed => {
 $('new-race').addEventListener('click', () => startRace());
 $('new-circuit').addEventListener('click', () => startRace());
 $('replay').addEventListener('click', () => startRace(true));
-$('go').addEventListener('click', startFromTheGrid);
+$('go').addEventListener('click', () => startFromTheGrid());
 $('skip-intro').addEventListener('click', finishGridIntro);
 $('pause').addEventListener('click', () => setPaused(!state.paused));
 $('replay-last').addEventListener('click', replayLastMoments);
 $('hide-ui').addEventListener('click', () => setImmersive(true));
 $('skip-replay').addEventListener('click', () => state.replay && endReplay());
+$('qualifying-setting').checked = remembered(QUALIFYING_KEY) === 'on';
+$('qualifying-setting').addEventListener('change', event => remember(QUALIFYING_KEY, event.target.checked ? 'on' : 'off'));
 $('grid-intro-setting').checked = gridIntroWanted();
 $('grid-intro-setting').addEventListener('change', event => {
   try {
@@ -917,3 +937,19 @@ serverBrains().then(brains => {
   setInterval(() => serverBrains().then(listed => listed && showBrains(listed)), 30000);
 });
 requestAnimationFrame(render);
+
+function remembered(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private windows and blocked storage just don't remember it.
+  }
+}

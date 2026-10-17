@@ -9,6 +9,7 @@
     "slipstream/drivers.py",
     "slipstream/field.py",
     "slipstream/flags.py",
+    "slipstream/formats.py",
     "slipstream/human.py",
     "slipstream/numpy_network.py",
     "slipstream/observe.py",
@@ -34,5 +35,5 @@
     "brains/pitwall-feel/driver.json",
     "brains/racer-2/checkpoints/step-000057040160.npz"
   ],
-  "bytes": 1127393
+  "bytes": 1135189
 }

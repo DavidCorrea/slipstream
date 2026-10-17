@@ -160,3 +160,18 @@ class TestRadioOrders:
             await viewer.receive('{"type": "radio", "pace": "warp"}')
         viewer = run(race)
         assert any(message['type'] == 'error' and 'warp' in message['message'] for message in viewer.socket.sent)
+
+
+class TestRaceFormats:
+    def test_races_in_the_format_the_tab_asked_for_and_keeps_it(self):
+        async def start(viewer):
+            await viewer.handle({'type': 'start', 'cars': 4, 'laps': 6, 'format': 'timed', 'minutes': 20})
+            await viewer.handle({'type': 'start'})
+        viewer = run(start)
+        assert viewer.socket.sent[-1]['format'] == {'kind': 'timed', 'minutes': 20}
+
+    def test_refuses_a_format_it_doesnt_have(self):
+        async def start(viewer):
+            await viewer.receive('{"type": "start", "format": "demolition derby"}')
+        viewer = run(start)
+        assert any(message['type'] == 'error' and 'demolition' in message['message'] for message in viewer.socket.sent)

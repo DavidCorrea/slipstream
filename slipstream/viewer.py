@@ -7,6 +7,7 @@ them over a websocket (server.py), and in a browser they go between the page and
 import json
 
 from .car import DT
+from .formats import FORMATS, STANDARD, TIMED_MINUTES
 from .session import DRIVER_DECIDES, RUNS, SCRIPTED, RaceSession
 
 FRAMES_PER_SECOND = 20
@@ -27,7 +28,8 @@ class Viewer:
         self.runs = runs
         self.session = None
         # `weather` is a forecast name, or 'random' to let each circuit's seed decide.
-        self.settings = {'brain': SCRIPTED, 'pitwall': DRIVER_DECIDES, 'cars': 6, 'laps': 8, 'weather': 'random', 'location': 'random'}
+        self.settings = {'brain': SCRIPTED, 'pitwall': DRIVER_DECIDES, 'cars': 6, 'laps': 8, 'weather': 'random', 'location': 'random',
+                         'format': STANDARD, 'minutes': TIMED_MINUTES[0]}
         # Like a championship, your driver, every driver you've edited and the names and colours you've given them carry over
         # from race to race (by each driver's key, since the grid is drawn afresh each time).
         self.yours = None
@@ -42,7 +44,7 @@ class Viewer:
         # A new race waits on the grid, so you can pick your car and set it up, until you send 'go'.
         self.on_grid = False
 
-    async def start(self, brain=None, seed=None, cars=None, laps=None, pitwall=None, weather=None, location=None):
+    async def start(self, brain=None, seed=None, cars=None, laps=None, pitwall=None, weather=None, location=None, race_format=None, minutes=None):
         if brain is not None:
             self.settings['brain'] = str(brain)
         if weather is not None:
@@ -51,6 +53,14 @@ class Viewer:
             self.settings['location'] = str(location)
         if pitwall is not None:
             self.settings['pitwall'] = str(pitwall)
+        if race_format is not None:
+            if race_format not in FORMATS:
+                raise ValueError(f'Format must be one of {", ".join(FORMATS)}, got {race_format!r}')
+            self.settings['format'] = race_format
+        if minutes is not None:
+            if minutes not in TIMED_MINUTES:
+                raise ValueError(f'A timed race lasts one of {", ".join(map(str, TIMED_MINUTES))} minutes, got {minutes!r}')
+            self.settings['minutes'] = minutes
         for key, value in (('cars', cars), ('laps', laps)):
             if value is not None:
                 low, high = LIMITS[key]
@@ -60,7 +70,8 @@ class Viewer:
                                        cars=self.settings['cars'], laps=self.settings['laps'], runs=self.runs,
                                        yours=self.yours, edited=self.edited, names=self.names, colors=self.colors, pitwall_id=self.settings['pitwall'],
                                        forecast=None if self.settings['weather'] == 'random' else self.settings['weather'],
-                                       location=None if self.settings['location'] == 'random' else self.settings['location'])
+                                       location=None if self.settings['location'] == 'random' else self.settings['location'],
+                                       race_format=self.settings['format'], minutes=self.settings['minutes'])
             if self.pit:
                 self.session.set_pit(self.pit['strategy'], self.pit['plan'])
         except ValueError as error:
@@ -82,7 +93,7 @@ class Viewer:
         kind = message.get('type')
         if kind == 'start':
             await self.start(message.get('brain'), message.get('seed'), message.get('cars'), message.get('laps'), message.get('pitwall'),
-                             message.get('weather'), message.get('location'))
+                             message.get('weather'), message.get('location'), message.get('format'), message.get('minutes'))
         elif kind == 'go':
             self.on_grid = False
         elif kind == 'speed' and message.get('value') in SPEEDS:

@@ -20,6 +20,7 @@ from . import personality as traits
 from .car import BALANCE_RANGE, COMPOUNDS, DT, FUEL_CAPACITY, SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
 from .drivers import DECISION_TICKS
 from .field import field_controls, makes_pit_calls
+from .formats import REVERSE, STANDARD, FormatRules, race_laps
 from .strategy import RADIO_CALLS, scripted_radio, scripted_strategy
 from .observe import OBSERVATION_NAMES
 from .race import Race
@@ -107,13 +108,13 @@ def spec_value(name, slider):
 
 class RaceSession:
     def __init__(self, brain_id=SCRIPTED, seed=None, cars=6, laps=3, runs=RUNS, yours=None, edited=None, names=None, pitwall_id=DRIVER_DECIDES,
-                 forecast=None, location=None, colors=None):
+                 forecast=None, location=None, colors=None, race_format=STANDARD, minutes=None):
         """`yours` is the key of the driver you race with (the cast's first when not given; they always make the
         field). `edited` maps driver keys to the stats you gave them, which they keep exactly; everyone else turns
         up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them, and
         `colors` to the colours you painted their cars. `forecast` picks the weather (see weather.FORECASTS)
         and `location` the scenery and everything in it the cars can hit (see scenery.LOCATIONS); without them, the
-        seed decides."""
+        seed decides. `race_format` is one of formats.FORMATS (`minutes` long, for a timed race)."""
         self.brain_id, self.pitwall_id = brain_id, pitwall_id
         self.policy = None if brain_id == SCRIPTED else load_policy(brain_path(brain_id, runs))
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
@@ -123,8 +124,11 @@ class RaceSession:
         # racing drivers drive the lane themselves, wait for the lights and mind the flags.
         self.driver = NetworkDriver(self.policy, cars) if self.policy is not None else None
         races = self.driver is None or self.driver.races
+        laps = race_laps(race_format, laps, cars, track.length, minutes)
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
                          stewards=True, assisted=not races, flags=races)
+        self.format = FormatRules(race_format, self.race, minutes)
+        self.minutes = minutes
         self.location = location_for(self.seed) if location is None else location
         self.race.place_props(place(track, self.race.pit, self.seed, self.location))
         self.timing = Timing(self.race.track.length, cars)
@@ -139,6 +143,8 @@ class RaceSession:
         # Its own stream, so the cast's draw doesn't shift the circuit's weather or the drivers' hands.
         cast_rng = np.random.default_rng(self.seed + 2)
         self.lineup = cast.lineup(cars, cast_rng, must_race=your_key)
+        if race_format == REVERSE:
+            self.lineup = self.lineup[::-1]
         self.yours = [driver.key for driver in self.lineup].index(your_key)
         self.personality = traits.neutral(cars)
         self.stats = [cast.race_day(driver, cast_rng) for driver in self.lineup]
@@ -262,6 +268,7 @@ class RaceSession:
             'type': 'race', 'seed': self.seed, 'location': self.location,
             'props': [prop.describe(number) for number, prop in enumerate(self.race.props.props)],
             'brain': self.brain_id, 'pitwall': self.pitwall_id, 'laps': self.race.laps, 'dt': DT,
+            'format': {'kind': self.format.kind, 'minutes': self.minutes},
             'track': {
                 'points': np.round(track.points, 2).tolist(), 'normals': np.round(track.normals, 4).tolist(),
                 'curvature': np.round(track.curvature, 5).tolist(), 'width': track.width, 'length': track.length,
@@ -290,7 +297,7 @@ class RaceSession:
         race = self.race
         happened = {'contacts': [], 'laps': [], 'finished': [], 'pitEntered': [], 'pitStopped': [], 'pitReleased': [], 'pitExited': [],
                     'punctures': [], 'engineFailures': [], 'mistakes': [], 'debris': [], 'timing': [], 'fastestLap': None,
-                    'propHits': [], 'crashed': [], 'penalties': [], 'yellowFlags': []}
+                    'propHits': [], 'crashed': [], 'penalties': [], 'yellowFlags': [], 'eliminated': []}
         for _ in range(ticks):
             if race.done:
                 break
@@ -299,6 +306,9 @@ class RaceSession:
                 self.controls = self._decide()
             time_before, progress_before = race.time, race.progress.copy()
             events = race.step(*self.controls)
+            ruled = self.format.after_tick(race, events)
+            happened['eliminated'] += ruled['eliminated']
+            events.penalties += ruled.get('penalties', [])
             happened['timing'] += self.timing.record(time_before, race.time, progress_before, race.progress)
             self.timing.sample(race.time, race.cars.position, race.cars.heading)
             happened['contacts'] += [[round(float(contact.point[0]), 2), round(float(contact.point[1]), 2), round(contact.impulse, 2)] for contact in events.contacts]
@@ -332,6 +342,10 @@ class RaceSession:
             self.race, self.driver, np.ones(self.race.count, dtype=bool), self.driving_personality(), pitwall=self.pitwall)
         if self.pitwall_id == SCRIPTED_STRATEGIST:
             call, plan = scripted_strategy(self.race)
+        # The format's own calls (an endurance race's mandatory stops) for every car whose stops the team calls.
+        team_calls = np.ones(self.race.count, dtype=bool)
+        team_calls[self.yours] = self.strategy != 'mine'
+        call = self.format.calls(self.race, call, team_calls)
         car = self.yours
         if self.stay_out_lap is not None and self.race.lap_of()[car] > self.stay_out_lap:
             self.stay_out_lap = None
@@ -393,6 +407,7 @@ class RaceSession:
                         'temperature': round(race.weather.temperature, 3), 'wind': np.round(race.weather.wind, 2).tolist()},
             'yourPit': {'strategy': self.strategy, 'boxCalled': self.box_called, 'stayingOut': self.stay_out_lap is not None},
             'yourRadio': dict(self.radio_orders),
+            'format': self.format.describe(race), 'laps': race.laps,
             'events': happened,
         }
 

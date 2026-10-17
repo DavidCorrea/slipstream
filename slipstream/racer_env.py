@@ -31,6 +31,13 @@ and the box come up far more often than real strategy would bring them. In START
 from the back of the grid, where getting away means finding a way round cars still slow off the line. And in
 SELF_RACE of races, once there is a league, every rival is one of its snapshots: scripted rivals react to the
 network, copies of it don't, and only racing them teaches it to start and pass among drivers like itself.
+
+The driver exam (exam.py) asks for things normal races hardly ever show a learner, so they're drilled:
+- RECOVERY_DRILL of races put each learner in trouble once the race is under way (spun mid-corner, out on the grass,
+  nosed into a wall or facing the wrong way), and getting going again within RECOVERY_SECONDS pays `recovered`.
+- FULL_GRID of races have the full field, so a start from the back of 20 cars comes up.
+- A jump start costs `jump_start` on top of its penalty: gaining places off the line outweighed the 10 s.
+- EXTREME_CAR of cars have every spec at one end of its range, as the cars a player can set up.
 """
 from pathlib import Path
 
@@ -40,6 +47,7 @@ from . import personality as traits
 from . import pit
 from .brains import NetworkDriver
 from .drivers import DECISION_TICKS, scripted_controls
+from .car import BALANCE_RANGE, SPEC_DEFAULTS, SPEC_SPREAD
 from .driver_env import DriverEnv, random_cars
 from .env import _places, contact_shares
 from .human import Driving
@@ -64,12 +72,20 @@ PIT_DRILL = 0.4
 START_DRILL = 0.25
 SELF_RACE = 0.25
 STILL_SPEED = 2.0
+RECOVERY_DRILL = 0.15
+RECOVERY_SECONDS = 25.0
+RECOVERED_SPEED = 12.0     # m/s, back racing
+RECOVERED_GAIN = 40.0      # metres beyond where the trouble began
+FULL_GRID = 0.15
+EXTREME_CAR = 0.1
+TROUBLES = ('spin', 'grass', 'wall', 'wrong way')
 STALLED_SECONDS = 15.0
 # On top of env.REWARDS and train.TRAFFIC_REWARDS. A second of race time is worth 0.12 (train.TRAFFIC_REWARDS
 # charges 0.012 a decision), and a penalty second is charged the same. A hard hit worth 0.1 damage with five laps
 # to go costs 0.75, about a place.
 RACER_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012, 'retire': 3.5, 'off_track': 0.01, 'hard_hit': 0.25,
-                 'penalty': 0.12, 'damage': 1.5, 'rough_pass': 0.25, 'stop': 2.0, 'lane_entry': 1.0, 'radio': 0.002, 'still': 0.024}
+                 'penalty': 0.12, 'damage': 1.5, 'rough_pass': 0.25, 'stop': 2.0, 'lane_entry': 1.0, 'radio': 0.01, 'still': 0.024,
+                 'recovered': 1.0, 'jump_start': 1.5}
 
 
 class RacerEnv(DriverEnv):
@@ -82,6 +98,7 @@ class RacerEnv(DriverEnv):
         self.league: list[NumpyNetwork] = []
         self.league_cars, self.league_drivers, self.drills, self.hit_at = {}, {}, {}, {}
         self.start_drills, self.self_races = {}, {}
+        self.recovery_drills, self.troubles = {}, {}
         super().__init__(races=races, cars=FIELD[1], laps=LAPS, seed=seed, rewards={**RACER_REWARDS, **(rewards or {})},
                          rivals=FIELD[1] - LEARNERS)
 
@@ -95,6 +112,8 @@ class RacerEnv(DriverEnv):
         return racer_senses(race, personality)
 
     def field_size(self):
+        if self.rng.random() < FULL_GRID:
+            return FIELD[1]
         return int(self.rng.integers(FIELD[0], FIELD[1] + 1))
 
     def add_to_league(self, path: Path):
@@ -111,13 +130,19 @@ class RacerEnv(DriverEnv):
         laps = int(round(np.exp(self.rng.uniform(np.log(LAPS[0]), np.log(LAPS[1])))))
         driving = Driving(count, np.random.default_rng(seed + 1), consistency=trait(personality, 'consistency'),
                           stamina=trait(personality, 'stamina'))
-        race = Race(track, random_cars(count, self.rng), laps, weather=Weather.for_race(seed, track.length, laps),
+        specs = random_cars(count, self.rng)
+        for car in np.flatnonzero(self.rng.random(count) < EXTREME_CAR):
+            for name, default in SPEC_DEFAULTS.items():
+                getattr(specs, name)[car] = default * (1 + SPEC_SPREAD * self.rng.choice((-1, 1)))
+            specs.balance[car] = BALANCE_RANGE * self.rng.choice((-1, 1))
+        race = Race(track, specs, laps, weather=Weather.for_race(seed, track.length, laps),
                     rng=np.random.default_rng(seed), driving=driving, stewards=True, assisted=False, flags=True)
         race.cars.wing[:] = self.rng.uniform(*WING, count)
         race.place_props(place(track, race.pit, seed, location_for(seed)))
         self.drills[id(race)] = bool(self.rng.random() < PIT_DRILL)
         self.start_drills[id(race)] = bool(self.rng.random() < START_DRILL)
         self.self_races[id(race)] = bool(self.rng.random() < SELF_RACE)
+        self.recovery_drills[id(race)] = bool(self.rng.random() < RECOVERY_DRILL)
         self.hit_at[id(race)] = np.full(count, -np.inf)
         return race
 
@@ -157,12 +182,54 @@ class RacerEnv(DriverEnv):
             race.retire(car, 'stuck')
         if race.done:
             for store in (self.furthest, self.league_cars, self.league_drivers, self.drills, self.hit_at,
-                          self.start_drills, self.self_races):
+                          self.start_drills, self.self_races, self.recovery_drills, self.troubles):
                 store.pop(id(race), None)
         return -self.crash_cost * beached
 
+    def _make_trouble(self, race, mine):
+        """Puts each learner in trouble where it is: spun, on the grass, nosed into the next wall, or facing back.
+        Remembers where each started, to pay for getting going again."""
+        track, half = race.track, race.track.width / 2
+        troubles = {}
+        for car in mine:
+            if race.retired[car] or race.finished[car] or race.in_lane[car]:
+                continue
+            distance = float(race.progress[car])
+            kind = TROUBLES[int(self.rng.integers(len(TROUBLES)))]
+            if kind == 'spin':
+                race.place(car, distance, float(race.lateral[car]), turn=float(self.rng.choice((-1, 1))) * np.pi / 2)
+            elif kind == 'grass':
+                race.place(car, distance, float(self.rng.choice((-1, 1))) * (half + 5.0))
+            elif kind == 'wrong way':
+                race.place(car, distance, float(race.lateral[car]), turn=np.pi)
+            else:
+                wall = self._wall_ahead(race, distance)
+                if wall is None:
+                    continue
+                distance, lateral = wall
+                side = np.sign(lateral) or 1.0
+                race.place(car, distance, lateral - side * 2.2, turn=side * np.pi / 2)
+            troubles[int(car)] = (float(race.progress[car]), race.time + RECOVERY_SECONDS)
+        self.troubles[id(race)] = troubles
+
+    def _wall_ahead(self, race, distance):
+        """(distance round the race, lateral) of the nearest solid barrier beside the track ahead, if any."""
+        props = [prop for prop in race.props.props if prop.kind in ('armco', 'wall', 'pitwall')]
+        if not props:
+            return None
+        index, along, lateral = race.track.locate(np.array([[prop.x, prop.y] for prop in props]))
+        length = race.track.length
+        ahead = (along - distance % length) % length
+        nearby = np.flatnonzero((ahead > 20) & (ahead < 400) & (np.abs(lateral) < race.track.width / 2 + 6))
+        if not len(nearby):
+            return None
+        chosen = nearby[np.argmin(ahead[nearby])]
+        return distance + float(ahead[chosen]), float(lateral[chosen])
+
     def _drive(self, race, personality, actions, mine):
         count = race.count
+        if self.recovery_drills.get(id(race)) and id(race) not in self.troubles and race.marshals.started(race.time):
+            self._make_trouble(race, mine)
         steer, throttle, brake, limiter, reverse, engine = decode_racer(actions, count)
         limiter, reverse, engine = limiter.astype(float), reverse.astype(float), engine.copy()
         if id(race) not in self.league_cars:
@@ -224,6 +291,8 @@ class RacerEnv(DriverEnv):
             reward -= strength * rewards['damage'] * harmed * np.minimum(laps_left(race), DAMAGE_LAPS)
             for penalty in events.penalties:
                 reward[penalty.car] -= strength * rewards['penalty'] * penalty.seconds
+                if penalty.reason == 'jump start':
+                    reward[penalty.car] -= strength * rewards['jump_start']
             for car in events.pit_entered:
                 reward[car] += strength * rewards['lane_entry'] * race.lane_called[car]
             for car, _, _ in events.pit_stopped:
@@ -242,6 +311,13 @@ class RacerEnv(DriverEnv):
         heard = race.radio
         followed = ((heard == RADIO_CALLS.index('save')) & (engine < 0.4)) | ((heard == RADIO_CALLS.index('push')) & (engine > 0.6))
         reward += strength * rewards['radio'] * followed
+        troubles = self.troubles.get(id(race), {})
+        for car, (start, deadline) in list(troubles.items()):
+            if race.progress[car] > start + RECOVERED_GAIN and race.cars.speed[car] > RECOVERED_SPEED:
+                reward[car] += rewards['recovered']
+                del troubles[car]
+            elif race.time > deadline or race.retired[car]:
+                del troubles[car]
         # The time a called stop takes is the pit wall's choice, not the driver's to save.
         reward -= rewards['time'] * racing * ~(race.in_lane & race.lane_called)
         stalled = racing & (race.cars.speed < STILL_SPEED) & ~race.in_lane & race.marshals.started(race.time)

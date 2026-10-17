@@ -197,3 +197,54 @@ class TestPitStopsArePaidForWhatTheyAre:
     def test_more_races_are_pit_drills(self):
         from slipstream.racer_env import PIT_DRILL
         assert PIT_DRILL >= 0.4
+
+
+class TestRecoveryDrills:
+    def drilled(self, seed=2):
+        racing = env(races=8, seed=seed)
+        racing.reset()
+        for race in racing.races:
+            racing.recovery_drills[id(race)] = True
+            race.marshals.lights_out_at = race.time
+        actions = np.zeros((racing.num_envs, len(RACER_ACTIONS)))
+        racing.step(actions)
+        return racing
+
+    def test_put_learners_in_trouble_once_the_race_is_under_way(self):
+        racing = self.drilled()
+        troubled = [car for race in racing.races for car in racing.troubles.get(id(race), {})]
+        assert troubled
+        for race, mine in zip(racing.races, racing.learner_cars):
+            assert set(racing.troubles.get(id(race), {})) <= set(mine)
+
+    def test_getting_going_again_pays(self):
+        from slipstream.racer_env import RECOVERED_SPEED
+        racing = self.drilled()
+        race = next(race for race in racing.races if racing.troubles.get(id(race)))
+        car, (start, _) = next(iter(racing.troubles[id(race)].items()))
+        number = racing.races.index(race)
+        race.place(car, start + 60.0, speed=RECOVERED_SPEED + 5.0)
+        paid = racing._drive(race, racing.personalities[number], np.zeros((race.count, len(RACER_ACTIONS))), racing.learner_cars[number])
+        assert paid[car] > RACER_REWARDS['recovered'] * 0.5
+        assert car not in racing.troubles[id(race)]
+
+
+class TestStartsAndCars:
+    def test_some_races_have_a_full_grid(self):
+        racing = env(races=40, seed=4)
+        racing.reset()
+        assert sum(race.count == FIELD[1] for race in racing.races) >= 6
+
+    def test_a_jump_start_costs_more_than_its_penalty(self):
+        assert RACER_REWARDS['jump_start'] > 0
+
+    def test_following_the_radio_is_worth_more_than_before(self):
+        assert RACER_REWARDS['radio'] >= 0.01
+
+    def test_some_cars_are_at_the_ends_of_every_range(self):
+        from slipstream.car import SPEC_DEFAULTS, SPEC_SPREAD
+        racing = env(races=20, seed=5)
+        racing.reset()
+        top = SPEC_DEFAULTS['top_speed']
+        ends = [abs(abs(race.specs.top_speed / top - 1) - SPEC_SPREAD) < 1e-9 for race in racing.races]
+        assert any(end.any() for end in ends)

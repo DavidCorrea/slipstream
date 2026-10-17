@@ -34,9 +34,12 @@ The site at https://davidcorrea.github.io/slipstream/ is this repository served 
 - **Which brains are published** is up to you: training runs (`runs/`) stay private, and only the snapshots you publish go into `brains/`:
 
   ```sh
-  .venv/bin/python -m slipstream.publish driver-polish/step-000092033024 driver-polish/step-000119025664 pitwall-feel/step-000000251904
+  .venv/bin/python -m slipstream.publish racer-2/step-000057040160 pitwall-feel/step-000000251904
+  .venv/bin/python -m slipstream.publish --default racer-2/step-000057040160   # the driver the page starts with
   .venv/bin/python -m slipstream.publish     # after changing the simulation: refreshes web/engine-files.json
   ```
+
+  The site offers only the published networks (not the scripted driver): radio orders need a driver that listens.
 
   Then commit and push; Pages updates within a minute or two. A test fails if `web/engine-files.json` misses a module the browser needs.
 - **The race code stays free of the training libraries** (PyTorch, Stable-Baselines3, Gymnasium, aiohttp), which the browser doesn't have; a test checks it. Training environments live in `env.py`, `driver_env.py` and `pitwall_env.py`.

@@ -8,7 +8,7 @@ brains are the networks published with the site (`brains/`, exported to run with
 import json
 from pathlib import Path
 
-from .session import list_brains, list_pitwalls
+from .session import SCRIPTED, list_brains, list_pitwalls
 from .viewer import Viewer
 
 PUBLISHED = Path('brains')
@@ -47,4 +47,6 @@ class BrowserRaces:
     def brains(self):
         chosen = self.runs / DEFAULT_DRIVER
         default = chosen.read_text().strip() if chosen.is_file() else None
-        return json.dumps({'drivers': list_brains(self.runs), 'pitwalls': list_pitwalls(self.runs), 'defaultDriver': default})
+        # The site races its published networks only: the radio orders you give your driver need one that listens.
+        drivers = [brain for brain in list_brains(self.runs) if brain['id'] != SCRIPTED]
+        return json.dumps({'drivers': drivers, 'pitwalls': list_pitwalls(self.runs), 'defaultDriver': default})

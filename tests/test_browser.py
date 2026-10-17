@@ -41,13 +41,13 @@ class TestRacingInTheBrowser:
         assert kinds[0] == 'race' and kinds[1:] == ['frame'] * 3
         assert races.collect() == []
 
-    def test_lists_the_published_brains(self, tmp_path):
+    def test_lists_only_the_published_networks_since_radio_orders_need_one(self, tmp_path):
         import json
         from slipstream.browser import BrowserRaces
         (tmp_path / 'driver-rivals' / 'checkpoints').mkdir(parents=True)
         (tmp_path / 'driver-rivals' / 'checkpoints' / 'step-000036016128.npz').write_bytes(b'')
         listed = json.loads(BrowserRaces(tmp_path).brains())
-        assert [brain['id'] for brain in listed['drivers']] == ['scripted', 'driver-rivals/step-000036016128']
+        assert [brain['id'] for brain in listed['drivers']] == ['driver-rivals/step-000036016128']
         assert listed['pitwalls'][0]['id'] == 'driver'
 
     def test_the_browser_side_needs_none_of_the_training_libraries(self):

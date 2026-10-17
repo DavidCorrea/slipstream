@@ -20,7 +20,7 @@ from . import personality as traits
 from .car import BALANCE_RANGE, COMPOUNDS, DT, FUEL_CAPACITY, SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
 from .drivers import DECISION_TICKS
 from .field import field_controls, makes_pit_calls
-from .formats import REVERSE, STANDARD, FormatRules, race_laps
+from .formats import REVERSE, STANDARD, FormatRules, lift_off_the_circuit, race_laps
 from .strategy import RADIO_CALLS, scripted_radio, scripted_strategy
 from .observe import OBSERVATION_NAMES
 from .race import Race
@@ -39,6 +39,11 @@ SCRIPTED = 'scripted'
 STATS = (*traits.TRAITS, *SPEC_DEFAULTS, 'balance')
 COLOUR = re.compile(r'#[0-9a-f]{6}')
 QUALIFYING_LAPS = 2      # an out lap from the pit straight, then a flying lap
+# Marshals clear a car that's out of the race this long after it stopped. A retired car pulls up where it is,
+# often on the racing line, and left there it was in everyone's way for good: on one circuit the cars behind
+# the first one out queued behind it lap after lap until the whole field was out stuck. (Training's races leave
+# them, as before.)
+RECOVERY_SECONDS = 6.0
 
 
 DRIVER_DECIDES = 'driver'
@@ -134,6 +139,8 @@ class RaceSession:
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
                          stewards=True, assisted=not races, flags=races)
         self.format = FormatRules(race_format, self.race, minutes)
+        self.retired_at = np.full(cars, np.nan)
+        self.recovered = np.zeros(cars, dtype=bool)
         self.minutes = minutes
         self.location = location_for(self.seed) if location is None else location
         self.race.place_props(place(track, self.race.pit, self.seed, self.location))
@@ -357,6 +364,7 @@ class RaceSession:
             ruled = self.format.after_tick(race, events)
             happened['eliminated'] += ruled['eliminated']
             events.penalties += ruled.get('penalties', [])
+            self._clear_stopped_cars()
             happened['timing'] += self.timing.record(time_before, race.time, progress_before, race.progress)
             self.timing.sample(race.time, race.cars.position, race.cars.heading)
             happened['contacts'] += [[round(float(contact.point[0]), 2), round(float(contact.point[1]), 2), round(contact.impulse, 2)] for contact in events.contacts]
@@ -379,6 +387,17 @@ class RaceSession:
                 self.box_called = False
         happened['fastestLap'] = self.timing.take_fastest_trace()
         return self._frame(happened)
+
+    def _clear_stopped_cars(self):
+        race = self.race
+        just_out = race.retired & np.isnan(self.retired_at)
+        self.retired_at[just_out] = race.time
+        # An eliminated car has already left the circuit.
+        self.recovered |= race.retired_by == 'eliminated'
+        due = race.retired & ~self.recovered & (race.time - self.retired_at >= RECOVERY_SECONDS)
+        for car in np.flatnonzero(due):
+            lift_off_the_circuit(race, car)
+        self.recovered |= due
 
     def _decide(self):
         # The pit wall's radio for drivers that listen (strategy.RADIO_CALLS), and yours when you've given an order.
@@ -442,6 +461,7 @@ class RaceSession:
                 'tyreTemp': rounded(cars.tyre_temp, 3), 'brakeTemp': rounded(cars.brake_temp, 3), 'engineTemp': rounded(cars.engine_temp, 3),
                 'punctured': cars.punctured.astype(int).tolist(), 'retired': race.retired.astype(int).tolist(),
                 'retiredBy': [why or None for why in race.retired_by], 'tyreLaps': race.tyre_laps().tolist(),
+                'recovered': self.recovered.astype(int).tolist(),
                 'wingDamage': rounded(cars.wing_damage, 3), 'suspensionDamage': rounded(cars.suspension_damage, 3),
                 'draft': rounded(conditions.draft), 'dirtyAir': rounded(conditions.dirty_air), 'balance': rounded(race.specs.balance),
             },

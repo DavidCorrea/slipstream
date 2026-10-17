@@ -30,6 +30,12 @@ EXPECTED_SPEED = 30.0
 OFF_THE_CIRCUIT = 100_000.0     # metres out where eliminated cars are parked, far from anything they could touch
 
 
+def lift_off_the_circuit(race, car):
+    """Takes a car that's out of the race off the circuit altogether, parked far from anything it could touch."""
+    race.cars.position[car] = [OFF_THE_CIRCUIT + 20.0 * car, OFF_THE_CIRCUIT]
+    race.cars.velocity[car] = 0.0
+
+
 def race_laps(kind, laps, cars, track_length, minutes=None):
     """How many laps a race of this format runs (a timed race's first estimate), from the laps asked for."""
     if kind == SPRINT:
@@ -94,8 +100,7 @@ class FormatRules:
             return []
         last = int([car for car in race.standings() if car in running][-1])
         race.retire(last, 'eliminated')
-        race.cars.position[last] = [OFF_THE_CIRCUIT + 20.0 * last, OFF_THE_CIRCUIT]
-        race.cars.velocity[last] = 0.0
+        lift_off_the_circuit(race, last)
         return [last]
 
     def _unserved_stops(self, race, events):

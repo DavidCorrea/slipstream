@@ -567,8 +567,8 @@ function drawCars(frame, seconds, simRate, now, live) {
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
     poseCar(car, pose, seconds, seconds * simRate, followed, now / 1000);
-    // An eliminated car has left the circuit.
-    car.visible = frame.cars.retiredBy?.[id] !== 'eliminated';
+    // A car the marshals have cleared, or an eliminated one, has left the circuit.
+    car.visible = !frame.cars.recovered?.[id] && frame.cars.retiredBy?.[id] !== 'eliminated';
     const velocity = carVelocity(pose);
     for (const point of car.userData.justLost.splice(0)) state.effects.shed(point, velocity, state.race.cars[id].color, 3, 0.45);
     if (live && simRate > 0) state.effects.car(id, contactPatches(car), pose, velocity, seconds * Math.min(simRate, 2), frame.weather.wetness);

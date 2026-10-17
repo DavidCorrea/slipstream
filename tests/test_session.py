@@ -343,3 +343,24 @@ class TestTheScenery:
         hits = frame['events']['propHits']
         assert any(hit['prop'] == board and hit['broke'] and hit['car'] == 0 for hit in hits)
         json.dumps(frame)
+
+
+class TestMarshalsClearStoppedCars:
+    def test_a_retired_car_is_lifted_off_the_circuit_after_a_few_seconds(self):
+        import numpy as np
+        from slipstream.session import RECOVERY_SECONDS
+        session = RaceSession(SCRIPTED, seed=5, cars=3, laps=3)
+        session.advance(200)
+        session.race.retire(1, 'stuck')
+        session.advance(5)
+        assert np.linalg.norm(session.race.cars.position[1]) < 10_000
+        frame = session.advance(int(RECOVERY_SECONDS / 0.05) + 5)
+        assert np.linalg.norm(session.race.cars.position[1]) > 10_000
+        assert frame['cars']['recovered'] == [0, 1, 0]
+
+    def test_an_eliminated_car_counts_as_off_the_circuit_too(self):
+        session = RaceSession(SCRIPTED, seed=5, cars=5, laps=4, race_format='elimination')
+        while not session.race.retired.any():
+            frame = session.advance(40)
+        out = int(session.race.retired.argmax())
+        assert frame['cars']['recovered'][out] == 1

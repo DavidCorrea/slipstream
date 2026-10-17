@@ -40,7 +40,23 @@ const IDLE_MS = 2500;
 const EFFECTS_KEY = 'slipstream.effects';
 const GRID_INTRO_KEY = 'slipstream.gridIntro';
 const LOG_KEY = 'slipstream.log';
-const CAMERA_NAMES = { follow: 'Follow', tv: 'TV', driver: 'Driver', overview: 'Circuit' };
+// The cameras, on the number keys. Which car you watch is separate (click it, its row, or ↑ ↓): every camera but
+// TV (which picks its own cars) and Circuit (the whole track) shows the car you've picked. `shot` is the director's
+// shot it holds on that car; `label` is the tag in the corner.
+const CAMERAS = [
+  { mode: 'tv', name: 'TV', key: '1' },
+  { mode: 'follow', name: 'Follow', key: '2', follows: true },
+  { mode: 'chase', name: 'Chase', key: '3', follows: true, shot: 'chase', label: 'Chase cam' },
+  { mode: 'onboard', name: 'Onboard', key: '4', follows: true, shot: 'onboard', label: 'Onboard' },
+  { mode: 'driver', name: 'Driver', key: '5', follows: true, label: "Driver's eyes" },
+  { mode: 'rear', name: 'Rear', key: '6', follows: true, shot: 'rear', label: 'Rear cam' },
+  { mode: 'wheel', name: 'Wheel', key: '7', follows: true, shot: 'wheel', label: 'Wheel cam' },
+  { mode: 'trackside', name: 'Trackside', key: '8', follows: true, shot: 'trackside', label: 'Trackside' },
+  { mode: 'helicopter', name: 'Helicopter', key: '9', follows: true, shot: 'helicopter', label: 'Helicopter' },
+  { mode: 'overview', name: 'Circuit', key: '0' },
+];
+const CAMERA_BY_MODE = Object.fromEntries(CAMERAS.map(camera => [camera.mode, camera]));
+const CAMERA_KEY = 'slipstream.camera';
 const FRAME_SECONDS = 1 / 20;
 const $ = id => document.getElementById(id);
 
@@ -365,7 +381,8 @@ function receiveFrame(frame) {
   if (fastest) ghost.setTrace(fastest, state.race.cars[fastest.car].color);
   feed.add(moments);
   raceControl.add(moments);
-  director.notice(moments, frame, performance.now());
+  // The director's stories only cut the TV camera; a camera you picked stays where it is.
+  if (state.cameraMode === 'tv') director.notice(moments, frame, performance.now());
   broadcaster.notice(moments);
   for (const stop of frame.events.pitStopped) {
     state.crews.startStop(stop, frame.time, { compound: frame.cars.compound[stop.car] });
@@ -409,7 +426,7 @@ const PAUSED_FRAME_MS = 1000 / 30;
 // requestAnimationFrame timing jitters by a millisecond or two; without slack a 60 Hz display would skip frames.
 const FRAME_SLACK_MS = 2;
 // Cameras on or right behind a car, whose picture streaks at speed (see post.js), and the speed that streaks it most.
-const MOVING_SHOTS = new Set(['chase', 'onboard', 'wheel']);
+const MOVING_SHOTS = new Set(['chase', 'onboard', 'wheel', 'rear']);
 // Cameras on the car itself, which a broadcast never throws out of focus.
 const ON_THE_CAR = new Set(['onboard', 'wheel', 'lookingBack']);
 const FULL_BLUR_SPEED = 80;   // m/s
@@ -471,7 +488,9 @@ function renderLive(frame, seconds, now) {
   teamRadio.update(frame, state.yours);
   const height = stage.pixelsTall();
   let pixelsPerMetre = height / (2 * stage.view.zoom);
-  state.shot = state.cameraMode === 'tv' ? director.update(frame, seconds, now) : null;
+  const chosen = CAMERA_BY_MODE[state.cameraMode];
+  state.shot = chosen.shot ? { ...director.update(frame, seconds, now, { kind: chosen.shot, car: state.selected }), label: chosen.label, named: true }
+    : state.cameraMode === 'tv' ? director.update(frame, seconds, now) : null;
   if (state.shot) {
     // The isometric rig still follows the shot's subject, because the sun's shadow box follows the rig.
     stage.view.update(seconds, state.shot.focus, 0);
@@ -486,7 +505,7 @@ function renderLive(frame, seconds, now) {
     driverCamera.aim(state.cars[state.selected], speed, now / 1000);
     pixelsPerMetre = height / (2 * Math.tan(THREE.MathUtils.degToRad(driverCamera.camera.fov) / 2) * 6);
   }
-  showShot(driving ? { label: "Driver's eyes", kind: 'onboard', car: state.selected } : state.shot, frame);
+  showShot(driving ? { label: chosen.label, kind: 'onboard', car: state.selected, named: true } : state.shot, frame);
   const moving = driving || (state.shot && MOVING_SHOTS.has(state.shot.kind));
   const subject = driving ? state.selected : state.shot?.car;
   const lens = driving ? driverCamera.camera : director.camera;
@@ -568,7 +587,7 @@ function drawCars(frame, seconds, simRate, now, live) {
     setCarDetail(car, pixelsPerMetreAt(camera, car.position) * CAR_LENGTH >= DETAIL_PIXELS);
     // The chevron marks the car you follow, live on the game's own cameras; a replay and TV are the broadcast's,
     // which doesn't point at anyone, and with the interface hidden there's only the race.
-    const followed = live && id === state.selected && state.cameraMode !== 'tv' && state.cameraMode !== 'driver' && !document.body.classList.contains('immersive');
+    const followed = live && id === state.selected && (state.cameraMode === 'follow' || state.cameraMode === 'overview') && !document.body.classList.contains('immersive');
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
     poseCar(car, pose, seconds, seconds * simRate, followed, now / 1000);
@@ -634,7 +653,8 @@ function showShot(shot, frame) {
   tag.classList.remove('hidden');
   const car = state.race.cars[shot.car];
   const speed = shot.kind === 'onboard' ? ` · ${Math.round(Math.max(0, frame.cars.speed[shot.car]) * 3.6)} km/h` : '';
-  tag.innerHTML = `<b>${shot.label}</b>${shot.kind === 'onboard' || shot.kind === 'pitlane' ? `<span class="chip" style="background:${car.color}"></span>${car.name}${speed}` : ''}`;
+  const named = shot.named || shot.kind === 'onboard' || shot.kind === 'pitlane';
+  tag.innerHTML = `<b>${shot.label}</b>${named ? `<span class="chip" style="background:${car.color}"></span>${car.name}${speed}` : ''}`;
 }
 
 // What the commentator may say when it's quiet: the order, the gap at the front, the lap.
@@ -679,19 +699,30 @@ function aimCamera(frame, seconds) {
 
 // ---- Controls ------------------------------------------------------------------------------------------
 
+// Picks the car to watch, keeping the camera: one that doesn't show a car (TV, Circuit) gives way to the last one
+// you used that does.
 function select(id) {
   state.selected = id;
-  // From the driver's eyes, picking another car puts you in their helmet instead.
-  if (state.cameraMode !== 'follow' && state.cameraMode !== 'driver') setCamera('follow');
+  if (!CAMERA_BY_MODE[state.cameraMode].follows) setCamera(state.carCamera ?? 'follow');
+}
+
+// The car `step` places behind (or ahead, negative) the one you're watching, in the running order.
+function selectNext(step) {
+  const order = state.current?.order;
+  if (!order) return;
+  const at = order.indexOf(state.selected);
+  select(order[(at + step + order.length) % order.length]);
 }
 
 function setCamera(mode) {
   state.cameraMode = mode;
+  if (CAMERA_BY_MODE[mode].follows) state.carCamera = mode;
   noticeActivity();
-  // The isometric rig keeps following the car under the driver's eyes, for the sun's shadows.
-  stage.view.setMode(mode === 'driver' ? 'follow' : mode, state.circuit);
+  // The isometric rig keeps following the car under every perspective camera, for the sun's shadows.
+  stage.view.setMode(mode === 'overview' || mode === 'tv' ? mode : 'follow', state.circuit);
   document.querySelectorAll('#camera [data-camera]').forEach(button => button.classList.toggle('active', button.dataset.camera === mode));
-  $('camera-button').textContent = CAMERA_NAMES[mode];
+  $('camera-button').textContent = CAMERA_BY_MODE[mode].name;
+  remember(CAMERA_KEY, mode);
 }
 
 function setSpeed(speed) {
@@ -769,7 +800,10 @@ $('automatic-replays').addEventListener('change', event => {
 });
 $('brain').addEventListener('change', () => startRace(true));
 $('pitwall').addEventListener('change', () => startRace(true));
-document.querySelectorAll('#camera [data-camera]').forEach(button => button.addEventListener('click', () => setCamera(button.dataset.camera)));
+$('camera').addEventListener('click', event => {
+  const button = event.target.closest('[data-camera]');
+  if (button) setCamera(button.dataset.camera);
+});
 
 window.addEventListener('keydown', event => {
   if (gridIntro.playing && ['Escape', ' ', 'Enter'].includes(event.key)) { event.preventDefault(); return finishGridIntro(); }
@@ -781,6 +815,8 @@ window.addEventListener('keydown', event => {
   if (event.key === 'q' || event.key === 'Q') stage.view.rotate(-1);
   else if (event.key === 'e' || event.key === 'E') stage.view.rotate(1);
   else if (event.key === ' ') { event.preventDefault(); setPaused(!state.paused); }
+  else if (CAMERAS.some(camera => camera.key === event.key)) setCamera(CAMERAS.find(camera => camera.key === event.key).mode);
+  else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); selectNext(event.key === 'ArrowUp' ? -1 : 1); }
   else if (event.key === 'f') setCamera('follow');
   else if (event.key === 't') setCamera('tv');
   else if (event.key === 'o') setCamera('overview');
@@ -789,7 +825,6 @@ window.addEventListener('keydown', event => {
   else if (event.key === 'g') setGhost(!ghost.enabled);
   else if (event.key === 'r' || event.key === 'R') replayLastMoments();
   else if (event.key === 'h' || event.key === 'H') setImmersive(!document.body.classList.contains('immersive'));
-  else if (/^[1-8]$/.test(event.key) && state.race && Number(event.key) <= state.race.cars.length) select(Number(event.key) - 1);
 });
 $('scene').addEventListener('wheel', event => { event.preventDefault(); stage.view.zoomBy(Math.exp(event.deltaY * 0.0012)); }, { passive: false });
 $('scene').addEventListener('click', event => {
@@ -958,7 +993,15 @@ $('pause').innerHTML = PAUSE_ICON;
 setEffects(savedEffects());
 document.querySelectorAll('[data-effects]').forEach(button => button.addEventListener('click', () => setEffects(button.dataset.effects === 'on')));
 setSpeed(1);
-setCamera('follow');
+// The camera menu, from the list; the camera you used last comes back.
+$('camera').replaceChildren(...CAMERAS.map(camera => {
+  const button = document.createElement('button');
+  button.dataset.camera = camera.mode;
+  button.setAttribute('role', 'menuitem');
+  button.innerHTML = `${camera.name} <kbd>${camera.key}</kbd>`;
+  return button;
+}));
+setCamera(CAMERA_BY_MODE[remembered(CAMERA_KEY)] ? remembered(CAMERA_KEY) : 'follow');
 setGhost(false);
 setCommentary(broadcaster.mode);
 // It was loaded on an earlier visit, so it comes from the browser's cache this time.

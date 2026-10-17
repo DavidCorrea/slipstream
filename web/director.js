@@ -2,6 +2,9 @@
 // contact, a stop, the closest fight when nothing is happening) and picks a shot for it: a trackside camera
 // zooming in as the cars come past, the helicopter, a chase camera, the onboard T-cam, the pit lane, the start
 // and the finish line. Shots are perspective, unlike the isometric camera the other modes use.
+//
+// Held, it keeps one kind of shot on one car instead (the cameras you pick: chase, onboard, rear, wheel, trackside,
+// helicopter), cutting only to the next trackside camera once the car has gone past one.
 import * as THREE from 'three';
 import { toWorld } from './scene.js';
 
@@ -93,10 +96,13 @@ export function createDirector({ aspect }) {
     return { point: toWorld(frame.cars.x[car], frame.cars.y[car]), forward: new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading)), speed: frame.cars.speed[car] };
   }
 
-  // Aims the camera for this render frame; returns what the shot is looking at and the on-screen label.
-  function update(frame, seconds, now) {
+  // Aims the camera for this render frame; returns what the shot is looking at and the on-screen label. With
+  // `held` ({ kind, car }) it keeps that shot on that car rather than directing.
+  function update(frame, seconds, now, held = null) {
     if (!race) return null;
-    if (!shot || now > shot.until || shotIsSpent(frame)) {
+    if (held) {
+      if (!shot || shot.kind !== held.kind || shot.car !== held.car || shotIsSpent(frame)) cut(held.kind, held.car, undefined, frame, now, Infinity);
+    } else if (!shot || now > shot.until || shotIsSpent(frame)) {
       const quiet = frame.time < START_SHOT_RACE_SECONDS ? { car: frame.order[0], kind: 'start' } : quietTarget(frame);
       const kind = quiet.kind ?? ROTATION[rotation++ % ROTATION.length];
       cut(kind, quiet.car, quiet.other, frame, now, random(...QUIET_SHOT_SECONDS));
@@ -136,6 +142,21 @@ export function createDirector({ aspect }) {
         camera.position.copy(subject.point).addScaledVector(subject.forward, -0.3).y += 1.45;
         look.copy(subject.point).addScaledVector(subject.forward, 25).y += 0.4;
         camera.fov = 72;
+        break;
+      }
+      case 'rear': {
+        // High on the airbox, looking back over the rear wing at whoever's behind.
+        camera.position.copy(subject.point).addScaledVector(subject.forward, 0.2).y += 1.95;
+        look.copy(subject.point).addScaledVector(subject.forward, -30).y += 0.2;
+        camera.fov = 62;
+        break;
+      }
+      case 'wheel': {
+        // Low beside the front wheel, looking up the road.
+        const left = new THREE.Vector3(-subject.forward.z, 0, subject.forward.x);
+        camera.position.copy(subject.point).addScaledVector(subject.forward, 0.1).addScaledVector(left, 1.55).y += 0.45;
+        look.copy(subject.point).addScaledVector(subject.forward, 25).addScaledVector(left, 1.0).y += 0.3;
+        camera.fov = 70;
         break;
       }
       case 'pitlane': {

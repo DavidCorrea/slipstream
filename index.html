@@ -76,8 +76,9 @@
 
     <h3>Keys</h3>
     <dl class="keys">
-      <dt>Space</dt><dd>Pause</dd><dt>F · T · D · O</dt><dd>Follow · TV · Driver · Circuit</dd><dt>Y</dt><dd>Your car</dd>
-      <dt>G</dt><dd>Fastest-lap ghost</dd><dt>R · Esc</dt><dd>Replay the last 10 s · Skip it</dd><dt>1–8</dt><dd>Select a car</dd>
+      <dt>Space</dt><dd>Pause</dd><dt>1–9 · 0</dt><dd>Cameras: TV, Follow, Chase, Onboard, Driver, Rear, Wheel, Trackside, Helicopter · Circuit</dd>
+      <dt>↑ · ↓</dt><dd>Watch the car ahead · behind</dd><dt>Y</dt><dd>Your car</dd>
+      <dt>G</dt><dd>Fastest-lap ghost</dd><dt>R · Esc</dt><dd>Replay the last 10 s · Skip it</dd>
       <dt>Q · E</dt><dd>Rotate the view</dd><dt>Scroll</dt><dd>Zoom</dd>
     </dl>
   </aside>
@@ -330,12 +331,7 @@
     <div class="menu-anchor">
       <button id="camera-button" class="toggle" data-menu="camera-menu" aria-haspopup="true" title="Camera">Follow</button>
       <div id="camera-menu" class="menu up hidden" role="menu">
-        <div id="camera">
-          <button data-camera="follow" role="menuitem">Follow <kbd>F</kbd></button>
-          <button data-camera="tv" role="menuitem">TV <kbd>T</kbd></button>
-          <button data-camera="driver" role="menuitem">Driver <kbd>D</kbd></button>
-          <button data-camera="overview" role="menuitem">Circuit <kbd>O</kbd></button>
-        </div>
+        <div id="camera"></div>
       </div>
     </div>
     <button class="toggle your-car" data-drawer="racer-drawer" title="Your car: radio, strategy, data (Y)"><span class="star">★</span> Your car</button>

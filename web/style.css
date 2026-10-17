@@ -238,7 +238,7 @@ body.on-grid #team-radio, body.grid-intro #team-radio { display: none !important
 .steering::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-strong); }
 .steering i { position: absolute; top: -2px; height: 8px; width: 8px; margin-left: -4px; left: 50%; background: var(--text); border-radius: 50%; transition: left 0.08s linear; }
 .tyre-row { display: flex; align-items: center; gap: 7px; margin: 10px 12px 0; font-size: 13px; font-weight: 600; }
-.out { margin: 8px 12px 0; padding: 4px 8px; border-radius: 2px; background: var(--brake); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+#tele-out { margin: 8px 12px 0; padding: 4px 8px; border-radius: 2px; background: var(--brake); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
 #telemetry.retired .speed-row, #telemetry.retired .steering-row { opacity: 0.3; }
 .delta { display: block; font-size: 11px; }
 .delta.faster { color: var(--throttle); }

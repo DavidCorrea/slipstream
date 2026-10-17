@@ -66,7 +66,9 @@ export function createReport({ onNext, onAgain, extras = () => '' }) {
       .sort((a, b) => b.gain - a.gain || a.place - b.place)[0];
     const mine = rows.find(row => row.car === yours);
     const change = mine.start - mine.place;
-    return tile('Winner', name(winner.car), winner.time)
+    // Nobody took the flag when every car is out (in a race that froze, say): there's no winner to name.
+    const winnerTile = winner.out ? tile('Winner', 'No finishers', 'every car was out') : tile('Winner', name(winner.car), winner.time);
+    return winnerTile
       + tile('Fastest lap', fastest ? name(fastest.car) : '–', fastest ? formatLap(fastest.time) : '')
       + tile('Driver of the day', gained ? name(gained.car) : '–', gained ? `P${gained.start} → P${gained.place}` : '')
       + tile('You', mine.out ? 'Out' : `P${mine.place}`, `${name(yours)} · from P${mine.start}${change ? ` (${change > 0 ? '+' : ''}${change})` : ''}`);

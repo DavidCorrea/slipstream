@@ -33,6 +33,8 @@ SELF_RACE of races, once there is a league, every rival is one of its snapshots:
 network, copies of it don't, and only racing them teaches it to start and pass among drivers like itself.
 
 The driver exam (exam.py) asks for things normal races hardly ever show a learner, so they're drilled:
+- APPROACH_DRILL of pit drills line each called learner up 40 to 190 m before the pit entry, on the lane's side: a
+  driver that never turned in never found out a stop now pays, so the lesson starts where a small steer reaches it.
 - RECOVERY_DRILL of races put each learner in trouble once the race is under way (spun mid-corner, out on the grass,
   nosed into a wall or facing the wrong way), and getting going again within RECOVERY_SECONDS pays `recovered`.
 - FULL_GRID of races have the full field, so a start from the back of 20 cars comes up.
@@ -73,6 +75,8 @@ START_DRILL = 0.25
 SELF_RACE = 0.25
 STILL_SPEED = 2.0
 RECOVERY_DRILL = 0.15
+APPROACH_DRILL = 0.5       # of pit drills
+APPROACH_GAP = (40.0, 30.0)   # metres before the entry for the first learner, and between learners
 RECOVERY_SECONDS = 25.0
 RECOVERED_SPEED = 12.0     # m/s, back racing
 RECOVERED_GAIN = 40.0      # metres beyond where the trouble began
@@ -99,6 +103,7 @@ class RacerEnv(DriverEnv):
         self.league_cars, self.league_drivers, self.drills, self.hit_at = {}, {}, {}, {}
         self.start_drills, self.self_races = {}, {}
         self.recovery_drills, self.troubles = {}, {}
+        self.approach_drills, self.approached = {}, set()
         super().__init__(races=races, cars=FIELD[1], laps=LAPS, seed=seed, rewards={**RACER_REWARDS, **(rewards or {})},
                          rivals=FIELD[1] - LEARNERS)
 
@@ -143,6 +148,7 @@ class RacerEnv(DriverEnv):
         self.start_drills[id(race)] = bool(self.rng.random() < START_DRILL)
         self.self_races[id(race)] = bool(self.rng.random() < SELF_RACE)
         self.recovery_drills[id(race)] = bool(self.rng.random() < RECOVERY_DRILL)
+        self.approach_drills[id(race)] = self.drills[id(race)] and bool(self.rng.random() < APPROACH_DRILL)
         self.hit_at[id(race)] = np.full(count, -np.inf)
         return race
 
@@ -182,8 +188,9 @@ class RacerEnv(DriverEnv):
             race.retire(car, 'stuck')
         if race.done:
             for store in (self.furthest, self.league_cars, self.league_drivers, self.drills, self.hit_at,
-                          self.start_drills, self.self_races, self.recovery_drills, self.troubles):
+                          self.start_drills, self.self_races, self.recovery_drills, self.troubles, self.approach_drills):
                 store.pop(id(race), None)
+            self.approached.discard(id(race))
         return -self.crash_cost * beached
 
     def _make_trouble(self, race, mine):
@@ -212,6 +219,16 @@ class RacerEnv(DriverEnv):
             troubles[int(car)] = (float(race.progress[car]), race.time + RECOVERY_SECONDS)
         self.troubles[id(race)] = troubles
 
+    def _line_up_for_the_lane(self, race, mine):
+        """Puts the learners one behind another on the lane's side, a lap in, before the pit entry, at racing speed."""
+        lane, half = race.pit, race.track.width / 2
+        first, gap = APPROACH_GAP
+        for order, car in enumerate(mine):
+            before = first + gap * order
+            race.place(car, race.track.length + lane.entry - before, lane.side * half * 0.5, speed=22.0)
+            race.pit_state[car] = pit.CALLED
+        self.approached.add(id(race))
+
     def _wall_ahead(self, race, distance):
         """(distance round the race, lateral) of the nearest solid barrier beside the track ahead, if any."""
         props = [prop for prop in race.props.props if prop.kind in ('armco', 'wall', 'pitwall')]
@@ -230,6 +247,8 @@ class RacerEnv(DriverEnv):
         count = race.count
         if self.recovery_drills.get(id(race)) and id(race) not in self.troubles and race.marshals.started(race.time):
             self._make_trouble(race, mine)
+        if self.approach_drills.get(id(race)) and id(race) not in self.approached and race.marshals.started(race.time):
+            self._line_up_for_the_lane(race, mine)
         steer, throttle, brake, limiter, reverse, engine = decode_racer(actions, count)
         limiter, reverse, engine = limiter.astype(float), reverse.astype(float), engine.copy()
         if id(race) not in self.league_cars:

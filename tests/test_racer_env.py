@@ -248,3 +248,21 @@ class TestStartsAndCars:
         top = SPEC_DEFAULTS['top_speed']
         ends = [abs(abs(race.specs.top_speed / top - 1) - SPEC_SPREAD) < 1e-9 for race in racing.races]
         assert any(end.any() for end in ends)
+
+
+class TestPitApproachDrills:
+    def test_line_called_learners_up_just_before_the_pit_entry(self):
+        racing = env(races=6, seed=3)
+        racing.reset()
+        for race in racing.races:
+            racing.drills[id(race)] = True
+            racing.approach_drills[id(race)] = True
+            race.marshals.lights_out_at = race.time
+        racing.step(np.zeros((racing.num_envs, len(RACER_ACTIONS))))
+        for race, mine in zip(racing.races, racing.learner_cars):
+            length = race.track.length
+            before = (race.pit.entry - race.progress[mine] % length) % length
+            assert (before < 200).all() and (race.lap_of()[mine] >= 1).all()
+            assert (race.pit_state[mine] == pit.CALLED).all()
+            # On the lane's side of the track, so a small steer takes it in.
+            assert (np.sign(race.lateral[mine]) == race.pit.side).all()

@@ -381,6 +381,22 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
 #qualifying .hint { padding: 6px 16px 0; }
 #qualifying-go { display: block; margin: 10px 16px 0 auto; }
 
+/* Predictions on the grid (predictions.js) and in the report. */
+.grid-predictions { display: grid; grid-template-columns: 110px repeat(5, minmax(0, 1fr)); gap: 10px 14px; align-items: end; padding: 14px 22px 18px; border-top: 1px solid var(--line); }
+.grid-predictions h2 { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.grid-predictions .hint { grid-column: 2 / -1; }
+@media (max-width: 1100px) { .grid-predictions { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-predictions h2, .grid-predictions .hint { grid-column: 1 / -1; } }
+.report-predictions { margin: 10px 18px 0; padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 4px; }
+.report-predictions h3 { margin: 0 0 8px; font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.14em; }
+.report-predictions ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.report-predictions li { display: flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); font-size: 13px; font-weight: 600; }
+.report-predictions li small { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; }
+.report-predictions li b { font: 700 12px var(--mono); }
+.report-predictions li.right b { color: var(--throttle); }
+.report-predictions li.wrong b { color: var(--muted); }
+.report-predictions p { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.report-predictions p b { color: var(--text); font-size: 16px; }
+
 /* The post-race report (report.js). */
 #report {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 12; width: min(1040px, calc(100vw - 32px));

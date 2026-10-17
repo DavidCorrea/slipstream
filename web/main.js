@@ -11,6 +11,7 @@ import { createFeed } from './feed.js';
 import { createRaceControl } from './race-control.js';
 import { createQualifyingBoard } from './qualifying.js';
 import { createReport } from './report.js';
+import { createPredictions } from './predictions.js';
 import { createGhost } from './ghost.js';
 import { createGridIntro } from './grid-intro.js';
 import { createHud } from './hud.js';
@@ -64,7 +65,11 @@ const feed = createFeed({ onSelect: id => select(id) });
 const raceControl = createRaceControl();
 const qualifyingBoard = createQualifyingBoard({ onDone: () => startFromTheGrid(true) });
 const QUALIFYING_KEY = 'slipstream.qualifying';
-const report = createReport({ onNext: () => startRace(), onAgain: () => startRace(true) });
+const predictions = createPredictions();
+const report = createReport({
+  onNext: () => startRace(), onAgain: () => startRace(true),
+  extras: (rows, yours, fastestCar) => predictions.score(rows, fastestCar),
+});
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
 window.addEventListener('resize', () => {
@@ -212,6 +217,7 @@ function setUpRace(intro) {
   raceControl.reset(intro);
   teamRadio.setRace(intro);
   report.reset(intro, intro.yours, state.location.label);
+  predictions.reset(intro);
   ghost.reset();
   director.reset(intro, state.circuit);
   broadcaster.reset(intro, intro.yours);
@@ -301,6 +307,7 @@ function gridIntroWanted() {
 }
 
 function lightsOut() {
+  predictions.lock();
   send({ type: 'go' });
   $('grid-menu').classList.add('hidden');
   document.body.classList.remove('on-grid');
@@ -313,6 +320,7 @@ function receiveFrame(frame) {
   if (!state.race) return;
   const moments = raceEvents.read(frame);
   report.record(frame);
+  predictions.watch(frame);
   const replay = replays.record(frame, automaticReplays() && !state.replay, moments);
   if (replay) startReplay(replay);
   state.previous = interpolated(performance.now());

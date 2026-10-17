@@ -162,7 +162,7 @@ export function createReport({ onNext, onAgain, extras = () => '' }) {
     const format = $('format').selectedOptions[0]?.text ?? '';
     $('report-title').textContent = `${race.format?.kind && race.format.kind !== 'standard' ? `${format} · ` : ''}${frame.laps ?? race.laps} laps · ${race.locationLabel ?? ''}`;
     $('report-headlines').innerHTML = headlines(rows, yours);
-    $('report-extras').innerHTML = extras(rows, yours);
+    $('report-extras').innerHTML = extras(rows, yours, fastest?.car ?? null);
     $('report-results').innerHTML = table(rows, yours);
     const { svg, highlight } = chart(yours);
     $('report-chart').replaceChildren(svg);

@@ -4,7 +4,7 @@ import pytest
 from stable_baselines3 import PPO
 
 from slipstream.env import RaceVecEnv
-from slipstream.publish import ENGINE_FILES, ROOT, browser_modules, choose_default_driver, publish
+from slipstream.publish import ENGINE_FILES, ROOT, browser_modules, choose_default_driver, files_version, publish
 
 
 class TestPublishingTheSite:
@@ -19,6 +19,10 @@ class TestPublishingTheSite:
     def test_the_page_knows_how_much_it_downloads_so_it_can_show_progress(self):
         listed = json.loads((ROOT / ENGINE_FILES).read_text())
         assert listed['bytes'] == sum((ROOT / path).stat().st_size for path in listed['modules'] + listed['brains'])
+
+    def test_the_list_names_a_version_that_changes_with_any_file_so_caches_cant_serve_old_ones(self):
+        listed = json.loads((ROOT / ENGINE_FILES).read_text())
+        assert listed['version'] == files_version(listed['modules'] + listed['brains'])
 
     def test_exports_snapshots_with_what_a_pit_wall_run_says_about_its_driver(self, tmp_path):
         runs = tmp_path / 'runs'

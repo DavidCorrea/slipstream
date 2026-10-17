@@ -49,13 +49,15 @@ function begin(name, expected) {
 
 // ---- Starting up ---------------------------------------------------------------------------------------------
 
-// The site's own files are always checked with the server ('no-cache' revalidates, so an unchanged file costs a
-// 304, not a download): GitHub Pages lets browsers keep them ten minutes, and right after an update a cached list
-// of files named a driver the site no longer had.
-async function download(path, fetcher = self.fetch) {
+// GitHub Pages lets browsers, and its own edge cache, keep files ten minutes, and right after an update a cached
+// list of files named a driver the site no longer had. So the list is always fetched fresh, and every file it
+// names is asked for under the list's version: a new version is a new address no cache has seen.
+async function download(path, fetcher = self.fetch, query = '') {
   let response;
   try {
-    response = await fetcher(new URL(path, ROOT), { cache: 'no-cache' });
+    const url = new URL(path, ROOT);
+    url.search = query;
+    response = await fetcher(url, { cache: query.startsWith('fresh') ? 'no-store' : 'default' });
   } catch (error) {
     throw new Error(`Could not download ${path}: ${error.message}. Check your connection and try again.`);
   }
@@ -63,14 +65,14 @@ async function download(path, fetcher = self.fetch) {
   return response;
 }
 
-async function fetchBytes(path) {
-  return new Uint8Array(await (await download(path)).arrayBuffer());
+async function fetchBytes(path, version) {
+  return new Uint8Array(await (await download(path, self.fetch, `v=${version}`)).arrayBuffer());
 }
 
 async function start() {
   // The list of files comes first (it's tiny), so every stage's size is known before any of them starts and
   // the bar only ever moves forward.
-  const files = await (await download('web/engine-files.json', fetchQuietly)).json();
+  const files = await (await download('web/engine-files.json', fetchQuietly, `fresh=${Date.now()}`)).json();
   self.postMessage({ type: 'plan', expected: { python: PYTHON_BYTES, numpy: NUMPY_BYTES, files: files.bytes } });
   begin('python', PYTHON_BYTES);
   const pyodide = await loadPyodide();
@@ -79,7 +81,7 @@ async function start() {
   begin('files', files.bytes);
   for (const path of [...files.modules, ...files.brains]) {
     pyodide.FS.mkdirTree(path.split('/').slice(0, -1).join('/'));
-    pyodide.FS.writeFile(path, await fetchBytes(path));
+    pyodide.FS.writeFile(path, await fetchBytes(path, files.version));
   }
   begin('starting', 0);
   races = pyodide.runPython('import sys; sys.path.insert(0, "."); from slipstream.browser import BrowserRaces; BrowserRaces()');

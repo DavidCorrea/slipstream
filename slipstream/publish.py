@@ -10,6 +10,7 @@ side imports and the networks in brains/, exported to run with numpy (numpy_netw
 private; only the snapshots named here are published.
 """
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -59,12 +60,24 @@ def choose_default_driver(snapshot, destination=BRAINS):
     (destination / DEFAULT_DRIVER).write_text(snapshot + '\n')
 
 
+def files_version(paths):
+    """A short fingerprint of the files' names and contents. The page asks for each file under it, so a browser or
+    the host's cache can never hand back a file from before an update."""
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        digest.update(path.encode())
+        digest.update((ROOT / path).read_bytes())
+    return digest.hexdigest()[:12]
+
+
 def write_engine_files():
-    """Lists the files with their total size, which the loading screen counts the download against."""
+    """Lists the files with their total size, which the loading screen counts the download against, and their
+    version."""
     modules = browser_modules()
     brains = sorted(str(path.relative_to(ROOT)) for path in BRAINS.rglob('*') if path.is_file())
     total = sum((ROOT / path).stat().st_size for path in modules + brains)
-    (ROOT / ENGINE_FILES).write_text(json.dumps({'modules': modules, 'brains': brains, 'bytes': total}, indent=2) + '\n')
+    listed = {'modules': modules, 'brains': brains, 'bytes': total, 'version': files_version(modules + brains)}
+    (ROOT / ENGINE_FILES).write_text(json.dumps(listed, indent=2) + '\n')
     return brains
 
 

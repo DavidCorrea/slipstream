@@ -109,7 +109,8 @@ function connect() {
 // With no server behind the page (the published site), the race code runs in a worker (engine-worker.js).
 function startWorker() {
   loading.show();
-  const worker = new Worker(new URL('./engine-worker.js', import.meta.url), { type: 'module' });
+  // Never a cached worker from before an update: it's small, and it decides which files the race downloads.
+  const worker = new Worker(new URL(`./engine-worker.js?at=${Date.now()}`, import.meta.url), { type: 'module' });
   state.worker = worker;
   worker.addEventListener('message', ({ data }) => {
     if (data.type === 'plan') {

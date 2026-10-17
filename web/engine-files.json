@@ -35,5 +35,6 @@
     "brains/pitwall-feel/driver.json",
     "brains/racer-2/checkpoints/step-000057040160.npz"
   ],
-  "bytes": 1139292
+  "bytes": 1139292,
+  "version": "93355287d93d"
 }

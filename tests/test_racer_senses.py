@@ -87,3 +87,28 @@ class TestThePitWallsRadio:
         race.cars.velocity[:] = race.cars.forward * 30.0
         race.cars.fuel[2] = 1.0
         assert [RADIO_CALLS[call] for call in scripted_radio(race)] == ['push', 'push', 'save']
+
+
+class TestFindingThePitLane:
+    def approaching(self, called):
+        race = racing(cars=1)
+        lane = race.pit
+        race.place(0, race.track.length + lane.entry - 120.0, -lane.side * 3.0)
+        if called:
+            race.pit_state[0] = pit.CALLED
+        return race
+
+    def test_a_called_car_approaching_the_entry_knows_which_way_the_lane_is(self):
+        # Without this a car only learned the lane's side once in it, and the lane is on either side.
+        race = self.approaching(called=True)
+        assert sense(race, 'box_across')[0] > 0.5
+
+    def test_a_car_that_isnt_called_isnt_pointed_at_the_lane(self):
+        race = self.approaching(called=False)
+        assert sense(race, 'box_across')[0] == 0.0
+
+    def test_far_from_the_entry_it_says_nothing(self):
+        race = racing(cars=1)
+        race.place(0, race.track.length + race.pit.entry - 600.0)
+        race.pit_state[0] = pit.CALLED
+        assert sense(race, 'box_across')[0] == 0.0

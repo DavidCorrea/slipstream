@@ -210,7 +210,12 @@ def _pit_and_flags(race, distance):
     entry_in = np.clip((-along % race.track.length) / LOOKING_OUT, 0, 1)
     speed_zone = race.in_lane & (along >= pit.RAMP) & (along <= lane.length - pit.RAMP)
     box_along = np.clip((lane.boxes[:count] - along) / LOOKING_OUT, -1, 1)
-    box_across = np.where(race.in_lane, np.clip(lane.side * (lane.working_lane - race.lateral) / (2 * pit.LANES_APART), -1, 1), 0.0)
+    # How far across to the box: in the lane, and for a called car on its way to the entry too. The lane is on
+    # either side of the track, and a car told this only once in it never learned which way to turn in: called, it
+    # slowed for the entry and drove past it on the far side.
+    approaching = (race.pit_state == pit.CALLED) & ~race.in_lane & ((-along % race.track.length) <= LOOKING_OUT)
+    box_across = np.where(race.in_lane | approaching,
+                          np.clip(lane.side * (lane.working_lane - race.lateral) / (2 * pit.LANES_APART), -1, 1), 0.0)
     lights = np.zeros(count)
     started = np.ones(count)
     yellow_ahead, in_yellow, blue = np.ones(count), np.zeros(count), np.zeros(count)

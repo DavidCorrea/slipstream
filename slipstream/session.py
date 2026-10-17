@@ -19,7 +19,7 @@ from . import personality as traits
 from .car import BALANCE_RANGE, COMPOUNDS, DT, FUEL_CAPACITY, SPEC_DEFAULTS, SPEC_SPREAD, CarSpecs
 from .drivers import DECISION_TICKS
 from .field import field_controls, makes_pit_calls
-from .strategy import scripted_radio, scripted_strategy
+from .strategy import RADIO_CALLS, scripted_radio, scripted_strategy
 from .observe import OBSERVATION_NAMES
 from .race import Race
 from .scenery import location_for, place
@@ -39,6 +39,17 @@ STATS = (*traits.TRAITS, *SPEC_DEFAULTS, 'balance')
 
 DRIVER_DECIDES = 'driver'
 SCRIPTED_STRATEGIST = 'scripted'
+
+# Radio orders to your driver. The pace goes out on the radio racing drivers listen to (strategy.RADIO_CALLS);
+# 'auto' leaves the radio to the pit wall. An approach shifts the traits your driver reads every moment (the
+# personality racing drivers sense), on top of their usual self, until you change it.
+PACE_ORDERS = {'auto': None, 'push': 'push', 'normal': 'nothing', 'save': 'save'}
+APPROACHES = {
+    'auto': {},
+    'attack': {'aggression': 0.3, 'overtaking': 0.35, 'risk': 0.2},
+    'defend': {'overtaking': -0.35, 'aggression': 0.15, 'risk': -0.1},
+    'bring_it_home': {'risk': -0.4, 'aggression': -0.35, 'overtaking': -0.3, 'conservation': 0.35},
+}
 
 
 def is_pitwall_run(run):
@@ -135,10 +146,34 @@ class RaceSession:
         self.strategy = 'ai'
         self.my_plan = {'compound': 'medium', 'fuel': 1.0, 'wing': 0.5, 'engine': 0.5, 'repair': True, 'brakes': False}
         self.box_called = False
+        # The lap on which you told your driver to stay out, whatever the AI strategy says.
+        self.stay_out_lap = None
+        self.radio_orders = {'pace': 'auto', 'approach': 'auto'}
 
-    def set_pit(self, strategy=None, plan=None, box=None):
-        """Changes your pit strategy, your plan for the next stop, or calls (or cancels) a stop. Anything unknown
-        or out of range is refused, naming what was wrong."""
+    def set_radio(self, pace=None, approach=None):
+        """Tells your driver how to race: a pace (PACE_ORDERS) and an approach (APPROACHES). Either stays until
+        changed; anything unknown is refused, naming the choices."""
+        if pace is not None:
+            if pace not in PACE_ORDERS:
+                raise ValueError(f'Pace must be one of {", ".join(PACE_ORDERS)}, got {pace!r}')
+            self.radio_orders['pace'] = pace
+        if approach is not None:
+            if approach not in APPROACHES:
+                raise ValueError(f'Approach must be one of {", ".join(APPROACHES)}, got {approach!r}')
+            self.radio_orders['approach'] = approach
+
+    def driving_personality(self):
+        """Every driver's traits as they drive now: their own, and yours shifted by the approach you ordered."""
+        personality = self.personality.copy()
+        for name, change in APPROACHES[self.radio_orders['approach']].items():
+            index = traits.TRAITS.index(name)
+            personality[self.yours, index] = np.clip(personality[self.yours, index] + change, 0.0, 1.0)
+        return personality
+
+    def set_pit(self, strategy=None, plan=None, box=None, stay_out=None):
+        """Changes your pit strategy, your plan for the next stop, calls (or cancels) a stop, or keeps your car out
+        this lap whatever the AI strategy would call. Anything unknown or out of range is refused, naming what was
+        wrong."""
         if strategy is not None:
             if strategy not in ('ai', 'mine'):
                 raise ValueError(f"Strategy must be 'ai' or 'mine', got {strategy!r}")
@@ -155,6 +190,11 @@ class RaceSession:
             self.my_plan[name] = value
         if box is not None:
             self.box_called = bool(box)
+            if self.box_called:
+                self.stay_out_lap = None
+        if stay_out:
+            self.box_called = False
+            self.stay_out_lap = int(self.race.lap_of()[self.yours])
 
     def set_stats(self, stats, car=None):
         """Changes a driver's traits and their car's specs (yours when no car is named), each a slider value from 0
@@ -271,14 +311,25 @@ class RaceSession:
         return self._frame(happened)
 
     def _decide(self):
-        # The pit wall's radio for drivers that listen (strategy.RADIO_CALLS).
+        # The pit wall's radio for drivers that listen (strategy.RADIO_CALLS), and yours when you've given an order.
         self.race.radio = scripted_radio(self.race)
+        pace = PACE_ORDERS[self.radio_orders['pace']]
+        if pace is not None:
+            self.race.radio[self.yours] = RADIO_CALLS.index(pace)
         steer, throttle, brake, call, plan, limiter, reverse, engine = field_controls(
-            self.race, self.driver, np.ones(self.race.count, dtype=bool), self.personality, pitwall=self.pitwall)
+            self.race, self.driver, np.ones(self.race.count, dtype=bool), self.driving_personality(), pitwall=self.pitwall)
         if self.pitwall_id == SCRIPTED_STRATEGIST:
             call, plan = scripted_strategy(self.race)
+        car = self.yours
+        if self.stay_out_lap is not None and self.race.lap_of()[car] > self.stay_out_lap:
+            self.stay_out_lap = None
+        # Your calls stand over the AI's: box this lap, or stay out this lap.
+        if self.box_called:
+            call[car] = True
+        elif self.stay_out_lap is not None:
+            call[car] = False
         if self.strategy == 'mine':
-            car, mine = self.yours, self.my_plan
+            mine = self.my_plan
             call[car] = self.box_called
             plan.compound[car] = COMPOUNDS.index(mine['compound'])
             plan.fuel[car] = mine['fuel'] * FUEL_CAPACITY
@@ -328,7 +379,8 @@ class RaceSession:
             'marshals': race.marshals.describe(race) if race.marshals is not None else None,
             'weather': {'wetness': round(race.weather.wetness, 3), 'rain': round(race.weather.rain, 3),
                         'temperature': round(race.weather.temperature, 3), 'wind': np.round(race.weather.wind, 2).tolist()},
-            'yourPit': {'strategy': self.strategy, 'boxCalled': self.box_called},
+            'yourPit': {'strategy': self.strategy, 'boxCalled': self.box_called, 'stayingOut': self.stay_out_lap is not None},
+            'yourRadio': dict(self.radio_orders),
             'events': happened,
         }
 

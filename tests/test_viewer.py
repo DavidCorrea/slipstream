@@ -129,3 +129,23 @@ class TestPlaybackSpeeds:
         async def silly(viewer):
             await viewer.handle({'type': 'speed', 'value': 1000})
         assert run(silly).speed == 1.0
+
+
+class TestRadioOrders:
+    def test_your_orders_reach_your_driver_during_the_race(self):
+        async def race(viewer):
+            await viewer.handle({'type': 'start', 'cars': 3, 'laps': 2})
+            await viewer.handle({'type': 'go'})
+            await viewer.handle({'type': 'radio', 'pace': 'push', 'approach': 'attack'})
+            await viewer.handle({'type': 'pit', 'stayOut': True})
+            await viewer.tick()
+        viewer = run(race)
+        assert viewer.session.radio_orders == {'pace': 'push', 'approach': 'attack'}
+        assert viewer.session.stay_out_lap == 0
+
+    def test_an_order_it_doesnt_know_is_answered_with_an_error(self):
+        async def race(viewer):
+            await viewer.handle({'type': 'start', 'cars': 3, 'laps': 2})
+            await viewer.receive('{"type": "radio", "pace": "warp"}')
+        viewer = run(race)
+        assert any(message['type'] == 'error' and 'warp' in message['message'] for message in viewer.socket.sent)

@@ -1,6 +1,6 @@
 """One open tab's race: what it asked for, and the frames that go back to it.
 
-The tab sends messages (a new race, a playback speed, pause, its racer's stats, its pit calls) and gets back a
+The tab sends messages (a new race, a playback speed, pause, its racer's stats, its pit calls, its radio orders) and gets back a
 description of each race and a frame 20 times a second. Nothing here knows how they travel: the server sends
 them over a websocket (server.py), and in a browser they go between the page and a web worker (browser.py).
 """
@@ -102,8 +102,10 @@ class Viewer:
             key = self.session.lineup[car].key
             self.names[key] = self.session.names[key]
         elif kind == 'pit' and self.session:
-            self.session.set_pit(message.get('strategy'), message.get('plan'), message.get('box'))
+            self.session.set_pit(message.get('strategy'), message.get('plan'), message.get('box'), message.get('stayOut'))
             self.pit = {'strategy': self.session.strategy, 'plan': dict(self.session.my_plan)}
+        elif kind == 'radio' and self.session:
+            self.session.set_radio(message.get('pace'), message.get('approach'))
         elif kind == 'yours' and self.session:
             self.session.set_yours(message.get('car'))
             self.yours = self.session.lineup[self.session.yours].key

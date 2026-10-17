@@ -417,6 +417,19 @@ class Race:
             self.retire(car, 'stuck')
         events.crashed += [int(car) for car in np.flatnonzero(stuck)]
 
+    def place(self, car, distance, lateral=0.0, turn=0.0, speed=0.0):
+        """Puts `car` `distance` metres round the race (laps included), `lateral` metres to the left of the centre line,
+        turned `turn` radians from the track's direction and moving at `speed`: for drills and the exam's scenarios."""
+        track = self.track
+        self.cars.position[car] = track.point_at(distance, lateral)
+        self.cars.heading[car] = track.heading_at(distance) + turn
+        self.cars.velocity[car] = self.cars.forward[car] * speed
+        self.progress[car] = distance
+        self.track_index, _, self.lateral = track.locate(self.cars.position)
+        if self.props is not None:
+            self.furthest[car] = distance
+            self.gained_at[car] = self.time
+
     def retire(self, car, why):
         """Takes a car out of the race, saying why (RETIREMENTS)."""
         self.retired[car] = True

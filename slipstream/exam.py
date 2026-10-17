@@ -90,17 +90,7 @@ def lights_out_now(session):
 
 
 def place_car(session, car, distance, lateral=0.0, turn=0.0, speed=0.0):
-    """Puts `car` `distance` metres round the lap, `lateral` metres to the left of the centre line, turned `turn`
-    radians from the track's direction, moving at `speed`."""
-    race = session.race
-    track = race.track
-    race.cars.position[car] = track.point_at(distance, lateral)
-    race.cars.heading[car] = track.heading_at(distance) + turn
-    race.cars.velocity[car] = race.cars.forward[car] * speed
-    race.progress[car] = distance
-    race.track_index, _, race.lateral = track.locate(race.cars.position)
-    race.furthest[car] = distance
-    race.gained_at[car] = race.time
+    session.race.place(car, distance, lateral, turn, speed)
 
 
 def play(session, seconds=None, until=None):

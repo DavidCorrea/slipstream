@@ -741,7 +741,8 @@ def consistency_spread(exam):
     return low - high, high <= low, f'{low:.3f} s at 0, {high:.3f} s at 1'
 
 
-@test('G', 'more stamina: less pace lost late in a long race')
+# Scored, not a rule: 12 laps without a stop wear the tyres out, and how a driver wears them swamps what stamina does.
+@test('G', 'stamina: pace lost late in a long race, more stamina against less (s)', 'scored', 'higher')
 def stamina_fade(exam):
     def fade(value):
         losses = []
@@ -751,7 +752,7 @@ def stamina_fade(exam):
                 losses.append(np.mean(times[-3:]) - np.mean(times[1:4]))
         return mean(losses)
     low, high = fade(0.0), fade(1.0)
-    return low - high, high <= low, f'{low:.2f} s lost at 0, {high:.2f} s at 1'
+    return low - high, f'{low:.2f} s lost at 0, {high:.2f} s at 1'
 
 
 def field_with(exam, trait, value):

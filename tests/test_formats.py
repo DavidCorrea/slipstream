@@ -123,3 +123,15 @@ class TestInARace:
         usual = RaceSession(SCRIPTED, seed=5, cars=6, laps=3)
         reversed_grid = RaceSession(SCRIPTED, seed=5, cars=6, laps=3, race_format='reverse')
         assert [car['key'] for car in reversed_grid.intro()['cars']] == [car['key'] for car in usual.intro()['cars']][::-1]
+
+
+class TestFramesOfEveryFormat:
+    def test_frames_serialise_after_the_format_has_changed_the_race(self):
+        import json
+        for kind in FORMATS:
+            session = RaceSession(SCRIPTED, seed=5, cars=4, laps=3, race_format=kind, minutes=10)
+            leader = session.race
+            events = lap_done(leader, 0, 2)
+            leader.tick = int(601.0 / DT)
+            session.format.after_tick(leader, events)
+            json.dumps(session.advance(1))

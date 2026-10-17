@@ -455,7 +455,7 @@ class RaceSession:
                         'temperature': round(race.weather.temperature, 3), 'wind': np.round(race.weather.wind, 2).tolist()},
             'yourPit': {'strategy': self.strategy, 'boxCalled': self.box_called, 'stayingOut': self.stay_out_lap is not None},
             'yourRadio': dict(self.radio_orders),
-            'format': self.format.describe(race), 'laps': race.laps,
+            'format': self.format.describe(race), 'laps': int(race.laps),
             'events': happened,
         }
 

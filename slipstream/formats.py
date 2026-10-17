@@ -106,7 +106,7 @@ class FormatRules:
         crossed, leader = self._leader_crossed(race, events)
         if not crossed:
             return
-        done = race.lap_of()[leader]
+        done = int(race.lap_of()[leader])
         left = self.seconds - race.time
         if left <= 0:
             race.laps = done + 1

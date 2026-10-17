@@ -12,8 +12,10 @@ What a racing driver is paid for, on top of a driver by feel's (env.REWARDS, tra
 - `damage`, per unit of damage taken (all parts) per lap still to race, up to DAMAGE_LAPS: damage costs pace for
   the rest of the race, far beyond the few seconds a driver looks ahead, so it's charged when it happens.
 - clean passes: a place gained within CLEAN_SECONDS of a hard hit it was in pays only `rough_pass` of a clean one.
-- `stop` for stopping when the pit wall called (a missed call costs as much): the stop's pay-off is the pit
-  wall's business, the driver's is to bring the car in.
+- `lane_entry` for turning into the pit lane when the pit wall called, and `stop` for reaching the box (driving
+  past the entry costs as much as the stop pays); the time in the lane on a called stop isn't charged. The stop's
+  pay-off is the pit wall's business, the driver's is to bring the car in. When a stop paid 0.5 and the 25 s in the
+  lane cost about 3 in time, the racing driver learned to drive past every call.
 - `radio`, per decision, for doing what the radio asks (the engine mode down when asked to save, up to push).
 
 Like personality, these only count once the network can drive (train.CAN_DRIVE), fading in with the same ramp: a
@@ -58,7 +60,7 @@ LEAGUE_SHARE = 0.5
 LEAGUE_SIZE = 5
 DAMAGE_LAPS = 10.0
 CLEAN_SECONDS = 2.0
-PIT_DRILL = 0.25
+PIT_DRILL = 0.4
 START_DRILL = 0.25
 SELF_RACE = 0.25
 STILL_SPEED = 2.0
@@ -67,7 +69,7 @@ STALLED_SECONDS = 15.0
 # charges 0.012 a decision), and a penalty second is charged the same. A hard hit worth 0.1 damage with five laps
 # to go costs 0.75, about a place.
 RACER_REWARDS = {'podium': 2.0, 'places': 2.0, 'time': 0.012, 'retire': 3.5, 'off_track': 0.01, 'hard_hit': 0.25,
-                 'penalty': 0.12, 'damage': 1.5, 'rough_pass': 0.25, 'stop': 0.5, 'radio': 0.002, 'still': 0.024}
+                 'penalty': 0.12, 'damage': 1.5, 'rough_pass': 0.25, 'stop': 2.0, 'lane_entry': 1.0, 'radio': 0.002, 'still': 0.024}
 
 
 class RacerEnv(DriverEnv):
@@ -222,6 +224,8 @@ class RacerEnv(DriverEnv):
             reward -= strength * rewards['damage'] * harmed * np.minimum(laps_left(race), DAMAGE_LAPS)
             for penalty in events.penalties:
                 reward[penalty.car] -= strength * rewards['penalty'] * penalty.seconds
+            for car in events.pit_entered:
+                reward[car] += strength * rewards['lane_entry'] * race.lane_called[car]
             for car, _, _ in events.pit_stopped:
                 reward[car] += strength * rewards['stop']
             missed = called_before & (race.pit_state == pit.CALLED) & race.pit.entered(distance_before, race.progress % race.track.length)
@@ -238,7 +242,8 @@ class RacerEnv(DriverEnv):
         heard = race.radio
         followed = ((heard == RADIO_CALLS.index('save')) & (engine < 0.4)) | ((heard == RADIO_CALLS.index('push')) & (engine > 0.6))
         reward += strength * rewards['radio'] * followed
-        reward -= rewards['time'] * racing
+        # The time a called stop takes is the pit wall's choice, not the driver's to save.
+        reward -= rewards['time'] * racing * ~(race.in_lane & race.lane_called)
         stalled = racing & (race.cars.speed < STILL_SPEED) & ~race.in_lane & race.marshals.started(race.time)
         reward -= rewards['still'] * stalled
         return reward

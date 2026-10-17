@@ -1,7 +1,9 @@
 import numpy as np
 
 from slipstream.racer_env import FIELD, LAPS, LEARNERS, RACER_REWARDS, STILL_SPEED, RacerEnv
+from slipstream import pit
 from slipstream.senses import RACER_SENSE_NAMES
+from tests.test_pit_lane_driven import put_in_lane
 from slipstream.strategy import RACER_ACTIONS
 
 
@@ -156,3 +158,42 @@ def league_env(tmp_path, races, seed=3):
     racing.reset()
     racing.step(np.zeros((racing.num_envs, len(RACER_ACTIONS))))
     return racing
+
+
+class TestPitStopsArePaidForWhatTheyAre:
+    def test_a_called_stop_is_worth_more_than_ignoring_the_call(self):
+        # Bringing the car in when called pays for turning in and for the stop; the time in the lane isn't charged.
+        # Driving past the entry costs as much as the stop pays. (When a stop cost about 3 in time and paid 0.5,
+        # the racing driver learned to drive past every call.)
+        assert RACER_REWARDS['lane_entry'] + RACER_REWARDS['stop'] >= 3 * RACER_REWARDS['time'] * 10
+
+    def test_turning_into_the_lane_when_called_pays(self):
+        paid = {}
+        for called in (True, False):
+            racing = env(races=1)
+            racing.reset()
+            race, car = racing.races[0], racing.learner_cars[0][0]
+            race.marshals.lights_out_at = race.time
+            if called:
+                race.pit_state[car] = pit.CALLED
+            put_in_lane(race, car, 5.0, 12.0, lateral=race.pit.centre(5.0))
+            paid[called] = decisions(racing, braking(race), 1)[car]
+            assert race.in_lane[car]
+        assert paid[True] - paid[False] >= RACER_REWARDS['lane_entry'] * 0.9
+
+    def test_the_time_in_the_lane_on_a_called_stop_is_not_charged(self):
+        racing = env(races=1)
+        racing.reset()
+        race, car = racing.races[0], racing.learner_cars[0][0]
+        race.marshals.lights_out_at = race.time
+        race.pit_state[car] = pit.IN_LANE
+        race.lane_called[car] = True
+        put_in_lane(race, car, 80.0, 0.0)
+        race.pit_state[car] = pit.IN_LANE
+        race.lane_called[car] = True
+        paid = decisions(racing, braking(race), 1)[car]
+        assert paid > -RACER_REWARDS['time'] / 2
+
+    def test_more_races_are_pit_drills(self):
+        from slipstream.racer_env import PIT_DRILL
+        assert PIT_DRILL >= 0.4

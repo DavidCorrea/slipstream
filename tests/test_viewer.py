@@ -175,3 +175,15 @@ class TestRaceFormats:
             await viewer.receive('{"type": "start", "format": "demolition derby"}')
         viewer = run(start)
         assert any(message['type'] == 'error' and 'demolition' in message['message'] for message in viewer.socket.sent)
+
+
+class TestAfterTheFlag:
+    def test_a_finished_race_stays_for_the_report_until_the_tab_asks_for_the_next(self):
+        async def race(viewer):
+            await viewer.handle({'type': 'start', 'cars': 2, 'laps': 1})
+            await viewer.handle({'type': 'go'})
+            viewer.session.race.finish_time[:] = viewer.session.race.time
+            for _ in range(400):
+                await viewer.tick()
+        viewer = run(race)
+        assert [message['type'] for message in viewer.socket.sent].count('race') == 1

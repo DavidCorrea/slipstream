@@ -14,7 +14,6 @@ FRAMES_PER_SECOND = 20
 # Times real time. The page's buttons say half these (its "1×" is twice real time), since our races are slower than
 # a Formula 1 race (less grip, shorter circuits) and at real time they looked it.
 SPEEDS = (1, 2, 4, 8, 16)
-NEXT_RACE_AFTER = 6.0      # seconds the finished race stays on screen before the next one starts
 # Up to a Formula 1 grid, and races about as long as one (its laps are longer than ours).
 LIMITS = {'cars': (2, 20), 'laps': (1, 70)}
 
@@ -40,7 +39,6 @@ class Viewer:
         self.speed = 1.0
         self.paused = False
         self.ticks_owed = 0.0
-        self.finished_for = 0.0
         # A new race waits on the grid, so you can pick your car and set it up, until you send 'go'.
         self.on_grid = False
 
@@ -78,7 +76,6 @@ class Viewer:
             await self.socket.send_json({'type': 'error', 'message': str(error)})
             return
         self.ticks_owed = 0.0
-        self.finished_for = 0.0
         self.on_grid = True
         await self.socket.send_json(self.session.intro())
 
@@ -143,10 +140,8 @@ class Viewer:
     async def tick(self):
         if self.session is None or self.paused or self.on_grid:
             return
+        # A finished race stays as it ended, for the report, until the tab starts the next one.
         if self.session.race.done:
-            self.finished_for += 1 / FRAMES_PER_SECOND
-            if self.finished_for >= NEXT_RACE_AFTER:
-                await self.start()
             return
         self.ticks_owed += self.speed / (FRAMES_PER_SECOND * DT)
         ticks = int(self.ticks_owed)

@@ -58,7 +58,19 @@ export function createRacerPanel({ send, onYours, onFollow, onRename, onRecolor 
   let ranges = {}, pending = {}, timer = null, current = null, plan = {}, boxCalled = false, editing = 0;
 
   // The field in grid order, as cards in their colours: yours is marked, and the one being set up is outlined.
+  // Your car on the race tab: who you are, where you start, and the way into the garage.
+  function showYou() {
+    const you = current.cars[current.yours];
+    const tyres = current.startingTyres?.[current.yours] ?? 'medium';
+    $('you-card').innerHTML = `<span class="livery" style="background:${you.color}"></span>`
+      + `<span class="who"><b></b><small>#${you.number} · ${character(current.stats[current.yours])}</small>`
+      + `<span>Starting P${current.yours + 1} · ${tyres} tyres</span></span>`
+      + '<button class="secondary" data-open-tab="garage">Edit driver and car ›</button>';
+    $('you-card').querySelector('b').textContent = you.name;
+  }
+
   function showCars() {
+    showYou();
     $('car-picker').replaceChildren(...current.cars.map((car, id) => {
       const card = document.createElement('li');
       const isYours = id === current.yours;

@@ -118,63 +118,37 @@
         </div>
         <button id="go" class="primary go">Start race</button>
       </header>
-      <div class="grid-columns">
-        <section>
-          <h2>The field</h2>
-          <p class="hint">Click a driver to set them up. Drive picks the car you race.</p>
-          <ol id="car-picker" class="car-picker"></ol>
-        </section>
-        <section>
-          <h2 id="driver-heading">The driver</h2>
-          <div class="name-row">
-            <label class="field">Name <input id="driver-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
-            <label class="field colour">Colour <input id="driver-color" type="color"></label>
+      <!-- Three tabs (grid-menu.js): the race, the garage (any driver and car), and your predictions. -->
+      <nav class="grid-tabs" role="tablist">
+        <button role="tab" data-tab="race">Race</button>
+        <button role="tab" data-tab="garage">Garage</button>
+        <button role="tab" data-tab="predictions">Predictions <span id="predict-dot" class="dot" title="No picks yet"></span></button>
+      </nav>
+
+      <div class="grid-tab" data-tab="race" role="tabpanel">
+        <div class="race-setup">
+          <div class="setup-row">
+            <h2>Format</h2>
+            <div id="format-buttons" class="segmented format-buttons">
+              <button data-format="standard">Standard</button>
+              <button data-format="sprint">Sprint</button>
+              <button data-format="reverse">Reverse grid</button>
+              <button data-format="elimination">Elimination</button>
+              <button data-format="endurance">Endurance</button>
+              <button data-format="timed">Timed</button>
+            </div>
+            <select id="format" class="hidden" aria-hidden="true" tabindex="-1">
+              <option value="standard">Standard</option>
+              <option value="reverse">Reverse grid</option>
+              <option value="sprint">Sprint</option>
+              <option value="elimination">Elimination</option>
+              <option value="endurance">Endurance</option>
+              <option value="timed">Timed</option>
+            </select>
+            <p id="format-note" class="hint"></p>
           </div>
-          <p id="name-problem" class="note hidden"></p>
-          <p id="racer-note" class="note hidden"></p>
-          <div class="sliders" id="personality-sliders"></div>
-        </section>
-        <section>
-          <h2 id="car-heading">The car</h2>
-          <div class="sliders" id="car-sliders"></div>
-          <button id="reset-stats" class="secondary">Back to their usual self</button>
-        </section>
-        <section>
-          <h2>The race</h2>
-          <label class="field">Driver network <select id="brain"></select></label>
-          <label class="field">Pit wall <select id="pitwall"></select></label>
-          <label class="field">Weather
-            <select id="weather">
-              <option value="random">Up to the circuit</option>
-              <option value="dry">Dry</option>
-              <option value="rain_coming">Rain on the way</option>
-              <option value="shower">A passing shower</option>
-              <option value="drying">Drying out</option>
-              <option value="wet">Wet throughout</option>
-            </select>
-          </label>
-          <label class="field">Location
-            <select id="location">
-              <option value="random">Up to the circuit</option>
-              <option value="countryside">Countryside</option>
-              <option value="desert">Desert</option>
-              <option value="alpine">Alpine</option>
-              <option value="coast">Coast</option>
-              <option value="city">City</option>
-              <option value="night">City at night</option>
-            </select>
-          </label>
-          <div class="pair">
-            <label class="field">Format
-              <select id="format">
-                <option value="standard">Standard</option>
-                <option value="reverse">Reverse grid</option>
-                <option value="sprint">Sprint</option>
-                <option value="elimination">Elimination</option>
-                <option value="endurance">Endurance</option>
-                <option value="timed">Timed (Le Mans)</option>
-              </select>
-            </label>
+          <div class="setup-row lengths">
+            <label class="field" id="laps-field"><span id="laps-label">Laps</span> <input id="laps" type="number" min="1" max="70" value="8"></label>
             <label class="field" id="minutes-field">Race time
               <select id="minutes">
                 <option value="10">10 minutes</option>
@@ -183,29 +157,89 @@
                 <option value="60">1 hour</option>
               </select>
             </label>
-          </div>
-          <p id="format-note" class="hint"></p>
-          <label class="check"><input type="checkbox" id="qualifying-setting"> Qualifying sets the grid</label>
-          <div class="pair">
             <label class="field">Cars <input id="cars" type="number" min="2" max="20" value="6"></label>
-            <label class="field">Laps <input id="laps" type="number" min="1" max="70" value="8"></label>
+            <label class="check"><input type="checkbox" id="qualifying-setting"> Qualifying sets the grid</label>
           </div>
-          <div class="pair">
-            <button id="replay" class="secondary">Apply</button>
+          <div class="setup-row circuit-row">
+            <h2>Circuit</h2>
+            <p id="circuit-summary"></p>
             <button id="new-circuit" class="secondary">Another circuit</button>
           </div>
+          <div class="setup-row">
+            <h2>You</h2>
+            <div id="you-card" class="you-card"></div>
+          </div>
+          <details id="more-settings" class="more-settings">
+            <summary>More: weather, location, driver network, pit wall</summary>
+            <div class="more-grid">
+              <label class="field">Weather
+                <select id="weather">
+                  <option value="random">Up to the circuit</option>
+                  <option value="dry">Dry</option>
+                  <option value="rain_coming">Rain on the way</option>
+                  <option value="shower">A passing shower</option>
+                  <option value="drying">Drying out</option>
+                  <option value="wet">Wet throughout</option>
+                </select>
+              </label>
+              <label class="field">Location
+                <select id="location">
+                  <option value="random">Up to the circuit</option>
+                  <option value="countryside">Countryside</option>
+                  <option value="desert">Desert</option>
+                  <option value="alpine">Alpine</option>
+                  <option value="coast">Coast</option>
+                  <option value="city">City</option>
+                  <option value="night">City at night</option>
+                </select>
+              </label>
+              <label class="field">Driver network <select id="brain"></select></label>
+              <label class="field">Pit wall <select id="pitwall"></select></label>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="grid-tab hidden" data-tab="garage" role="tabpanel">
+        <div class="grid-columns">
+          <section>
+            <h2>The field</h2>
+            <p class="hint">Click a driver to set them up. Drive picks the car you race.</p>
+            <ol id="car-picker" class="car-picker"></ol>
+          </section>
+          <section>
+            <h2 id="driver-heading">The driver</h2>
+            <div class="name-row">
+              <label class="field">Name <input id="driver-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
+              <label class="field colour">Colour <input id="driver-color" type="color"></label>
+            </div>
+            <p id="name-problem" class="note hidden"></p>
+            <p id="racer-note" class="note hidden"></p>
+            <div class="sliders" id="personality-sliders"></div>
+          </section>
+          <section>
+            <h2 id="car-heading">The car</h2>
+            <div class="sliders" id="car-sliders"></div>
+            <button id="reset-stats" class="secondary">Back to their usual self</button>
+          </section>
+        </div>
+      </div>
+
+      <div class="grid-tab hidden" data-tab="predictions" role="tabpanel">
+        <!-- Predictions (predictions.js) -->
+        <section class="grid-predictions">
+          <p class="hint">Optional. Pick before the lights; they're scored in the race report: 10 points a podium place called
+            right, 4 for a podium driver in the wrong place, 5 for each bonus call, doubled in a sprint.</p>
+          <label class="field">P1 <select id="predict-p1"></select></label>
+          <label class="field">P2 <select id="predict-p2"></select></label>
+          <label class="field">P3 <select id="predict-p3"></select></label>
+          <label class="field">Fastest lap <select id="predict-fastest"></select></label>
+          <label class="field">First out <select id="predict-firstOut"></select></label>
+          <p id="prediction-record" class="hint"></p>
         </section>
       </div>
-      <!-- Predictions (predictions.js) -->
-      <section class="grid-predictions">
-        <h2>Predictions</h2>
-        <label class="field">P1 <select id="predict-p1"></select></label>
-        <label class="field">P2 <select id="predict-p2"></select></label>
-        <label class="field">P3 <select id="predict-p3"></select></label>
-        <label class="field">Fastest lap <select id="predict-fastest"></select></label>
-        <label class="field">First out <select id="predict-firstOut"></select></label>
-        <p id="prediction-record" class="hint"></p>
-      </section>
+    </div>
+  </section>
     </div>
   </section>
 

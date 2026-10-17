@@ -23,8 +23,14 @@ export function createPredictions() {
   function showRecord() {
     $('prediction-record').textContent = record.races
       ? `${record.total} pts from ${record.races} race${record.races === 1 ? '' : 's'} · best ${record.best}`
-      : 'Pick before the lights; scored in the race report.';
+      : '';
   }
+
+  // The tab shows a dot until something's picked.
+  function showDot() {
+    $('predict-dot').classList.toggle('hidden', Object.values(picks()).some(Boolean));
+  }
+  for (const pick of PICKS) $(`predict-${pick}`).addEventListener('change', showDot);
 
   function picks() {
     return Object.fromEntries(PICKS.map(pick => [pick, $(`predict-${pick}`).value || null]));
@@ -38,6 +44,7 @@ export function createPredictions() {
       firstOut = null;
       for (const pick of PICKS) options($(`predict-${pick}`), pick === 'firstOut');
       showRecord();
+      showDot();
     },
 
     // The lights are about to go out.

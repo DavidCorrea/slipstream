@@ -382,10 +382,40 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
 #qualifying-go { display: block; margin: 10px 16px 0 auto; }
 
 /* Predictions on the grid (predictions.js) and in the report. */
-.grid-predictions { display: grid; grid-template-columns: 110px repeat(5, minmax(0, 1fr)); gap: 10px 14px; align-items: end; padding: 14px 22px 18px; border-top: 1px solid var(--line); }
-.grid-predictions h2 { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
-.grid-predictions .hint { grid-column: 2 / -1; }
-@media (max-width: 1100px) { .grid-predictions { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-predictions h2, .grid-predictions .hint { grid-column: 1 / -1; } }
+.grid-predictions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 14px; align-items: end; padding: 18px 22px 22px; }
+.grid-predictions .hint { grid-column: 1 / -1; }
+@media (max-width: 900px) { .grid-predictions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* The grid menu's tabs and race tab (grid-menu.js). */
+.grid-tabs { display: flex; gap: 2px; padding: 0 22px; border-bottom: 1px solid var(--line); }
+.grid-tabs button { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 14px 9px; color: var(--muted);
+  font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+.grid-tabs button:hover { color: var(--text); }
+.grid-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.grid-tabs .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--yours); }
+.grid-tab { min-height: min(480px, calc(100vh - 220px)); }
+.race-setup { display: flex; flex-direction: column; gap: 18px; padding: 20px 22px 22px; max-width: 760px; margin: 0 auto; }
+.race-setup h2 { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.format-buttons { display: flex; flex-wrap: wrap; }
+.format-buttons button { padding: 7px 14px; font-size: 13px; }
+.race-setup #format-note { margin-top: 8px; }
+.setup-row.lengths { display: grid; grid-template-columns: 160px 160px 1fr; gap: 14px; align-items: end; }
+.setup-row.lengths .check { padding-bottom: 8px; }
+.setup-row.circuit-row { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 14px; }
+.setup-row.circuit-row h2 { grid-column: 1 / -1; }
+.circuit-row p { margin: 0; font-size: 14px; }
+.you-card { display: grid; grid-template-columns: 5px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line); border-radius: 4px; }
+.you-card .livery { align-self: stretch; border-radius: 1px; }
+.you-card .who { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.you-card .who b { font-size: 16px; color: var(--text); text-transform: uppercase; letter-spacing: 0.04em; }
+.more-settings summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 4px 0; }
+.more-settings summary:hover { color: var(--text); }
+.more-settings .more-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; padding-top: 10px; }
+@media (max-width: 760px) {
+  .setup-row.lengths, .more-settings .more-grid { grid-template-columns: 1fr 1fr; }
+  .setup-row.lengths .check { grid-column: 1 / -1; }
+}
 .report-predictions { margin: 10px 18px 0; padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 4px; }
 .report-predictions h3 { margin: 0 0 8px; font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.14em; }
 .report-predictions ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -513,7 +543,7 @@ body.on-grid #topbar, body.on-grid .drawer { z-index: 11; }
 .grid-panel h1 { margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
 .grid-info { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 button.go { font-size: 17px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 28px; }
-.grid-columns { display: grid; grid-template-columns: 1fr 1.15fr 1.15fr 1fr; gap: 0; }
+.grid-columns { display: grid; grid-template-columns: 1fr 1.15fr 1.15fr; gap: 0; }
 .grid-columns > section { padding: 16px 22px 20px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--line); }
 .grid-columns > section:last-child { border-right: none; }
 .grid-columns h2 { margin: 0 0 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }

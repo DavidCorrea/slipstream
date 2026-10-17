@@ -14,6 +14,7 @@ import { createReport } from './report.js';
 import { createPredictions } from './predictions.js';
 import { createGhost } from './ghost.js';
 import { createGridIntro } from './grid-intro.js';
+import { createGridMenu } from './grid-menu.js';
 import { createHud } from './hud.js';
 import { createRaceEvents, radioLines } from './race-events.js';
 import { blend, createReplay, replayAt } from './replay.js';
@@ -65,6 +66,7 @@ const feed = createFeed({ onSelect: id => select(id) });
 const raceControl = createRaceControl();
 const qualifyingBoard = createQualifyingBoard({ onDone: () => startFromTheGrid(true) });
 const QUALIFYING_KEY = 'slipstream.qualifying';
+const gridMenu = createGridMenu({ onChange: () => startRace(true) });
 const predictions = createPredictions();
 const report = createReport({
   onNext: () => startRace(), onAgain: () => startRace(true),
@@ -246,6 +248,8 @@ function showGrid(intro) {
   const kind = format.kind === 'standard' ? '' : `${$('format').selectedOptions[0].text} · `;
   $('grid-info').textContent = `${kind}${state.location.label} · ${length} ${Math.round(intro.track.length)} m circuit`
     + ` · weather ${weatherChoice} · ${intro.cars.length} cars`;
+  $('circuit-summary').textContent = `${state.location.label} · ${Math.round(intro.track.length)} m · weather ${weatherChoice}`;
+  gridMenu.show(intro);
   openDrawer(null);
   $('grid-menu').classList.remove('hidden');
   document.body.classList.add('on-grid');
@@ -732,7 +736,6 @@ SPEEDS.forEach(speed => {
 });
 $('new-race').addEventListener('click', () => startRace());
 $('new-circuit').addEventListener('click', () => startRace());
-$('replay').addEventListener('click', () => startRace(true));
 $('go').addEventListener('click', () => startFromTheGrid());
 $('skip-intro').addEventListener('click', finishGridIntro);
 $('pause').addEventListener('click', () => setPaused(!state.paused));
@@ -758,24 +761,6 @@ $('automatic-replays').addEventListener('change', event => {
   }
 });
 $('brain').addEventListener('change', () => startRace(true));
-$('location').addEventListener('change', () => startRace(true));
-// What each format does, under the picker; the race time only matters to a timed race.
-const FORMAT_NOTES = {
-  standard: 'The laps you set, from the grid as drawn.',
-  reverse: 'The grid turned round: the front row starts at the back.',
-  sprint: 'A third of the laps, flat out.',
-  elimination: 'From lap 2, the last car is out each time the leader completes a lap, until three are left.',
-  endurance: 'Twice the laps and two mandatory stops: 30 s for every finisher short of them.',
-  timed: 'Against the clock: when the time is up, the leader’s next lap is the last.',
-};
-function showFormat() {
-  $('format-note').textContent = FORMAT_NOTES[$('format').value];
-  $('minutes-field').classList.toggle('hidden', $('format').value !== 'timed');
-  $('laps').disabled = $('format').value === 'timed';
-}
-showFormat();
-$('format').addEventListener('change', () => { showFormat(); startRace(true); });
-$('minutes').addEventListener('change', () => startRace(true));
 $('pitwall').addEventListener('change', () => startRace(true));
 document.querySelectorAll('#camera [data-camera]').forEach(button => button.addEventListener('click', () => setCamera(button.dataset.camera)));
 

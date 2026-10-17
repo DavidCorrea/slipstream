@@ -38,6 +38,7 @@ NETWORK_FILES = ('.zip', '.npz')
 SCRIPTED = 'scripted'
 STATS = (*traits.TRAITS, *SPEC_DEFAULTS, 'balance')
 COLOUR = re.compile(r'#[0-9a-f]{6}')
+QUALIFYING_LAPS = 2      # an out lap from the pit straight, then a flying lap
 
 
 DRIVER_DECIDES = 'driver'
@@ -108,17 +109,22 @@ def spec_value(name, slider):
 
 class RaceSession:
     def __init__(self, brain_id=SCRIPTED, seed=None, cars=6, laps=3, runs=RUNS, yours=None, edited=None, names=None, pitwall_id=DRIVER_DECIDES,
-                 forecast=None, location=None, colors=None, race_format=STANDARD, minutes=None):
+                 forecast=None, location=None, colors=None, race_format=STANDARD, minutes=None, grid=None, race_days=None):
         """`yours` is the key of the driver you race with (the cast's first when not given; they always make the
         field). `edited` maps driver keys to the stats you gave them, which they keep exactly; everyone else turns
         up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them, and
         `colors` to the colours you painted their cars. `forecast` picks the weather (see weather.FORECASTS)
         and `location` the scenery and everything in it the cars can hit (see scenery.LOCATIONS); without them, the
-        seed decides. `race_format` is one of formats.FORMATS (`minutes` long, for a timed race)."""
+        seed decides. `race_format` is one of formats.FORMATS (`minutes` long, for a timed race). `grid` (driver keys,
+        pole first) lines the field up as qualifying left it, and `race_days` keeps each driver's stats for the day."""
+        self._setup = {'brain_id': brain_id, 'seed': seed, 'cars': cars, 'laps': laps, 'runs': runs, 'pitwall_id': pitwall_id,
+                       'forecast': forecast, 'location': location, 'race_format': race_format, 'minutes': minutes}
         self.brain_id, self.pitwall_id = brain_id, pitwall_id
         self.policy = None if brain_id == SCRIPTED else load_policy(brain_path(brain_id, runs))
         self.pitwall = None if pitwall_id in (DRIVER_DECIDES, SCRIPTED_STRATEGIST) else load_policy(brain_path(pitwall_id, runs))
         self.seed = int(np.random.default_rng().integers(2 ** 31)) if seed is None else seed
+        self._setup['seed'] = self.seed
+        self.forecast = forecast
         track = generate_track(self.seed)
         # Drivers by feel learned with the lane driven for them and without lights or flags; the scripted driver and
         # racing drivers drive the lane themselves, wait for the lights and mind the flags.
@@ -143,11 +149,17 @@ class RaceSession:
         # Its own stream, so the cast's draw doesn't shift the circuit's weather or the drivers' hands.
         cast_rng = np.random.default_rng(self.seed + 2)
         self.lineup = cast.lineup(cars, cast_rng, must_race=your_key)
-        if race_format == REVERSE:
+        if grid is not None:
+            if sorted(grid) != sorted(driver.key for driver in self.lineup):
+                raise ValueError(f'A grid must be the drivers racing, {[driver.key for driver in self.lineup]}, got {grid!r}')
+            self.lineup = [cast.BY_KEY[key] for key in grid]
+        elif race_format == REVERSE:
             self.lineup = self.lineup[::-1]
         self.yours = [driver.key for driver in self.lineup].index(your_key)
         self.personality = traits.neutral(cars)
         self.stats = [cast.race_day(driver, cast_rng) for driver in self.lineup]
+        if race_days is not None:
+            self.stats = [dict(race_days[driver.key]) for driver in self.lineup]
         self.edited = {driver.key for driver in self.lineup if driver.key in (edited or {})}
         for car, driver in enumerate(self.lineup):
             self._apply(car, {**self.stats[car], **(edited or {}).get(driver.key, {})})
@@ -239,6 +251,42 @@ class RaceSession:
         if not isinstance(tidy, str) or not COLOUR.fullmatch(tidy):
             raise ValueError(f"A car's colour must be six hex digits like '#a1b2c3', got {color!r}")
         self.colors[key] = tidy
+
+    def qualify(self):
+        """Qualifying: every car alone on the circuit (they pass through each other) for an out lap and
+        QUALIFYING_LAPS - 1 flying laps, as the race would run them (the same driver, traits, car, weather and
+        scenery). Returns (driver key, best lap time or None) pairs, fastest first, cars without a time last."""
+        race, count = self.race, self.race.count
+        track = race.track
+        laps = QUALIFYING_LAPS
+        session = Race(track, race.specs, laps, ghosts=True, weather=Weather.for_race(self.seed, track.length, laps, self.forecast),
+                       stewards=False, assisted=race.assisted, flags=False)
+        if race.driving is not None:
+            session.driving = Driving(count, np.random.default_rng(self.seed + 3), consistency=race.driving.consistency, stamina=race.driving.stamina)
+        session.place_props(place(track, session.pit, self.seed, self.location))
+        driver = NetworkDriver(self.policy, count) if self.policy is not None else None
+        timing = Timing(track.length, count)
+        everyone, staying_out = np.ones(count, dtype=bool), np.zeros(count, dtype=bool)
+        controls = None
+        while not session.done:
+            if controls is None or session.tick % DECISION_TICKS == 0:
+                session.radio = np.zeros(count, dtype=int)
+                steer, throttle, brake, _, plan, limiter, reverse, engine = field_controls(session, driver, everyone, self.personality)
+                controls = (steer, throttle, brake, staying_out, plan, limiter, reverse, engine)
+            time_before, progress_before = session.time, session.progress.copy()
+            session.step(*controls)
+            timing.record(time_before, session.time, progress_before, session.progress)
+        times = [None if np.isnan(time) else round(float(time), 3) for time in timing.best_lap]
+        ranked = sorted(range(count), key=lambda car: (times[car] is None, times[car] or 0.0))
+        return [(self.lineup[car].key, times[car]) for car in ranked]
+
+    def regrid(self, order):
+        """This race again with the field lined up in `order` (driver keys, pole first): everyone keeps their stats,
+        edits, name and colour, and you keep your car."""
+        days = {driver.key: stats for driver, stats in zip(self.lineup, self.stats)}
+        edited = {driver.key: stats for driver, stats in zip(self.lineup, self.stats) if driver.key in self.edited}
+        return RaceSession(**self._setup, yours=self.lineup[self.yours].key, edited=edited, names=self.names,
+                           colors=self.colors, grid=list(order), race_days=days)
 
     def set_yours(self, car):
         """Makes another car yours before the start. Every driver keeps their own traits and car."""

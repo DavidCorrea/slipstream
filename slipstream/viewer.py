@@ -7,7 +7,7 @@ them over a websocket (server.py), and in a browser they go between the page and
 import json
 
 from .car import DT
-from .formats import FORMATS, STANDARD, TIMED_MINUTES
+from .formats import FORMATS, REVERSE, STANDARD, TIMED_MINUTES
 from .session import DRIVER_DECIDES, RUNS, SCRIPTED, RaceSession
 
 FRAMES_PER_SECOND = 20
@@ -82,6 +82,17 @@ class Viewer:
         self.on_grid = True
         await self.socket.send_json(self.session.intro())
 
+    async def qualify(self):
+        """Qualifying, then the race again on the grid it set (turned round for a reverse grid), with the times."""
+        results = self.session.qualify()
+        order = [key for key, _ in results]
+        self.session = self.session.regrid(order[::-1] if self.settings['format'] == REVERSE else order)
+        if self.pit:
+            self.session.set_pit(self.pit['strategy'], self.pit['plan'])
+        intro = self.session.intro()
+        intro['qualifying'] = [{'key': key, 'time': time} for key, time in results]
+        await self.socket.send_json(intro)
+
     async def receive(self, text):
         """A message from the tab as sent, answering one it can't use with an error rather than failing."""
         try:
@@ -96,6 +107,8 @@ class Viewer:
                              message.get('weather'), message.get('location'), message.get('format'), message.get('minutes'))
         elif kind == 'go':
             self.on_grid = False
+        elif kind == 'qualify' and self.session and self.on_grid:
+            await self.qualify()
         elif kind == 'speed' and message.get('value') in SPEEDS:
             self.speed = float(message['value'])
         elif kind == 'pause':

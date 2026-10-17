@@ -236,9 +236,29 @@ const RADIO = {
   crash: { speaker: 'driver', lines: ['I am in the wall. Sorry guys.', 'I crashed, the car is finished.', 'I am out, I hit the barrier.'] },
   penalty: { speaker: 'engineer', lines: ['We have a time penalty. Keep pushing.', 'Stewards have given us a penalty. Head down.', 'Penalty from the stewards. We need a gap behind.'] },
   barrier: { speaker: 'driver', lines: ['I hit the wall! Check the car.', 'Touched the barrier, I think it is okay.', 'Big hit, big hit! Still going.'] },
+  // Your radio orders (team-radio.js), and how your driver answers them.
+  'order.push': { speaker: 'engineer', lines: ['Push now, push now. Everything you have.', 'Okay, time to push. Full power.', 'Go, go, go. Push mode.'] },
+  'order.normal': { speaker: 'engineer', lines: ['Back to standard pace now.', 'Normal mode, bring it back to target.'] },
+  'order.save': { speaker: 'engineer', lines: ['We need to save. Lift and coast, look after the tyres.', 'Save mode please. Manage the tyres and the fuel.'] },
+  'order.autoPace': { speaker: 'engineer', lines: ['Okay, we will tell you when to push.', 'Leave the pace with us now.'] },
+  'order.attack': { speaker: 'engineer', lines: ['Attack mode. Go and get him.', 'Time to attack. We need those places.'] },
+  'order.defend': { speaker: 'engineer', lines: ['Defend your position. Cover the inside.', 'Hold position, no mistakes. Cover him.'] },
+  'order.bring_it_home': { speaker: 'engineer', lines: ['Bring it home now. No risks.', 'Just bring the car home, nice and clean.'] },
+  'order.autoApproach': { speaker: 'engineer', lines: ['Race your own race now.', 'Your call out there.'] },
+  'order.stayOut': { speaker: 'engineer', lines: ['Stay out, stay out.', 'Stay out this lap, stay out.'] },
+  'order.cancelBox': { speaker: 'engineer', lines: ['Cancel that, stay out.', 'Forget the stop, stay out.'] },
+  'reply.push': { speaker: 'driver', lines: ['Copy, pushing.', 'Understood, going for it.', 'Okay, flat out.'] },
+  'reply.normal': { speaker: 'driver', lines: ['Copy.', 'Understood, standard pace.'] },
+  'reply.save': { speaker: 'driver', lines: ['Copy, saving.', 'Okay, managing it.'] },
+  'reply.attack': { speaker: 'driver', lines: ['Let us go!', 'Copy, I am going for it.'] },
+  'reply.defend': { speaker: 'driver', lines: ['Copy, defending.', 'He is not getting past.'] },
+  'reply.bring_it_home': { speaker: 'driver', lines: ['Copy, bringing it home.', 'Understood, nice and easy.'] },
+  'reply.box': { speaker: 'driver', lines: ['Copy, boxing.', 'Box, understood.'] },
+  'reply.stayOut': { speaker: 'driver', lines: ['Copy, staying out.', 'Staying out, understood.'] },
+  'reply.copy': { speaker: 'driver', lines: ['Copy.', 'Understood.'] },
 };
 
-function radio(kind, car) {
+export function radio(kind, car) {
   return { car, speaker: RADIO[kind].speaker, text: pick(RADIO[kind].lines) };
 }
 

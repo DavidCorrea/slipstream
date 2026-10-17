@@ -20,6 +20,7 @@ import { createStage, timeOfDay, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
 import { createSpeech } from './speech.js';
 import { createStats } from './stats.js';
+import { createTeamRadio } from './team-radio.js';
 import { LOCATIONS } from './scenery.js';
 import { createWeather } from './weather.js';
 
@@ -68,6 +69,11 @@ window.addEventListener('resize', () => {
 });
 const speech = createSpeech({ onProgress: showVoicesProgress, knownLines: radioLines() });
 const broadcaster = createBroadcaster({ onStatus: text => hud.status(text), speech });
+const teamRadio = createTeamRadio({
+  send: message => send(message),
+  onSay: moments => { feed.add(moments); broadcaster.notice(moments); },
+  raceTime: () => state.current?.time ?? 0,
+});
 
 const state = {
   socket: null, worker: null, race: null, circuit: null, effects: null, crews: null, cars: [],
@@ -198,6 +204,7 @@ function setUpRace(intro) {
   raceEvents.reset(intro);
   feed.reset(intro);
   raceControl.reset(intro);
+  teamRadio.setRace(intro);
   ghost.reset();
   director.reset(intro, state.circuit);
   broadcaster.reset(intro, intro.yours);
@@ -224,6 +231,7 @@ function showGrid(intro) {
 
 // Start race: the grid as the broadcast shows it first (grid-intro.js), unless that's turned off, then the lights.
 function startFromTheGrid() {
+  if (!state.race) return;
   if (!gridIntroWanted()) return lightsOut();
   $('grid-menu').classList.add('hidden');
   document.body.classList.remove('on-grid');
@@ -401,6 +409,7 @@ function renderLive(frame, seconds, now) {
   state.circuit.update(frame.time, Math.hypot(...(frame.weather.wind ?? [0, 0])), frame.marshals);
   state.crews.update(frame.time, frame, state.cars);
   racer.update(frame);
+  teamRadio.update(frame, state.yours);
   const height = stage.pixelsTall();
   let pixelsPerMetre = height / (2 * stage.view.zoom);
   state.shot = state.cameraMode === 'tv' ? director.update(frame, seconds, now) : null;

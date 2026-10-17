@@ -222,6 +222,27 @@
     </div>
   </section>
 
+  <!-- Team radio to your driver (team-radio.js) -->
+  <section id="team-radio" class="chrome hidden" aria-label="Team radio">
+    <header><b>Team radio</b><span id="radio-driver"></span></header>
+    <div class="radio-row"><small>Pace</small><div class="segmented">
+      <button data-pace="auto" title="The pit wall decides">Auto</button>
+      <button data-pace="push">Push</button>
+      <button data-pace="normal">Normal</button>
+      <button data-pace="save" title="Save tyres and fuel">Save</button>
+    </div></div>
+    <div class="radio-row"><small>Approach</small><div class="segmented">
+      <button data-approach="auto" title="Their usual self">Own call</button>
+      <button data-approach="attack">Attack</button>
+      <button data-approach="defend">Defend</button>
+      <button data-approach="bring_it_home">Bring it home</button>
+    </div></div>
+    <div class="radio-row"><small>Pit</small><div class="radio-pit">
+      <button id="radio-box" class="box">Box this lap</button>
+      <button id="radio-stay-out" class="secondary">Stay out</button>
+    </div></div>
+  </section>
+
   <!-- Playback and cameras -->
   <section id="dock" class="chrome">
     <button id="pause" class="icon" title="Pause (Space)" aria-label="Pause"></button>
@@ -234,6 +255,7 @@
       <button data-camera="driver" title="Through the selected driver's eyes (D)">Driver</button>
     </div>
     <span class="divider"></span>
+    <button id="radio-toggle" class="toggle" title="Orders to your driver: pace, approach, pit">Radio</button>
     <button id="ghost" class="toggle" title="A see-through car driving the fastest lap, in step with the selected car (G)">Ghost</button>
     <button id="replay-last" class="toggle" title="The last ten seconds again, in slow motion, watching the selected car (R)">Replay</button>
     <button id="hide-ui" class="toggle" title="Only the race on screen; H, Esc or a tap brings this back (H)">Hide UI</button>

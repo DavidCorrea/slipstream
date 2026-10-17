@@ -180,6 +180,21 @@ button.box.called { background: var(--yours); border-color: var(--yours); color:
 
 /* ---- Race feed ------------------------------------------------------------------------------------ */
 
+/* Team radio (team-radio.js): bottom left, with the feed above it while it's open. */
+#team-radio { left: var(--gutter); bottom: var(--gutter); width: 316px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+#team-radio header { display: flex; gap: 8px; align-items: baseline; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+#team-radio header b { color: var(--accent); }
+#team-radio header span { color: var(--muted); letter-spacing: 0.06em; }
+#team-radio .radio-row { display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 6px; }
+#team-radio .radio-row small { font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; }
+#team-radio .segmented { display: flex; }
+#team-radio .segmented button { flex: 1 1 auto; padding: 4px 3px; font-size: 11.5px; white-space: nowrap; }
+#team-radio .radio-pit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#team-radio .radio-pit button { padding: 5px 6px; font-size: 12px; }
+#team-radio .radio-pit button.active { color: var(--text); border-color: var(--text); }
+#team-radio.disabled { opacity: 0.4; pointer-events: none; }
+body.radio-open #feed { bottom: calc(var(--gutter) + 150px); }
+body.on-grid #team-radio, body.grid-intro #team-radio { display: none !important; }
 #feed { left: var(--gutter); bottom: var(--gutter); width: 340px; background: none; border: none; box-shadow: none; backdrop-filter: none; }
 #feed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column-reverse; gap: 3px; }
 #feed-list li {
@@ -273,7 +288,7 @@ button.box.called { background: var(--yours); border-color: var(--yours); color:
 #dock .divider { width: 1px; height: 20px; background: var(--line-strong); }
 #dock button.icon { width: 32px; height: 30px; padding: 0; display: grid; place-items: center; background: var(--text); color: #0b0d13; border: none; }
 #dock button.icon svg { width: 12px; height: 12px; fill: currentColor; }
-#dock button.toggle { background: transparent; color: var(--muted); font-size: 13px; padding: 5px 10px; }
+#dock button.toggle { background: transparent; color: var(--muted); font-size: 13px; padding: 5px 10px; white-space: nowrap; }
 #dock button.toggle.active { color: var(--text); background: rgba(161, 77, 255, 0.25); border-color: rgba(161, 77, 255, 0.6); }
 
 /* TV mode is a broadcast: the controls step aside while the mouse is still. */
@@ -372,6 +387,7 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
   #standings { width: 200px; }
   #tower li { grid-template-columns: 18px 3px minmax(0, 1fr) 26px 52px; gap: 6px; }
   #telemetry, .seed, .wordmark { display: none !important; }
+  #team-radio { left: var(--gutter); right: var(--gutter); width: auto; bottom: 64px; }
   .drawer { left: var(--gutter); width: auto; max-height: calc(100vh - 140px); }
   #dock { max-width: calc(100vw - 32px); overflow-x: auto; }
   #dock #speeds button:nth-child(1), #dock #speeds button:nth-child(5) { display: none; }

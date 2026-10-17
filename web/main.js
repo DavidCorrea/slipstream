@@ -22,6 +22,7 @@ import { createReplayCamera } from './replay-camera.js';
 import { createRacerPanel } from './racer.js';
 import { createStage, timeOfDay, toWorld } from './scene.js';
 import { createLoadingScreen } from './loading.js';
+import { createMenus } from './menus.js';
 import { createSpeech } from './speech.js';
 import { createStats } from './stats.js';
 import { createTeamRadio } from './team-radio.js';
@@ -38,12 +39,16 @@ const PLAY_ICON = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
 const IDLE_MS = 2500;
 const EFFECTS_KEY = 'slipstream.effects';
 const GRID_INTRO_KEY = 'slipstream.gridIntro';
+const LOG_KEY = 'slipstream.log';
+const CAMERA_NAMES = { follow: 'Follow', tv: 'TV', driver: 'Driver', overview: 'Circuit' };
 const FRAME_SECONDS = 1 / 20;
 const $ = id => document.getElementById(id);
 
 const stage = createStage($('scene'));
 const stats = createStats(stage.renderer);
-const hud = createHud({ onSelect: id => select(id) });
+// Clicking your own row in the tower opens your car's panel as well.
+const hud = createHud({ onSelect: id => { select(id); if (id === state.yours) openDrawer('racer-drawer'); } });
+const menus = createMenus();
 const racer = createRacerPanel({
   send: message => send(message),
   onYours: car => { state.yours = car; broadcaster.setYours(car); report.setYours(car); select(car); },
@@ -686,12 +691,14 @@ function setCamera(mode) {
   // The isometric rig keeps following the car under the driver's eyes, for the sun's shadows.
   stage.view.setMode(mode === 'driver' ? 'follow' : mode, state.circuit);
   document.querySelectorAll('#camera [data-camera]').forEach(button => button.classList.toggle('active', button.dataset.camera === mode));
+  $('camera-button').textContent = CAMERA_NAMES[mode];
 }
 
 function setSpeed(speed) {
   state.speed = speed;
   send({ type: 'speed', value: speed * PLAYBACK });
   document.querySelectorAll('#speeds button').forEach(button => button.classList.toggle('active', Number(button.dataset.speed) === speed));
+  $('speed-button').textContent = `${speed}×`;
 }
 
 function setPaused(paused) {
@@ -778,6 +785,7 @@ window.addEventListener('keydown', event => {
   else if (event.key === 't') setCamera('tv');
   else if (event.key === 'o') setCamera('overview');
   else if (event.key === 'd') setCamera('driver');
+  else if (event.key === 'y' || event.key === 'Y') openDrawer($('racer-drawer').classList.contains('hidden') ? 'racer-drawer' : null);
   else if (event.key === 'g') setGhost(!ghost.enabled);
   else if (event.key === 'r' || event.key === 'R') replayLastMoments();
   else if (event.key === 'h' || event.key === 'H') setImmersive(!document.body.classList.contains('immersive'));
@@ -901,13 +909,42 @@ document.querySelectorAll('[data-drawer]').forEach(button => button.addEventList
 }));
 document.querySelectorAll('.drawer .close').forEach(button => button.addEventListener('click', () => openDrawer(null)));
 
+// The controls step aside after a little while without the mouse moving (or a tap), as a video player's do, unless
+// a menu is open or the pointer is on them.
 let idleTimer = null;
 function noticeActivity() {
   document.body.classList.remove('watching');
   clearTimeout(idleTimer);
-  if (state.cameraMode === 'tv') idleTimer = setTimeout(() => document.body.classList.add('watching'), IDLE_MS);
+  idleTimer = setTimeout(() => {
+    if (menus.open || document.querySelector('#dock:hover, #topbar:hover')) return noticeActivity();
+    document.body.classList.add('watching');
+  }, IDLE_MS);
 }
 window.addEventListener('pointermove', noticeActivity);
+window.addEventListener('pointerdown', noticeActivity);
+
+// Your car's panel: radio, strategy and data, one tab at a time.
+function showCarTab(name) {
+  document.querySelectorAll('[data-car-tab]').forEach(element => {
+    if (element.tagName === 'BUTTON') element.classList.toggle('active', element.dataset.carTab === name);
+    else element.classList.toggle('hidden', element.dataset.carTab !== name);
+  });
+}
+document.querySelectorAll('button[data-car-tab]').forEach(button => button.addEventListener('click', () => showCarTab(button.dataset.carTab)));
+showCarTab('radio');
+
+// The race log (the feed) opens from the foot of the tower and stays as you left it.
+function showLog(open) {
+  $('feed').classList.toggle('hidden', !open);
+  $('log-toggle').setAttribute('aria-expanded', String(open));
+  $('log-toggle').classList.toggle('open', open);
+}
+showLog(remembered(LOG_KEY) === 'open');
+$('log-toggle').addEventListener('click', () => {
+  const open = $('feed').classList.contains('hidden');
+  showLog(open);
+  remember(LOG_KEY, open ? 'open' : 'closed');
+});
 $('commentary').addEventListener('change', event => setCommentary(event.target.value));
 $('load-commentator').addEventListener('click', async () => {
   $('load-commentator').disabled = true;

@@ -55,7 +55,7 @@ function character(stats) {
 
 export function createRacerPanel({ send, onYours, onFollow, onRename, onRecolor }) {
   const inputs = new Map(), planInputs = new Map();
-  let ranges = {}, pending = {}, timer = null, current = null, plan = {}, boxCalled = false, editing = 0;
+  let ranges = {}, pending = {}, timer = null, current = null, plan = {}, editing = 0;
 
   // The field in grid order, as cards in their colours: yours is marked, and the one being set up is outlined.
   // Your car on the race tab: who you are, where you start, and the way into the garage.
@@ -184,7 +184,6 @@ export function createRacerPanel({ send, onYours, onFollow, onRename, onRecolor 
     send({ type: 'pit', strategy: button.dataset.strategy });
     showStrategy(button.dataset.strategy);
   }));
-  $('box').addEventListener('click', () => send({ type: 'pit', box: !boxCalled }));
   function showStrategy(strategy) {
     document.querySelectorAll('[data-strategy]').forEach(button => button.classList.toggle('active', button.dataset.strategy === strategy));
     $('pit-plan').classList.toggle('disabled', strategy !== 'mine');
@@ -231,13 +230,10 @@ export function createRacerPanel({ send, onYours, onFollow, onRename, onRecolor 
     update(frame) {
       if (!current) return;
       const car = current.yours;
-      boxCalled = frame.yourPit?.boxCalled ?? false;
-      const box = $('box');
-      box.classList.toggle('called', boxCalled);
-      box.textContent = boxCalled ? 'Called in · cancel' : 'Box this lap';
+      const boxCalled = frame.yourPit?.boxCalled ?? false;
       const pit = frame.cars.pit[car];
       const lines = {
-        0: frame.yourPit?.strategy === 'ai' ? 'The AI decides when to stop.' : boxCalled ? '' : 'Racing. Set a plan, then call it in.',
+        0: frame.yourPit?.strategy === 'ai' ? 'The AI decides when to stop.' : boxCalled ? '' : 'Racing. Set a plan, then box from the radio.',
         1: 'Pitting at the end of this lap.',
         2: 'In the pit lane, at the speed limit.',
         3: `Stopped: ${frame.cars.serviceLeft[car].toFixed(1)} s to go.`,

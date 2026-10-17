@@ -16,7 +16,6 @@ const APPROACH_REPLIES = { auto: 'reply.copy', attack: 'reply.attack', defend: '
 export function createTeamRadio({ send, onSay, raceTime }) {
   const panel = $('team-radio');
   let race = null, yours = 0, boxCalled = false;
-  const panelKey = 'slipstream.radio';
 
   // The order in the engineer's words now, the driver's answer a moment later.
   function say(order, reply) {
@@ -44,19 +43,6 @@ export function createTeamRadio({ send, onSay, raceTime }) {
     say('order.stayOut', 'reply.stayOut');
   });
 
-  // The panel opens and closes from the dock, and stays as you left it.
-  function show(open) {
-    panel.classList.toggle('hidden', !open);
-    document.body.classList.toggle('radio-open', open);
-    $('radio-toggle').classList.toggle('active', open);
-  }
-  show(remembered(panelKey) !== 'closed');
-  $('radio-toggle').addEventListener('click', () => {
-    const open = panel.classList.contains('hidden');
-    show(open);
-    remember(panelKey, open ? 'open' : 'closed');
-  });
-
   const highlight = (attribute, value) => panel.querySelectorAll(`[data-${attribute}]`)
     .forEach(button => button.classList.toggle('active', button.dataset[attribute] === value));
 
@@ -80,23 +66,10 @@ export function createTeamRadio({ send, onSay, raceTime }) {
       $('radio-stay-out').classList.toggle('active', !!frame.yourPit?.stayingOut);
       const out = frame.cars.retired?.[yours] || frame.cars.finishTime[yours] !== null;
       panel.classList.toggle('disabled', !!out);
-      $('radio-driver').textContent = race.cars[yours].name;
+      const place = frame.order.indexOf(yours) + 1;
+      const where = frame.cars.retired?.[yours] ? 'out' : frame.cars.finishTime[yours] !== null ? `finished P${place}` : `P${place}`;
+      $('car-drawer-title').textContent = `${race.cars[yours].name} · ${where}`;
     },
   };
 }
 
-function remembered(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function remember(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Private windows and blocked storage just don't remember it.
-  }
-}

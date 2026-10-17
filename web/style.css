@@ -123,6 +123,40 @@ button.ghost-button:hover, button.ghost-button.open { color: var(--text); backgr
 #tower li.retired { opacity: 0.45; }
 #tower li.retired .gap { color: var(--brake); }
 
+/* Your row in the tower glows; the race log opens from the tower's foot. */
+#tower li.mine { box-shadow: inset 3px 0 0 var(--yours); background: rgba(255, 210, 63, 0.09); }
+#tower li.mine.selected { background: rgba(255, 210, 63, 0.16); }
+.tower-foot { display: block; width: 100%; padding: 6px 12px 7px; background: none; border: none; border-top: 1px solid var(--line); border-radius: 0;
+  color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; text-align: left; }
+.tower-foot::after { content: ' ▾'; }
+.tower-foot.open::after { content: ' ▴'; }
+.tower-foot:hover, .tower-foot.open { color: var(--text); }
+
+/* Pop-up menus (menus.js). */
+.menu-anchor { position: relative; }
+.menu { position: absolute; z-index: 20; display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 5px; background: rgba(12, 14, 20, 0.97);
+  border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.menu.up { bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); }
+.menu.up.right { left: auto; right: 0; transform: none; }
+.menu > button, .menu #camera button { display: flex; justify-content: space-between; align-items: center; gap: 16px; width: 100%; padding: 7px 10px; background: none;
+  border: none; border-radius: 4px; color: var(--muted); font-size: 13px; text-align: left; white-space: nowrap; }
+.menu > button:hover, .menu #camera button:hover { color: var(--text); background: rgba(255, 255, 255, 0.07); }
+.menu #camera { display: flex; flex-direction: column; gap: 2px; }
+.menu #camera button.active, .menu > button.active { color: var(--text); background: rgba(161, 77, 255, 0.25); }
+.menu kbd { font: 400 10px var(--mono); color: var(--faint); border: 1px solid var(--line-strong); border-radius: 3px; padding: 0 4px; }
+.menu #speeds { display: flex; }
+#topbar .menu { top: calc(100% + 6px); right: 0; }
+#dock .your-car .star { color: var(--yours); }
+
+/* Your car's panel (the racer drawer): radio, strategy, data. */
+.drawer-tabs { display: flex; gap: 2px; margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.drawer-tabs button { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 7px 10px 6px; color: var(--muted);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.drawer-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.car-tab { display: flex; flex-direction: column; gap: 10px; }
+.car-tab.hidden { display: none; }
+#racer-drawer .pit-wall .bars, #racer-drawer .pit-wall .temps, #racer-drawer .pit-wall .setup { padding-left: 0; padding-right: 0; margin-left: 0; margin-right: 0; }
+
 /* ---- Top bar and drawers -------------------------------------------------------------------------- */
 
 #topbar { top: var(--gutter); right: var(--gutter); display: flex; align-items: center; gap: 4px; padding: 5px 5px 5px 14px; }
@@ -182,21 +216,16 @@ button.box.called { background: var(--yours); border-color: var(--yours); color:
 
 /* ---- Race feed ------------------------------------------------------------------------------------ */
 
-/* Team radio (team-radio.js): bottom left, with the feed above it while it's open. */
-#team-radio { left: var(--gutter); bottom: var(--gutter); width: 316px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
-#team-radio header { display: flex; gap: 8px; align-items: baseline; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
-#team-radio header b { color: var(--accent); }
-#team-radio header span { color: var(--muted); letter-spacing: 0.06em; }
-#team-radio .radio-row { display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 6px; }
+/* Team radio (team-radio.js), in your car's panel. */
+#team-radio { display: flex; flex-direction: column; gap: 8px; }
+#team-radio .radio-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 6px; }
 #team-radio .radio-row small { font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; }
 #team-radio .segmented { display: flex; }
-#team-radio .segmented button { flex: 1 1 auto; padding: 4px 3px; font-size: 11.5px; white-space: nowrap; }
-#team-radio .radio-pit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-#team-radio .radio-pit button { padding: 5px 6px; font-size: 12px; }
+#team-radio .segmented button { flex: 1 1 auto; padding: 5px 3px; font-size: 12px; white-space: nowrap; }
+#team-radio .radio-pit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 2px; }
+#team-radio .radio-pit button { padding: 8px 6px; font-size: 12px; }
 #team-radio .radio-pit button.active { color: var(--text); border-color: var(--text); }
 #team-radio.disabled { opacity: 0.4; pointer-events: none; }
-body.radio-open #feed { bottom: calc(var(--gutter) + 150px); }
-body.on-grid #team-radio, body.grid-intro #team-radio { display: none !important; }
 #feed { left: var(--gutter); bottom: var(--gutter); width: 340px; background: none; border: none; box-shadow: none; backdrop-filter: none; }
 #feed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column-reverse; gap: 3px; }
 #feed-list li {
@@ -243,11 +272,6 @@ body.on-grid #team-radio, body.grid-intro #team-radio { display: none !important
 .delta { display: block; font-size: 11px; }
 .delta.faster { color: var(--throttle); }
 .delta.slower { color: var(--brake); }
-.pit-wall-toggle {
-  display: block; width: calc(100% - 24px); margin: 10px 12px 0; padding: 4px 0; background: none; border: 1px solid var(--line-strong);
-  border-radius: 2px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; cursor: pointer;
-}
-.pit-wall-toggle:hover, .pit-wall-toggle.active { color: var(--text); }
 .bar em { font: 400 11px var(--mono); font-style: normal; color: var(--text); float: right; text-transform: none; letter-spacing: 0; }
 .bar.low em { color: var(--brake); }
 .bar.low b { background: var(--brake) !important; }
@@ -286,7 +310,7 @@ body.on-grid #team-radio, body.grid-intro #team-radio { display: none !important
 
 /* ---- Dock ----------------------------------------------------------------------------------------- */
 
-#dock { left: 50%; bottom: var(--gutter); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 5px; border-radius: 8px; }
+#dock { z-index: 8; left: 50%; bottom: var(--gutter); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 5px; border-radius: 8px; }
 #dock .divider { width: 1px; height: 20px; background: var(--line-strong); }
 #dock button.icon { width: 32px; height: 30px; padding: 0; display: grid; place-items: center; background: var(--text); color: #0b0d13; border: none; }
 #dock button.icon svg { width: 12px; height: 12px; fill: currentColor; }
@@ -495,6 +519,12 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
 #race-control b { background: #e8b923; color: #0b0d13; padding: 0 10px; font-size: 10px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; white-space: nowrap; }
 #race-control span { padding: 6px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
 #race-control strong { display: block; font-size: 15px; font-weight: 900; }
+@keyframes race-control-phone {
+  0% { opacity: 0; transform: translateY(8px); }
+  6% { opacity: 1; transform: none; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
 @keyframes race-control {
   0% { opacity: 0; transform: translate(-50%, -8px); }
   6% { opacity: 1; transform: translate(-50%, 0); }
@@ -513,8 +543,12 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
 @media (max-width: 760px) {
   #standings { width: 200px; }
   #tower li { grid-template-columns: 18px 3px minmax(0, 1fr) 26px 52px; gap: 6px; }
+  #tower li.deep { display: none; }
+  /* A phone's tower is too narrow for the tags beside a name: race control and the report have them. */
+  #tower li .penalty-tag, #tower li .tyre-age, #tower li .pitting { display: none !important; }
+  /* Under the tower's top five on a phone, race control comes up above the captions instead. */
+  #race-control { top: auto; bottom: 150px; left: var(--gutter); right: var(--gutter); transform: none; max-width: none; animation-name: race-control-phone; }
   #telemetry, .seed, .wordmark { display: none !important; }
-  #team-radio { left: var(--gutter); right: var(--gutter); width: auto; bottom: 64px; }
   .drawer { left: var(--gutter); width: auto; max-height: calc(100vh - 140px); }
   #dock { max-width: calc(100vw - 32px); overflow-x: auto; }
   #dock #speeds button:nth-child(1), #dock #speeds button:nth-child(5) { display: none; }

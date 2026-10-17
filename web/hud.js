@@ -8,7 +8,6 @@ const $ = id => document.getElementById(id);
 // Each compound's working window in the race's 0-1 temperature (see slipstream/car.py TYRE_WINDOW, ±0.06).
 const TYRE_WINDOWS = { soft: [0.49, 0.61], medium: [0.54, 0.66], hard: [0.59, 0.71], intermediate: [0.36, 0.48], wet: [0.26, 0.38] };
 
-const PIT_WALL_SETTING = 'slipstream.pitWall';
 // Below these the pit wall bars turn red: worth a stop, or a worry.
 const LOW = { tyres: 0.25, fuel: 0.15, brakes: 0.25 };
 const HEAVY_DAMAGE = 0.4;
@@ -28,22 +27,6 @@ function showBar(id, share, warn) {
   $(id).parentElement.parentElement.classList.toggle('low', warn);
 }
 
-function remembered(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function remember(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Private windows and blocked storage just don't remember it.
-  }
-}
-
 function formatDelta(seconds) {
   return `${seconds < 0 ? '−' : '+'}${Math.abs(seconds).toFixed(3)}`;
 }
@@ -57,18 +40,6 @@ export function createHud({ onSelect }) {
   // the onboard graphic shows next to the lap clock.
   let bestSplits = [], deltas = [];
 
-  const pitWall = $('pit-wall'), pitWallToggle = $('pit-wall-toggle');
-  function showPitWall(open) {
-    pitWall.classList.toggle('hidden', !open);
-    pitWallToggle.setAttribute('aria-expanded', String(open));
-    pitWallToggle.classList.toggle('active', open);
-  }
-  showPitWall(remembered(PIT_WALL_SETTING) === 'open');
-  pitWallToggle.addEventListener('click', () => {
-    const open = pitWall.classList.contains('hidden');
-    showPitWall(open);
-    remember(PIT_WALL_SETTING, open ? 'open' : 'closed');
-  });
 
   function formatTime(seconds) {
     const minutes = Math.floor(seconds / 60);
@@ -130,6 +101,9 @@ export function createHud({ onSelect }) {
         row.classList.toggle('gained', !!change && change.gained && change.until > now);
         row.classList.toggle('lost', !!change && !change.gained && change.until > now);
         row.classList.toggle('selected', id === selected);
+        // Your row glows; on a phone the tower shows the top five and you.
+        row.classList.toggle('mine', id === yours);
+        row.classList.toggle('deep', place >= 5 && id !== yours);
         row.classList.toggle('finished', cars.finishTime[id] !== null);
         row.querySelector('.place').textContent = place + 1;
         row.querySelector('.yours').textContent = id === yours ? '★' : '';
@@ -182,18 +156,20 @@ export function createHud({ onSelect }) {
       $('tele-tyre').className = `tyre ${compound}`;
       $('tele-tyre-text').textContent = `${compound[0].toUpperCase()}${compound.slice(1)}${tyreLaps === undefined ? '' : tyreLaps === 0 ? ' · new' : ` · ${tyreLaps} lap${tyreLaps === 1 ? '' : 's'} old`}`;
 
-      const tyresLeft = 1 - cars.tyreWear[selected], brakesLeft = 1 - cars.brakeWear[selected];
+      // Your car's data, which only your team sees: in the Data tab of your car's panel, whoever's on screen.
+      const mine = yours;
+      const tyresLeft = 1 - cars.tyreWear[mine], brakesLeft = 1 - cars.brakeWear[mine];
       showBar('tele-tyres', tyresLeft, tyresLeft < LOW.tyres);
-      showBar('tele-fuel', cars.fuel[selected], cars.fuel[selected] < LOW.fuel);
+      showBar('tele-fuel', cars.fuel[mine], cars.fuel[mine] < LOW.fuel);
       showBar('tele-brakes', brakesLeft, brakesLeft < LOW.brakes);
-      showBar('tele-damage', cars.damage[selected], cars.damage[selected] > HEAVY_DAMAGE);
-      const engineMode = cars.engine[selected] > 0.66 ? 'push' : cars.engine[selected] < 0.33 ? 'lean' : 'standard';
-      const balance = cars.balance?.[selected] ?? 0;
+      showBar('tele-damage', cars.damage[mine], cars.damage[mine] > HEAVY_DAMAGE);
+      const engineMode = cars.engine[mine] > 0.66 ? 'push' : cars.engine[mine] < 0.33 ? 'lean' : 'standard';
+      const balance = cars.balance?.[mine] ?? 0;
       const handling = balance > 0.2 ? ' · oversteers' : balance < -0.2 ? ' · understeers' : '';
-      $('tele-setup').textContent = `wing ${Math.round(cars.wing[selected] * 100)}% · ${engineMode} engine · ${cars.stops[selected]} stop${cars.stops[selected] === 1 ? '' : 's'}${handling}`;
-      showTemperature('temp-tyres', cars.tyreTemp?.[selected], TYRE_WINDOWS[compound], 20, 140);
-      showTemperature('temp-brakes', cars.brakeTemp?.[selected], [0.3, 0.85], 100, 1100);
-      showTemperature('temp-engine', cars.engineTemp?.[selected], [0.35, 0.8], 70, 130);
+      $('tele-setup').textContent = `${cars.compound[mine]} tyres · wing ${Math.round(cars.wing[mine] * 100)}% · ${engineMode} engine · ${cars.stops[mine]} stop${cars.stops[mine] === 1 ? '' : 's'}${handling}`;
+      showTemperature('temp-tyres', cars.tyreTemp?.[mine], TYRE_WINDOWS[cars.compound[mine]], 20, 140);
+      showTemperature('temp-brakes', cars.brakeTemp?.[mine], [0.3, 0.85], 100, 1100);
+      showTemperature('temp-engine', cars.engineTemp?.[mine], [0.35, 0.8], 70, 130);
 
       // What the car is doing now; penalties and retirements are race control's (race-control.js) and the tower's.
       const flags = [];

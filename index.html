@@ -24,15 +24,18 @@
     </header>
     <div id="weather-line"><span id="weather-text">Dry</span><i class="wet-bar"><b id="wet-bar"></b></i></div>
     <ol id="tower"></ol>
+    <button id="log-toggle" class="tower-foot" aria-expanded="false" aria-controls="feed">Race log</button>
   </section>
 
   <!-- Top bar -->
   <nav id="topbar" class="chrome">
     <span class="wordmark">Slipstream</span>
     <span id="seed" class="seed"></span>
-    <button class="ghost-button" data-drawer="setup-drawer">Settings</button>
-    <button class="ghost-button" data-drawer="racer-drawer"><span class="star">★</span> Pit wall</button>
-    <button id="new-race" class="primary">New race</button>
+    <button class="ghost-button" data-menu="main-menu" aria-haspopup="true">Menu</button>
+    <div id="main-menu" class="menu hidden" role="menu">
+      <button id="new-race" role="menuitem">New race</button>
+      <button data-drawer="setup-drawer" role="menuitem">Settings</button>
+    </div>
   </nav>
 
   <aside id="setup-drawer" class="drawer chrome hidden">
@@ -73,7 +76,7 @@
 
     <h3>Keys</h3>
     <dl class="keys">
-      <dt>Space</dt><dd>Pause</dd><dt>F · T · O</dt><dd>Follow · TV · Circuit</dd>
+      <dt>Space</dt><dd>Pause</dd><dt>F · T · D · O</dt><dd>Follow · TV · Driver · Circuit</dd><dt>Y</dt><dd>Your car</dd>
       <dt>G</dt><dd>Fastest-lap ghost</dd><dt>R · Esc</dt><dd>Replay the last 10 s · Skip it</dd><dt>1–8</dt><dd>Select a car</dd>
       <dt>Q · E</dt><dd>Rotate the view</dd><dt>Scroll</dt><dd>Zoom</dd>
     </dl>
@@ -81,31 +84,72 @@
 
   <aside id="racer-drawer" class="drawer chrome hidden">
     <header>
-      <h2><span class="star">★</span> Your pit wall</h2>
+      <h2><span class="star">★</span> <span id="car-drawer-title">Your car</span></h2>
       <button class="close" aria-label="Close">×</button>
     </header>
-    <p class="hint">Your driver and car were set on the grid. During the race you're the pit wall: call the stops and say what the crew does.</p>
+    <nav class="drawer-tabs" role="tablist">
+      <button role="tab" data-car-tab="radio">Radio</button>
+      <button role="tab" data-car-tab="strategy">Strategy</button>
+      <button role="tab" data-car-tab="data">Data</button>
+    </nav>
+    <!-- Team radio to your driver (team-radio.js) -->
+    <div id="team-radio" class="car-tab" data-car-tab="radio" role="tabpanel">
+      <div class="radio-row"><small>Pace</small><div class="segmented">
+        <button data-pace="auto" title="The pit wall decides">Auto</button>
+        <button data-pace="push">Push</button>
+        <button data-pace="normal">Normal</button>
+        <button data-pace="save" title="Save tyres and fuel">Save</button>
+      </div></div>
+      <div class="radio-row"><small>Approach</small><div class="segmented">
+        <button data-approach="auto" title="Their usual self">Own call</button>
+        <button data-approach="attack">Attack</button>
+        <button data-approach="defend">Defend</button>
+        <button data-approach="bring_it_home">Bring it home</button>
+      </div></div>
+      <div class="radio-pit">
+        <button id="radio-box" class="box">Box this lap</button>
+        <button id="radio-stay-out" class="secondary">Stay out</button>
+      </div>
+      <p class="hint">Your engineer says it on the radio and your driver answers.</p>
+    </div>
+    <div class="car-tab hidden" data-car-tab="strategy" role="tabpanel">
+      <p class="hint">Leave the stops to the AI, or set your own plan and call the stop from the radio.</p>
+      <div class="segmented">
+        <button data-strategy="ai">AI decides</button>
+        <button data-strategy="mine">My plan</button>
+      </div>
+      <div id="pit-plan" class="plan">
+        <div class="compounds">
+          <button data-compound="soft" class="tyre soft" title="Soft">S</button>
+          <button data-compound="medium" class="tyre medium" title="Medium">M</button>
+          <button data-compound="hard" class="tyre hard" title="Hard">H</button>
+          <button data-compound="intermediate" class="tyre intermediate" title="Intermediates">I</button>
+          <button data-compound="wet" class="tyre wet" title="Full wets">W</button>
+        </div>
+        <div class="sliders" id="plan-sliders"></div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="plan-repair" checked> Repair damage</label>
+          <label class="check"><input type="checkbox" id="plan-brakes"> New brakes</label>
+        </div>
+      </div>
+      <p id="pit-status" class="status-line"></p>
+    </div>
+    <!-- What only the team sees about your car (hud.js fills it in). -->
+    <div id="pit-wall" class="car-tab pit-wall hidden" data-car-tab="data" role="tabpanel">
+      <div class="bars">
+        <div class="bar"><span>Tyres left <em id="tele-tyres-value"></em></span><i><b id="tele-tyres" class="tyres"></b></i></div>
+        <div class="bar"><span>Fuel <em id="tele-fuel-value"></em></span><i><b id="tele-fuel" class="fuel"></b></i></div>
+        <div class="bar"><span>Brakes left <em id="tele-brakes-value"></em></span><i><b id="tele-brakes" class="brakes"></b></i></div>
+        <div class="bar"><span>Damage <em id="tele-damage-value"></em></span><i><b id="tele-damage" class="damage"></b></i></div>
+      </div>
+      <div class="temps">
+        <div><small>Tyres</small><span id="temp-tyres">–</span></div>
+        <div><small>Brakes</small><span id="temp-brakes">–</span></div>
+        <div><small>Engine</small><span id="temp-engine">–</span></div>
+      </div>
+      <div id="tele-setup" class="setup"></div>
+    </div>
     <button id="follow-yours" class="secondary">Follow your car</button>
-    <div class="segmented">
-      <button data-strategy="ai">AI decides</button>
-      <button data-strategy="mine">My plan</button>
-    </div>
-    <div id="pit-plan" class="plan">
-      <div class="compounds">
-        <button data-compound="soft" class="tyre soft" title="Soft">S</button>
-        <button data-compound="medium" class="tyre medium" title="Medium">M</button>
-        <button data-compound="hard" class="tyre hard" title="Hard">H</button>
-        <button data-compound="intermediate" class="tyre intermediate" title="Intermediates">I</button>
-        <button data-compound="wet" class="tyre wet" title="Full wets">W</button>
-      </div>
-      <div class="sliders" id="plan-sliders"></div>
-      <div class="checks">
-        <label class="check"><input type="checkbox" id="plan-repair" checked> Repair damage</label>
-        <label class="check"><input type="checkbox" id="plan-brakes"> New brakes</label>
-      </div>
-      <button id="box" class="box">Box this lap</button>
-    </div>
-    <p id="pit-status" class="status-line"></p>
   </aside>
 
   <!-- The grid: everything decided before the lights go out -->
@@ -273,61 +317,36 @@
       <div><small>Best</small><span id="lap-best">–</span></div>
     </div>
     <div id="sectors" class="sectors"><span>S1</span><span>S2</span><span>S3</span></div>
-    <!-- What only the team sees: the car's condition and temperatures. -->
-    <button id="pit-wall-toggle" class="pit-wall-toggle" aria-expanded="false" aria-controls="pit-wall">Pit wall data</button>
-    <div id="pit-wall" class="pit-wall hidden">
-      <div class="bars">
-        <div class="bar"><span>Tyres left <em id="tele-tyres-value"></em></span><i><b id="tele-tyres" class="tyres"></b></i></div>
-        <div class="bar"><span>Fuel <em id="tele-fuel-value"></em></span><i><b id="tele-fuel" class="fuel"></b></i></div>
-        <div class="bar"><span>Brakes left <em id="tele-brakes-value"></em></span><i><b id="tele-brakes" class="brakes"></b></i></div>
-        <div class="bar"><span>Damage <em id="tele-damage-value"></em></span><i><b id="tele-damage" class="damage"></b></i></div>
-      </div>
-      <div class="temps">
-        <div><small>Tyres</small><span id="temp-tyres">–</span></div>
-        <div><small>Brakes</small><span id="temp-brakes">–</span></div>
-        <div><small>Engine</small><span id="temp-engine">–</span></div>
-      </div>
-      <div id="tele-setup" class="setup"></div>
-    </div>
   </section>
 
-  <!-- Team radio to your driver (team-radio.js) -->
-  <section id="team-radio" class="chrome hidden" aria-label="Team radio">
-    <header><b>Team radio</b><span id="radio-driver"></span></header>
-    <div class="radio-row"><small>Pace</small><div class="segmented">
-      <button data-pace="auto" title="The pit wall decides">Auto</button>
-      <button data-pace="push">Push</button>
-      <button data-pace="normal">Normal</button>
-      <button data-pace="save" title="Save tyres and fuel">Save</button>
-    </div></div>
-    <div class="radio-row"><small>Approach</small><div class="segmented">
-      <button data-approach="auto" title="Their usual self">Own call</button>
-      <button data-approach="attack">Attack</button>
-      <button data-approach="defend">Defend</button>
-      <button data-approach="bring_it_home">Bring it home</button>
-    </div></div>
-    <div class="radio-row"><small>Pit</small><div class="radio-pit">
-      <button id="radio-box" class="box">Box this lap</button>
-      <button id="radio-stay-out" class="secondary">Stay out</button>
-    </div></div>
-  </section>
 
   <!-- Playback and cameras -->
   <section id="dock" class="chrome">
     <button id="pause" class="icon" title="Pause (Space)" aria-label="Pause"></button>
-    <div class="segmented" id="speeds"></div>
-    <span class="divider"></span>
-    <div class="segmented" id="camera">
-      <button data-camera="follow" title="Follow the selected car (F)">Follow</button>
-      <button data-camera="tv" title="Broadcast cameras (T)">TV</button>
-      <button data-camera="overview" title="The whole circuit (O)">Circuit</button>
-      <button data-camera="driver" title="Through the selected driver's eyes (D)">Driver</button>
+    <div class="menu-anchor">
+      <button id="speed-button" class="toggle" data-menu="speed-menu" aria-haspopup="true" title="Playback speed">1×</button>
+      <div id="speed-menu" class="menu up hidden" role="menu"><div class="segmented" id="speeds"></div></div>
     </div>
-    <span class="divider"></span>
-    <button id="radio-toggle" class="toggle" title="Orders to your driver: pace, approach, pit">Radio</button>
-    <button id="ghost" class="toggle" title="A see-through car driving the fastest lap, in step with the selected car (G)">Ghost</button>
-    <button id="replay-last" class="toggle" title="The last ten seconds again, in slow motion, watching the selected car (R)">Replay</button>
-    <button id="hide-ui" class="toggle" title="Only the race on screen; H, Esc or a tap brings this back (H)">Hide UI</button>
+    <div class="menu-anchor">
+      <button id="camera-button" class="toggle" data-menu="camera-menu" aria-haspopup="true" title="Camera">Follow</button>
+      <div id="camera-menu" class="menu up hidden" role="menu">
+        <div id="camera">
+          <button data-camera="follow" role="menuitem">Follow <kbd>F</kbd></button>
+          <button data-camera="tv" role="menuitem">TV <kbd>T</kbd></button>
+          <button data-camera="driver" role="menuitem">Driver <kbd>D</kbd></button>
+          <button data-camera="overview" role="menuitem">Circuit <kbd>O</kbd></button>
+        </div>
+      </div>
+    </div>
+    <button class="toggle your-car" data-drawer="racer-drawer" title="Your car: radio, strategy, data (Y)"><span class="star">★</span> Your car</button>
+    <div class="menu-anchor">
+      <button class="toggle" data-menu="more-menu" aria-haspopup="true" aria-label="More" title="More">⋯</button>
+      <div id="more-menu" class="menu up right hidden" role="menu">
+        <button id="ghost" role="menuitem" title="A see-through car driving the fastest lap, in step with the selected car">Fastest-lap ghost <kbd>G</kbd></button>
+        <button id="replay-last" role="menuitem" title="The last ten seconds again, in slow motion, watching the selected car">Replay the last 10 s <kbd>R</kbd></button>
+        <button id="hide-ui" role="menuitem" title="Only the race on screen; H, Esc or a tap brings this back">Hide the interface <kbd>H</kbd></button>
+      </div>
+    </div>
   </section>
 
   <!-- Loading, on the published site: the race runs in the browser, which first downloads what it needs -->

@@ -364,3 +364,21 @@ class TestMarshalsClearStoppedCars:
             frame = session.advance(40)
         out = int(session.race.retired.argmax())
         assert frame['cars']['recovered'][out] == 1
+
+
+class TestMixedFields:
+    def test_only_the_cars_marked_networked_follow_the_network(self, tmp_path):
+        from sb3_contrib import RecurrentPPO
+        from slipstream.numpy_network import export
+        from slipstream.racer_env import RacerEnv
+        from slipstream.train import RACER_SETTINGS
+        (tmp_path / 'racer' / 'checkpoints').mkdir(parents=True)
+        export(RecurrentPPO('MlpLstmPolicy', RacerEnv(races=1), device='cpu', **RACER_SETTINGS), tmp_path / 'racer' / 'checkpoints' / 'step-000000000100.npz')
+        mixed = RaceSession('racer/step-000000000100', seed=5, cars=3, laps=1, runs=tmp_path, networked=[True, False, False])
+        everyone = RaceSession('racer/step-000000000100', seed=5, cars=3, laps=1, runs=tmp_path)
+        from slipstream.drivers import scripted_controls
+        mixed.race.marshals.lights_out_at = everyone.race.marshals.lights_out_at = 0.0
+        steer = mixed._decide()[0]
+        scripted = scripted_controls(mixed.race)[0]
+        assert (steer[1:] == scripted[1:]).all()
+        assert not (everyone._decide()[0][1:] == scripted[1:]).all()

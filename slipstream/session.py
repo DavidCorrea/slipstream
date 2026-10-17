@@ -114,15 +114,17 @@ def spec_value(name, slider):
 
 class RaceSession:
     def __init__(self, brain_id=SCRIPTED, seed=None, cars=6, laps=3, runs=RUNS, yours=None, edited=None, names=None, pitwall_id=DRIVER_DECIDES,
-                 forecast=None, location=None, colors=None, race_format=STANDARD, minutes=None, grid=None, race_days=None):
+                 forecast=None, location=None, colors=None, race_format=STANDARD, minutes=None, grid=None, race_days=None,
+                 networked=None):
         """`yours` is the key of the driver you race with (the cast's first when not given; they always make the
         field). `edited` maps driver keys to the stats you gave them, which they keep exactly; everyone else turns
         up as they usually are, give or take the race day. `names` maps driver keys to the names you gave them, and
         `colors` to the colours you painted their cars. `forecast` picks the weather (see weather.FORECASTS)
         and `location` the scenery and everything in it the cars can hit (see scenery.LOCATIONS); without them, the
         seed decides. `race_format` is one of formats.FORMATS (`minutes` long, for a timed race). `grid` (driver keys,
-        pole first) lines the field up as qualifying left it, and `race_days` keeps each driver's stats for the day."""
-        self._setup = {'brain_id': brain_id, 'seed': seed, 'cars': cars, 'laps': laps, 'runs': runs, 'pitwall_id': pitwall_id,
+        pole first) lines the field up as qualifying left it, and `race_days` keeps each driver's stats for the day.
+        `networked` marks the cars the network drives (all of them when not given); the scripted driver has the rest."""
+        self._setup = {'brain_id': brain_id, 'seed': seed, 'cars': cars, 'laps': laps, 'runs': runs, 'pitwall_id': pitwall_id, 'networked': networked,
                        'forecast': forecast, 'location': location, 'race_format': race_format, 'minutes': minutes}
         self.brain_id, self.pitwall_id = brain_id, pitwall_id
         self.policy = None if brain_id == SCRIPTED else load_policy(brain_path(brain_id, runs))
@@ -134,6 +136,7 @@ class RaceSession:
         # Drivers by feel learned with the lane driven for them and without lights or flags; the scripted driver and
         # racing drivers drive the lane themselves, wait for the lights and mind the flags.
         self.driver = NetworkDriver(self.policy, cars) if self.policy is not None else None
+        self.networked = np.ones(cars, dtype=bool) if networked is None else np.asarray(networked, dtype=bool)
         races = self.driver is None or self.driver.races
         laps = race_laps(race_format, laps, cars, track.length, minutes)
         self.race = Race(track, CarSpecs.uniform(cars, **SPEC_DEFAULTS), laps, weather=Weather.for_race(self.seed, track.length, laps, forecast),
@@ -406,7 +409,7 @@ class RaceSession:
         if pace is not None:
             self.race.radio[self.yours] = RADIO_CALLS.index(pace)
         steer, throttle, brake, call, plan, limiter, reverse, engine = field_controls(
-            self.race, self.driver, np.ones(self.race.count, dtype=bool), self.driving_personality(), pitwall=self.pitwall)
+            self.race, self.driver, self.networked, self.driving_personality(), pitwall=self.pitwall)
         if self.pitwall_id == SCRIPTED_STRATEGIST:
             call, plan = scripted_strategy(self.race)
         # The format's own calls (an endurance race's mandatory stops) for every car whose stops the team calls.

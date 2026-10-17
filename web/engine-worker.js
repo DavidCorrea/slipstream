@@ -49,10 +49,13 @@ function begin(name, expected) {
 
 // ---- Starting up ---------------------------------------------------------------------------------------------
 
+// The site's own files are always checked with the server ('no-cache' revalidates, so an unchanged file costs a
+// 304, not a download): GitHub Pages lets browsers keep them ten minutes, and right after an update a cached list
+// of files named a driver the site no longer had.
 async function download(path, fetcher = self.fetch) {
   let response;
   try {
-    response = await fetcher(new URL(path, ROOT));
+    response = await fetcher(new URL(path, ROOT), { cache: 'no-cache' });
   } catch (error) {
     throw new Error(`Could not download ${path}: ${error.message}. Check your connection and try again.`);
   }

@@ -335,6 +335,25 @@
     <p id="qualifying-note" class="hint"></p>
     <button id="qualifying-go" class="primary go">Start race</button>
   </section>
+  <!-- The post-race report (report.js) -->
+  <section id="report" class="hidden" aria-label="Race result">
+    <header>
+      <div><b>Race result</b><span id="report-title"></span></div>
+      <button id="report-close" class="close" aria-label="Close">×</button>
+    </header>
+    <div id="report-headlines" class="report-tiles"></div>
+    <div id="report-extras"></div>
+    <div class="report-body">
+      <div id="report-results" class="report-results"></div>
+      <div class="report-chart-box"><h3>Places, lap by lap</h3><div id="report-chart"></div>
+        <p class="legend"><span class="key yours"></span>You <span class="key"></span>Everyone else · hover a line or a row</p></div>
+    </div>
+    <footer>
+      <button id="report-again" class="secondary">Race this circuit again</button>
+      <button id="report-next" class="primary">Next race</button>
+    </footer>
+  </section>
+  <div id="report-tooltip" class="hidden" role="tooltip"></div>
   <div id="banner" class="hidden"></div>
   <div id="race-control" class="hidden" role="status"></div>
   <div id="caption" class="hidden"></div>

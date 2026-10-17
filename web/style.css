@@ -381,6 +381,59 @@ body.grid-intro .chrome, body.grid-intro #tv-tag, body.grid-intro #caption, body
 #qualifying .hint { padding: 6px 16px 0; }
 #qualifying-go { display: block; margin: 10px 16px 0 auto; }
 
+/* The post-race report (report.js). */
+#report {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 12; width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px); overflow-y: auto; background: rgba(10, 12, 18, 0.95); backdrop-filter: blur(8px);
+  border-top: 3px solid var(--accent); border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45); animation: intro-in 0.35s ease;
+}
+#report header { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(10, 12, 18, 0.98); border-bottom: 1px solid var(--line); z-index: 1; }
+#report header b { font-size: 22px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 12px; }
+#report header span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; }
+#report .close { background: none; border: none; font-size: 22px; color: var(--muted); }
+.report-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 18px 4px; }
+.report-tiles .tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 4px; min-width: 0; }
+.report-tiles small { font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.14em; }
+.report-tiles b { font-size: 20px; font-weight: 900; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.report-tiles span { font: 400 12px var(--mono); color: var(--muted); }
+.report-body { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; padding: 12px 18px; }
+.report-results table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report-results th { text-align: left; font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.report-results td { padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); white-space: nowrap; }
+.report-results td.place { color: var(--muted); font-weight: 700; text-align: right; }
+.report-results td.mono { font: 400 12px var(--mono); }
+.report-results td.fastest { color: #fff; }
+.report-results td.fastest::after { content: ' ●'; color: var(--purple); }
+.report-results .chip { display: inline-block; width: 4px; height: 14px; margin-right: 8px; vertical-align: -2px; border-radius: 1px; }
+.report-results tr.yours td { background: rgba(255, 210, 63, 0.1); }
+.report-results tr.hover td { background: rgba(255, 255, 255, 0.08); }
+.report-results tr.out td { color: var(--muted); }
+.report-results em { font-style: normal; font-size: 11px; }
+.report-results em.up { color: var(--throttle); }
+.report-results em.down { color: var(--brake); }
+.report-chart-box h3 { margin: 4px 0 8px; font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.14em; }
+#report-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+#report-chart .grid line { stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; }
+#report-chart .grid text, #report-chart .end-label { fill: var(--muted); font: 400 11px var(--mono); }
+#report-chart .end-label { fill: var(--text); font-weight: 700; }
+#report-chart .car .mark { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+#report-chart .car .hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+#report-chart .car .end { fill: rgba(255, 255, 255, 0.16); stroke: #0b0d13; stroke-width: 2; }
+#report-chart .car.yours .mark, #report-chart .car.hover .mark { stroke: var(--car); }
+#report-chart .car.yours .end, #report-chart .car.hover .end { fill: var(--car); }
+#report-chart .car.hover { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)); }
+#report .legend { margin: 8px 0 0; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+#report .legend .key { display: inline-block; width: 16px; height: 2px; background: rgba(255, 255, 255, 0.3); margin-left: 6px; }
+#report .legend .key.yours { background: var(--yours); margin-left: 0; }
+#report footer { display: flex; justify-content: flex-end; gap: 8px; padding: 6px 18px 16px; }
+#report footer button { width: auto; flex: none; padding: 9px 18px; }
+#report-tooltip { position: fixed; z-index: 13; pointer-events: none; padding: 4px 8px; border-radius: 3px; background: #0b0d13; border: 1px solid var(--line-strong); font: 400 12px var(--mono); color: var(--text); }
+@media (max-width: 760px) {
+  .report-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-body { grid-template-columns: 1fr; }
+  .report-results { overflow-x: auto; }
+}
+
 /* The debug readout (stats.js). */
 #stats {
   position: fixed; top: 70px; right: var(--gutter); margin: 0; padding: 6px 10px; z-index: 30; pointer-events: none;

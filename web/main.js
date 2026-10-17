@@ -10,6 +10,7 @@ import { createDriverCamera } from './driver-camera.js';
 import { createFeed } from './feed.js';
 import { createRaceControl } from './race-control.js';
 import { createQualifyingBoard } from './qualifying.js';
+import { createReport } from './report.js';
 import { createGhost } from './ghost.js';
 import { createGridIntro } from './grid-intro.js';
 import { createHud } from './hud.js';
@@ -43,7 +44,7 @@ const stats = createStats(stage.renderer);
 const hud = createHud({ onSelect: id => select(id) });
 const racer = createRacerPanel({
   send: message => send(message),
-  onYours: car => { state.yours = car; broadcaster.setYours(car); select(car); },
+  onYours: car => { state.yours = car; broadcaster.setYours(car); report.setYours(car); select(car); },
   onFollow: () => select(state.yours),
   onRename: id => hud.rename(id),
   onRecolor: id => repaintCar(id),
@@ -63,6 +64,7 @@ const feed = createFeed({ onSelect: id => select(id) });
 const raceControl = createRaceControl();
 const qualifyingBoard = createQualifyingBoard({ onDone: () => startFromTheGrid(true) });
 const QUALIFYING_KEY = 'slipstream.qualifying';
+const report = createReport({ onNext: () => startRace(), onAgain: () => startRace(true) });
 const ghost = createGhost(stage.scene);
 const director = createDirector({ aspect: window.innerWidth / window.innerHeight });
 window.addEventListener('resize', () => {
@@ -209,6 +211,7 @@ function setUpRace(intro) {
   feed.reset(intro);
   raceControl.reset(intro);
   teamRadio.setRace(intro);
+  report.reset(intro, intro.yours, state.location.label);
   ghost.reset();
   director.reset(intro, state.circuit);
   broadcaster.reset(intro, intro.yours);
@@ -309,6 +312,7 @@ function lightsOut() {
 function receiveFrame(frame) {
   if (!state.race) return;
   const moments = raceEvents.read(frame);
+  report.record(frame);
   const replay = replays.record(frame, automaticReplays() && !state.replay, moments);
   if (replay) startReplay(replay);
   state.previous = interpolated(performance.now());

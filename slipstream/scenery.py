@@ -28,7 +28,8 @@ LOCATIONS = ('countryside', 'desert', 'alpine', 'coast', 'city', 'night')
 WALLED = ('city', 'night')
 # How a prop takes a hit; SCENIC ones (the lake, the sea) are only to look at and have no footprint.
 SOLID, SOFT, BREAKABLE, SCENIC = 'solid', 'soft', 'breakable', 'scenic'
-PIT_WALL_CURVATURE = 1 / 150   # the pit wall stands only where the track beside it bends less than this (also web/circuit.js)
+PIT_WALL_CURVATURE = 1 / 150   # the concrete pit wall stands where the track beside it bends less than this (also web/circuit.js)
+PIT_TYRE_SPACING = 1.2          # metres between the tyre stacks parting the lane from the track where it bends
 
 
 @dataclass
@@ -316,13 +317,18 @@ def track_furniture(track, lane):
         middle = front + np.array([nx, ny]) * outside * 6.9
         props.append(Prop('grandstand', middle[0], middle[1], SOLID, half_length=15.5, half_width=7.0,
                           angle=float(np.arctan2(track.tangents[index][1], track.tangents[index][0]))))
+    # The lane is parted from the track all the way between its ramps: the concrete wall beside the straight, and
+    # where the track bends a tyre barrier, which gives. (A big field's lane runs on into the first corner, where
+    # cars running wide piled into a concrete wall on the outside of it; leaving those stretches open instead left
+    # gaps where a car could run into the lane, and a wall end to hit, wherever a straight bent a little.)
     for along in np.arange(RAMP, lane.length - RAMP, 6.0):
         length = min(6.0, lane.length - RAMP - along)
         middle = along + length / 2
         index = int(np.floor(((lane.entry + middle) % track.length) / SPACING)) % track.size
-        # Only beside the straight: a big field's lane runs on into the first corner, where cars running wide
-        # piled into a wall on the outside of it. There, run-off parts the lane from the track instead.
         if abs(track.curvature[index]) >= PIT_WALL_CURVATURE:
+            for step in np.arange(along, along + length, PIT_TYRE_SPACING):
+                x, y = track.point_at(lane.entry + step + PIT_TYRE_SPACING / 2, lane.side * (half + 3.4))
+                props.append(Prop('tyres', x, y, SOFT, radius=0.62, look={'shade': int(step / PIT_TYRE_SPACING) % 4}))
             continue
         x, y = track.point_at(lane.entry + middle, lane.side * (half + 3.4))
         tangent = track.tangents[index]

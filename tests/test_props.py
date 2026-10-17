@@ -152,3 +152,19 @@ class TestBackingOut:
         while not race.done:
             race.step(*scripted_controls(race))
             assert not race.cars.reversing[0]
+
+
+class TestThePitWall:
+    def test_parts_the_lane_from_the_track_all_the_way_with_tyres_where_it_bends(self):
+        from slipstream.pit import RAMP, PitLane
+        from slipstream.scenery import track_furniture
+        for seed in range(12):
+            track = generate_track(seed)
+            lane = PitLane(track, 20)
+            barrier = [prop for prop in track_furniture(track, lane) if prop.kind in ('pitwall', 'tyres')]
+            points = np.array([[prop.x, prop.y] for prop in barrier])
+            line = track.width / 2 + 3.4
+            for along in np.arange(RAMP, lane.length - RAMP, 1.0):
+                x, y = track.point_at(lane.entry + along, lane.side * line)
+                reach = np.array([prop.half_length if prop.kind == 'pitwall' else prop.radius for prop in barrier]) + 1.0
+                assert (np.hypot(points[:, 0] - x, points[:, 1] - y) <= reach).any(), f'gap at {along:.0f} m along the lane of circuit {seed}'

@@ -550,7 +550,8 @@ function pitArea(track, lane, cars) {
   const post = new THREE.MeshStandardMaterial({ color: '#6c7280', roughness: 0.5, metalness: 0.6 });
   for (let along = wallFrom; along < wallTo; along += 6) {
     const length = Math.min(6, wallTo - along), middle = along + length / 2;
-    // Only beside the straight, as the sim has it (scenery.PIT_WALL_CURVATURE): in a corner, run-off parts them.
+    // Only beside the straight, as the sim has it (scenery.PIT_WALL_CURVATURE): where it bends, a tyre barrier the
+    // sim places (scenery.js draws it) parts them instead.
     const sample = Math.floor((((lane.entry + middle) % track.length) + track.length) % track.length / (track.length / track.points.length));
     if (Math.abs(track.curvature[sample % track.points.length]) >= PIT_WALL_CURVATURE) continue;
     const segment = new THREE.Group();

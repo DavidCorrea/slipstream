@@ -15,6 +15,7 @@ const OFFENCES = {
   'jump start': 'False start',
   'yellow flag': 'Overtaking under yellow flags',
   'blue flags': 'Ignoring blue flags',
+  'mandatory stops': 'Missed mandatory pit stops',
 };
 
 // Why a car is out (slipstream/race.py RETIREMENTS), as race control words it.
@@ -23,6 +24,7 @@ export const RETIREMENT_WORDS = {
   'barrier after contact': 'Collision damage',
   stuck: 'Car stopped',
   engine: 'Engine failure',
+  eliminated: 'Eliminated',
 };
 
 export function createRaceControl() {
@@ -35,6 +37,7 @@ export function createRaceControl() {
       case 'penalty': return [`${moment.seconds} second time penalty`, `${name} · ${OFFENCES[moment.reason] ?? moment.reason}`];
       case 'crash': return ['Retired', `${name} · ${RETIREMENT_WORDS[moment.why] ?? 'Out of the race'}`];
       case 'engineFailure': return ['Retired', `${name} · Engine failure`];
+      case 'eliminated': return ['Eliminated', `${name} · out in P${moment.place}`];
       case 'yellow': return ['Yellow flag', 'Incident on track · no overtaking'];
       default: return null;
     }

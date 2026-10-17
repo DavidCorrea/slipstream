@@ -135,7 +135,7 @@ function send(message) {
 function startRace(sameCircuit = false) {
   send({
     type: 'start', brain: $('brain').value || 'scripted', pitwall: $('pitwall').value || 'driver', weather: $('weather').value,
-    location: $('location').value,
+    location: $('location').value, format: $('format').value, minutes: Number($('minutes').value),
     cars: Number($('cars').value), laps: Number($('laps').value),
     seed: sameCircuit && state.race ? state.race.seed : undefined,
   });
@@ -221,7 +221,10 @@ function setUpRace(intro) {
 // Every race waits on the grid (the server holds it there) until you've picked your car and set it up.
 function showGrid(intro) {
   const weatherChoice = $('weather').selectedOptions[0].text.toLowerCase();
-  $('grid-info').textContent = `${state.location.label} · ${intro.laps} laps of a ${Math.round(intro.track.length)} m circuit`
+  const format = intro.format ?? { kind: 'standard' };
+  const length = format.kind === 'timed' ? `${format.minutes} minutes against the clock on a` : `${intro.laps} laps of a`;
+  const kind = format.kind === 'standard' ? '' : `${$('format').selectedOptions[0].text} · `;
+  $('grid-info').textContent = `${kind}${state.location.label} · ${length} ${Math.round(intro.track.length)} m circuit`
     + ` · weather ${weatherChoice} · ${intro.cars.length} cars`;
   openDrawer(null);
   $('grid-menu').classList.remove('hidden');
@@ -529,6 +532,8 @@ function drawCars(frame, seconds, simRate, now, live) {
     car.userData.lightsOn = !!state.location?.night;
     car.userData.raining = frame.weather.wetness > 0.3;
     poseCar(car, pose, seconds, seconds * simRate, followed, now / 1000);
+    // An eliminated car has left the circuit.
+    car.visible = frame.cars.retiredBy?.[id] !== 'eliminated';
     const velocity = carVelocity(pose);
     for (const point of car.userData.justLost.splice(0)) state.effects.shed(point, velocity, state.race.cars[id].color, 3, 0.45);
     if (live && simRate > 0) state.effects.car(id, contactPatches(car), pose, velocity, seconds * Math.min(simRate, 2), frame.weather.wetness);
@@ -721,6 +726,23 @@ $('automatic-replays').addEventListener('change', event => {
 });
 $('brain').addEventListener('change', () => startRace(true));
 $('location').addEventListener('change', () => startRace(true));
+// What each format does, under the picker; the race time only matters to a timed race.
+const FORMAT_NOTES = {
+  standard: 'The laps you set, from the grid as drawn.',
+  reverse: 'The grid turned round: the front row starts at the back.',
+  sprint: 'A third of the laps, flat out.',
+  elimination: 'From lap 2, the last car is out each time the leader completes a lap, until three are left.',
+  endurance: 'Twice the laps and two mandatory stops: 30 s for every finisher short of them.',
+  timed: 'Against the clock: when the time is up, the leader’s next lap is the last.',
+};
+function showFormat() {
+  $('format-note').textContent = FORMAT_NOTES[$('format').value];
+  $('minutes-field').classList.toggle('hidden', $('format').value !== 'timed');
+  $('laps').disabled = $('format').value === 'timed';
+}
+showFormat();
+$('format').addEventListener('change', () => { showFormat(); startRace(true); });
+$('minutes').addEventListener('change', () => startRace(true));
 $('pitwall').addEventListener('change', () => startRace(true));
 document.querySelectorAll('#camera [data-camera]').forEach(button => button.addEventListener('click', () => setCamera(button.dataset.camera)));
 

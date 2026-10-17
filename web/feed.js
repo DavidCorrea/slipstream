@@ -27,6 +27,7 @@ export function createFeed({ onSelect }) {
       case 'finalLap': return ['control', 'Final lap'];
       case 'puncture': return ['control', `${name(car)} has a puncture`];
       case 'engineFailure': return ['control', `${name(car)} retires: engine failure`];
+      case 'eliminated': return ['control', `${name(car)} is eliminated in P${moment.place}`];
       case 'crash': return ['control', `${name(car)} retires: ${(RETIREMENT_WORDS[moment.why] ?? 'crashed').toLowerCase()}`];
       case 'barrier': return ['control', `${name(car)} hits the barrier`];
       case 'mistake': return ['control', `A mistake from ${name(car)}`];

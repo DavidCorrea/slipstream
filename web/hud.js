@@ -106,8 +106,13 @@ export function createHud({ onSelect }) {
       if (!race) return;
       const cars = frame.cars, order = frame.order;
       const leader = order[0];
-      const leaderLap = Math.min(cars.lap[leader] + 1, race.laps);
-      $('lap-counter').textContent = frame.done ? 'Finished' : `Lap ${leaderLap}/${race.laps}`;
+      // A timed race's laps follow the clock, so the frame says how many there are now.
+      const laps = frame.laps ?? race.laps;
+      const leaderLap = Math.min(cars.lap[leader] + 1, laps);
+      const timeLeft = frame.format?.timeLeft;
+      $('lap-counter').textContent = frame.done ? 'Finished'
+        : timeLeft !== undefined ? (timeLeft > 0 ? `Lap ${leaderLap} · ${formatTime(timeLeft).slice(0, -2)} left` : `Lap ${leaderLap} · last lap`)
+        : `Lap ${leaderLap}/${laps}`;
       $('race-clock').textContent = formatTime(frame.time);
       const { wetness, rain, temperature = 0.5, wind = [0, 0] } = frame.weather;
       const sky = rain > 0.6 ? 'Heavy rain' : rain > 0 ? 'Rain' : wetness > 0.05 ? 'Drying' : 'Dry';

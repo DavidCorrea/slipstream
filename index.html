@@ -165,6 +165,27 @@
             </select>
           </label>
           <div class="pair">
+            <label class="field">Format
+              <select id="format">
+                <option value="standard">Standard</option>
+                <option value="reverse">Reverse grid</option>
+                <option value="sprint">Sprint</option>
+                <option value="elimination">Elimination</option>
+                <option value="endurance">Endurance</option>
+                <option value="timed">Timed (Le Mans)</option>
+              </select>
+            </label>
+            <label class="field" id="minutes-field">Race time
+              <select id="minutes">
+                <option value="10">10 minutes</option>
+                <option value="20">20 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+              </select>
+            </label>
+          </div>
+          <p id="format-note" class="hint"></p>
+          <div class="pair">
             <label class="field">Cars <input id="cars" type="number" min="2" max="20" value="6"></label>
             <label class="field">Laps <input id="laps" type="number" min="1" max="70" value="8"></label>
           </div>

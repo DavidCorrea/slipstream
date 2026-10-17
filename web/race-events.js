@@ -167,6 +167,10 @@ export function createRaceEvents() {
       add({ kind: 'barrier', priority: 3, car: hit.car, place: frame.order.indexOf(hit.car) + 1, radio: radio('barrier', hit.car) });
     }
     if ((frame.events.yellowFlags ?? []).length && started) add({ kind: 'yellow', priority: 2, car: frame.order[0] });
+    for (const car of frame.events.eliminated ?? []) {
+      // Out in the place behind everyone still running.
+      add({ kind: 'eliminated', priority: 4, car, place: frame.cars.retired.filter(out => !out).length + 1 });
+    }
     for (const { car, seconds, reason } of frame.events.penalties ?? []) {
       add({ kind: 'penalty', priority: 3, car, seconds, reason, place: frame.order.indexOf(car) + 1, radio: radio('penalty', car) });
     }

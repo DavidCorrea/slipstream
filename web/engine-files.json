@@ -33,8 +33,8 @@
     "brains/default-driver.txt",
     "brains/pitwall-feel/checkpoints/step-000000251904.npz",
     "brains/pitwall-feel/driver.json",
-    "brains/racer-2/checkpoints/step-000080018720.npz"
+    "brains/racer-2/checkpoints/step-000103002080.npz"
   ],
-  "bytes": 1142792,
-  "version": "953f75002d4a"
+  "bytes": 1142656,
+  "version": "ca3b889c9ecf"
 }
